@@ -50,8 +50,9 @@ def read_entry(path):
     eof1 = data.find(EOF_MAGIC, body_start)
     if eof1 < 0:
         return None
-    size1 = struct.unpack_from("<I", data, eof1 + 16)[0]
-    body = data[eof1 - size1:eof1] if size1 <= eof1 - body_start else data[body_start:eof1]
+    # Stream 1 (the body) runs from the key to its EOF record. That record's stream_size
+    # field is only filled in for stream 0, so it can't be used to find the body.
+    body = data[body_start:eof1]
     # Stream 0 (HTTP response info) sits after EOF1; we only need it for content-encoding.
     headers = data[eof1 + 24:]
     return key, body, headers
@@ -165,6 +166,35 @@ def channel_info(ch):
             "guild_id": ch.get("guild_id")}
 
 
+# The DM list (/users/@me/channels) is rarely cached, so tell DMs from servers by the messages.
+# Types 1/2/4 also occur in server threads, so only calls count as DM-only.
+DM_ONLY_TYPES = {3}  # call
+GUILD_ONLY_TYPES = {7, 8, 9, 10, 11, 12, 18, 21, 24}  # joins, boosts, follows, threads, automod
+
+
+def evidence(msg):
+    if msg.get("type") in DM_ONLY_TYPES or msg.get("call"):
+        return "dm_seen"
+    if (msg.get("type") in GUILD_ONLY_TYPES or msg.get("mention_roles") or msg.get("webhook_id")
+            or "member" in msg or (msg.get("message_reference") or {}).get("guild_id")):
+        return "guild_seen"
+    return None
+
+
+def infer_me(state):
+    """Without a cached /users/@me, you're the author present in most of your chats."""
+    seen = {}
+    for bucket in state["messages"].values():
+        for aid in {m["author_id"] for m in bucket.values()}:
+            seen[aid] = seen.get(aid, 0) + 1
+    if not seen:
+        return
+    aid, n = max(seen.items(), key=lambda kv: kv[1])
+    if n >= 2 and n > len(state["messages"]) / 2:
+        name = next(m["author"] for b in state["messages"].values() for m in b.values() if m["author_id"] == aid)
+        state["me"] = {"id": aid, "name": name, "inferred": True}
+
+
 def merge(state, found):
     if found["me"]:
         me = found["me"]
@@ -183,13 +213,22 @@ def merge(state, found):
         if bucket.get(m["id"]) != s:
             bucket[m["id"]] = s
             changed.add(m["channel_id"])
+        ev = evidence(m)
+        if ev:
+            state["channels"].setdefault(m["channel_id"], {})[ev] = True
+    if not state.get("me") or state["me"].get("inferred"):
+        infer_me(state)
     return changed
 
 
 # ---------- markdown ----------
 
 def is_dm(info):
-    return info.get("type") in (1, 3)
+    return info.get("type") in (1, 3) or (info.get("dm_seen") and not info.get("guild_seen"))
+
+
+def is_guild(info):
+    return bool(info.get("guild_id") or info.get("guild_seen"))
 
 
 def title_for(cid, info, msgs, me_id):
@@ -199,7 +238,7 @@ def title_for(cid, info, msgs, me_id):
         r = info["recipients"]
         return r[0] if len(r) == 1 else ", ".join(r[:3]) + (f" & {len(r) - 3} others" if len(r) > 3 else "")
     others = sorted({m["author"] for m in msgs if m["author_id"] != me_id})
-    return ", ".join(others[:3]) or f"channel {cid}"
+    return ", ".join(others[:3]) or "chat"
 
 
 def safe_name(s):
@@ -215,6 +254,10 @@ def fmt_time(ts):
         return ts or ""
 
 
+SYSTEM_TEXT = {1: "(added someone to the chat)", 2: "(removed someone from the chat)", 3: "(started a call)",
+               4: "(renamed the chat)", 5: "(changed the chat icon)", 6: "(pinned a message)"}
+
+
 def render(cid, info, msgs, me_id, kind):
     title = title_for(cid, info, msgs, me_id)
     lines = [f"# Discord {kind}: {title}", "",
@@ -222,11 +265,8 @@ def render(cid, info, msgs, me_id, kind):
     day = None
     for m in msgs:
         stamp = fmt_time(m["ts"])
-        if stamp[:10] != day:
-            day = stamp[:10]
-            lines += ["", f"## {day}", ""]
         who = "Me" if me_id and m["author_id"] == me_id else m["author"]
-        text = m["content"].replace("\n", "\n  ")
+        text = m["content"].replace("\n", "\n  ") or SYSTEM_TEXT.get(m.get("type"), "")
         extras = []
         if m.get("reply_to") and m["reply_to"][0]:
             extras.append(f"(replying to {m['reply_to'][0]}: \"{m['reply_to'][1]}\")")
@@ -237,30 +277,35 @@ def render(cid, info, msgs, me_id, kind):
         if m.get("edited"):
             extras.append("(edited)")
         body = " ".join(x for x in [text] + extras if x)
-        if body:
-            lines.append(f"- **{stamp[11:]} {who}:** {body}")
+        if not body:
+            continue
+        if stamp[:10] != day:
+            day = stamp[:10]
+            lines += ["", f"## {day}", ""]
+        lines.append(f"- **{stamp[11:]} {who}:** {body}")
     return title, "\n".join(lines) + "\n"
 
 
 def write_notes(state, out_dir, include_all, days):
     out_dir.mkdir(parents=True, exist_ok=True)
     me_id = (state.get("me") or {}).get("id")
-    known_dm = any(is_dm(c) for c in state["channels"].values())
+    known_dm = any(c.get("type") in (1, 3) for c in state["channels"].values())  # real DM list cached
     cutoff = None
     if days:
         cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat()
-    written = 0
+    written = skipped = 0
     for cid, bucket in state["messages"].items():
         info = state["channels"].get(cid, {})
+        authors = {m["author_id"] for m in bucket.values()}
         if is_dm(info):
             kind = "DM"
-        elif info.get("guild_id") or (known_dm and not include_all):
-            # Known non-DM, or DM list is known and this channel isn't in it.
-            if not include_all:
-                continue
-            kind = "channel"
+        elif not is_guild(info) and not known_dm and me_id in authors and len(authors) == 2:
+            kind = "DM"  # just you and one other person, nothing server-like
+        elif include_all:
+            kind = "channel" if is_guild(info) else "chat"
         else:
-            kind = "chat"  # DM list not cached yet; can't tell, keep it
+            skipped += 1  # a server channel, or can't tell
+            continue
         msgs = sorted(bucket.values(), key=lambda m: (m["ts"] or "", int(m["id"])))
         if cutoff:
             msgs = [m for m in msgs if (m["ts"] or "") >= cutoff]
@@ -271,7 +316,7 @@ def write_notes(state, out_dir, include_all, days):
         if not path.exists() or path.read_text() != md:
             path.write_text(md)
             written += 1
-    return written
+    return written, skipped
 
 
 def main():
@@ -285,6 +330,20 @@ def main():
     caches = [c.expanduser() for c in (a.cache or DEFAULT_CACHES) if c.expanduser().is_dir()]
     if not caches:
         sys.exit("No Discord cache found. Is the Discord desktop app installed?")
+    for c in caches:
+        try:
+            os.listdir(c)  # glob() swallows this and silently finds nothing
+        except PermissionError:
+            # Under the nightly job, the launcher app holds the grant. Run by hand, it's python:
+            # sys.executable names bin/python3.x, but framework Pythons re-exec into
+            # Resources/Python.app, and that bundle is what Full Disk Access must name.
+            app = os.environ.get("DISCORD_READER_APP")
+            if not app:
+                exe = os.popen(f"ps -o comm= -p {os.getpid()}").read().strip() or sys.executable
+                app = exe.split("/Contents/MacOS/")[0] if "/Contents/MacOS/" in exe else exe
+            sys.exit(f"Permission denied reading {c}. macOS protects other apps' data: give "
+                     f"{app} (and your terminal) Full Disk Access in "
+                     "System Settings > Privacy & Security.")
     state = load_state()
     changed, total, undecoded = set(), 0, 0
     for c in caches:
@@ -293,9 +352,10 @@ def main():
         undecoded += found["undecoded"]
         changed |= merge(state, found)
     save_state(state)
-    written = write_notes(state, a.out.expanduser(), a.all, a.days)
+    written, skipped = write_notes(state, a.out.expanduser(), a.all, a.days)
     print(f"cache messages seen: {total}  chats updated: {len(changed)}  notes written: {written}"
-          f"  archive chats: {len(state['messages'])}  out: {a.out.expanduser()}")
+          f"  archive chats: {len(state['messages'])}  skipped (server or unsure): {skipped}"
+          f"  out: {a.out.expanduser()}")
     if undecoded:
         print(f"note: {undecoded} cache entries couldn't be decoded"
               + ("" if _has_brotli() else " (install brotli: python3 -m pip install --user brotli)"))
