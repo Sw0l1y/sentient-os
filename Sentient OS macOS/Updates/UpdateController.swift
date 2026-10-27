@@ -34,13 +34,10 @@ final class UpdateController: NSObject, SPUUpdaterDelegate {
 
     /// Development products must never join the published app's update channel. Do not turn
     /// Sparkle preferences off: Debug and Release share those defaults on a developer's Mac.
-    static var appUpdatesEnabled: Bool {
-        #if DEBUG
-        false
-        #else
-        true
-        #endif
-    }
+    /// Personal fork: never take the official channel's updates. They are signed for the
+    /// upstream team and would silently replace this build (or fail and trigger the update gate).
+    /// Pull upstream changes with git instead.
+    static var appUpdatesEnabled: Bool { false }
 
     /// Sparkle's "install + relaunch now" trigger for a silently-staged update, stashed until the
     /// moment is safe (see `isSafeToRelaunch`). Set from `willInstallUpdateOnQuit`; cleared once fired.
