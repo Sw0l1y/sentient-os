@@ -376,12 +376,8 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
         VStack(alignment: .leading, spacing: 6) {
             fieldLabel(label)
             TextField(placeholder, text: text)
-                .textFieldStyle(.plain)
-                .font(.system(size: formStyle ? 14 : 11.5)).foregroundStyle(Theme.Ink.statusInk)
-                .padding(.horizontal, 12).padding(.vertical, formStyle ? 11 : 8)
-                .background(Color.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(Theme.stroke, lineWidth: 1))
+                .textFieldStyle(.roundedBorder)
+                .controlSize(formStyle ? .large : .regular)
                 .onChange(of: text.wrappedValue) { invalidate() }
         }
     }
@@ -400,12 +396,8 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
         VStack(alignment: .leading, spacing: 6) {
             fieldLabel(label)
             SecureField(placeholder, text: $apiKey)
-                .textFieldStyle(.plain)
-                .font(.system(size: formStyle ? 14 : 11.5)).foregroundStyle(Theme.Ink.statusInk)
-                .padding(.horizontal, 12).padding(.vertical, formStyle ? 11 : 8)
-                .background(Color.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(Theme.stroke, lineWidth: 1))
+                .textFieldStyle(.roundedBorder)
+                .controlSize(formStyle ? .large : .regular)
                 .onChange(of: apiKey) {
                     let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
                     if trimmed.isEmpty {
@@ -539,35 +531,35 @@ struct EngineTab: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 7) {
-                    if active { HealthDot(color: Theme.Ink.green) }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
                     Text(formStyle ? label.replacingOccurrences(of: " Subscription", with: "") : label)
-                        .font(.system(size: formStyle ? 15 : 12.5, weight: selected ? .medium : .regular))
-                        .foregroundStyle(selected ? .white : Theme.Ink.body)
+                        .font(.body.weight(selected ? .semibold : .regular))
                         .lineLimit(1)
                         .minimumScaleFactor(0.92)
+                    if active {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .accessibilityLabel("In use")
+                    }
                 }
                 if let badge {
-                    if formStyle {
-                        Text(label == "Custom" ? "Your endpoint" : badge.capitalized)
-                            .font(.system(size: 12)).foregroundStyle(SettingsStyle.secondary)
-                    } else {
-                        MonoCaps(badge, size: 7, tracking: 1.4,
-                                 color: badge == "recommended" ? Theme.Ink.green.opacity(0.85) : .white.opacity(0.45))
-                    }
+                    Text(label == "Custom" ? "Your endpoint" : badge.capitalized)
+                        .font(.caption)
+                        .foregroundStyle(badge == "recommended" ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
-            .frame(width: formStyle ? nil : Self.pillWidth, height: formStyle ? 68 : Self.pillHeight)
-            .background(selected ? Theme.elevated : Color.white.opacity(0.02),
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(
-                selected ? Color.white.opacity(0.28) : Color.white.opacity(0.10), lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(width: formStyle ? nil : Self.pillWidth, height: formStyle ? 60 : Self.pillHeight)
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(
+                selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Theme.stroke),
+                lineWidth: selected ? 2 : 0.5))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
         }
-        .buttonStyle(PressScaleStyle())
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

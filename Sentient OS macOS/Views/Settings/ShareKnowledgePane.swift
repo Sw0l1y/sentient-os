@@ -2,9 +2,9 @@
 //  ShareKnowledgePane.swift
 //  Sentient OS macOS
 //
-//  Settings → Give AIs Knowledge: the value + privacy story up top, then the HERO: the glowing
-//  "Set up in 2 minutes" button → the real guided setup (ConnectAIsView), always visible — the
-//  window owns sharing on AND off (its consent veil / MCP pill), so this pane carries no toggle.
+//  Settings → Give AIs Knowledge: the value + privacy story up top, then a link that pushes the
+//  guided setup (ConnectAIsView) in place. That page owns sharing on AND off (its consent ask /
+//  toolbar switch), so this pane carries no toggle.
 //  Live activity from /stats below when sharing is on. Regenerate lives in MirrorClient only
 //  (a support/dev remediation; a UI button was a footgun that bricks every connector).
 //
@@ -13,8 +13,6 @@ import SwiftUI
 import AppKit
 
 struct ShareKnowledgePane: View {
-    @Environment(\.openWindow) private var openWindow
-
     @State private var enabled = false
     @State private var stats: MirrorClient.Stats?
     @State private var loaded = false
@@ -39,12 +37,9 @@ struct ShareKnowledgePane: View {
                 else if loaded { localOnlyProse }
             }
         }
-        .task { await refresh() }
-        // Sharing flips inside the ConnectAIsView window now — re-probe when the user clicks
-        // back into Settings so Activity vs. local-only never shows a stale answer.
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-            Task { await refresh() }
-        }
+        // Sharing flips inside the pushed Connect Your AIs page — re-probe on every return so
+        // Activity vs. local-only never shows a stale answer.
+        .onAppear { Task { await refresh() } }
     }
 
     // MARK: - Sharing setup owns both enabling and disabling the mirror
@@ -54,9 +49,10 @@ struct ShareKnowledgePane: View {
             VStack(alignment: .leading, spacing: 0) {
                 SettingsRow(title: "Share your knowledge",
                             subtitle: "Connect your AIs with a private link. Works on your phone, too.") {
-                    SettingsPillButton(title: enabled ? "Configure" : "Set up sharing") {
-                        openWindow(id: ConnectAIsView.windowID)
+                    NavigationLink(enabled ? "Configure…" : "Set Up Sharing…") {
+                        ConnectAIsView().navigationTitle("Connect Your AIs")
                     }
+                    .buttonStyle(.bordered)
                 }
                 if loaded {
                     SettingsHairline(opacity: 0.10)

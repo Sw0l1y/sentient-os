@@ -3,13 +3,13 @@
 //  Sentient OS macOS
 //
 //  The Knowledge page — a minimal Obsidian-style reader / editor / manager over the real markdown
-//  vault (~/Sentient OS - Knowledge Base/). Two-pane split: a folder tree (pinned "Overview" = the
-//  root README, search, disclosure folders; create via the header "+", a folder-hover "+", or
-//  right-click) and a rendered-markdown reader on the right. [[Wikilinks]] jump between notes (Back walks the trail);
-//  the page header carries Home / optional AI connections / Edit / Delete (→ Trash) / Reveal in Finder. Every edit/create/delete commits
+//  vault (~/Sentient OS - Knowledge Base/). Two-pane split: a folder outline (pinned "Overview" = the
+//  root README, search, disclosure folders; create via the footer "+" or right-click) and a
+//  rendered-markdown reader on the right. [[Wikilinks]] jump between notes (Back walks the trail);
+//  the window toolbar carries Back / Reader–Constellation / Edit / Delete (→ Trash) / Reveal in Finder. Every edit/create/delete commits
 //  locally and DEBOUNCE-syncs to the cloud MCP (VaultActivity.markChanged → the sidebar status line).
-//  The page opens in the "Constellation View" graph (Graph/NightSkyView.swift — the default);
-//  SkyDoor buttons in its header swap between it and the reader (⌘⇧G). Click a star to read that note; Back (or Esc) returns to the sky where you left it.
+//  The toolbar's segmented switch swaps the reader for the "Constellation View" graph
+//  (Graph/NightSkyView.swift) (⇧⌘G). Click a star to read that note; Back (or Esc) returns to the sky where you left it.
 //
 //  Replaced the old DatabaseView (a dev CycleStore-summaries inspector, still in Dev Tools via
 //  SummariesView). Data: VaultTree.swift · rendering: MarkdownView.swift.
@@ -21,16 +21,7 @@ import AppKit
 
 struct KnowledgeView: View {
     var isPresented = true
-    var animateEntrance = false
-    @Environment(\.accessibilityReduceMotion) private var systemReducedMotion
-    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
-    private var reducedMotion: Bool { motionOverride ?? systemReducedMotion }
     @State private var entranceReady = false
-    private struct EntranceKey: Equatable {
-        let presented: Bool
-        let animated: Bool
-        let reduced: Bool
-    }
 
     @State private var vault: KnowledgeVault?
     @State private var loaded = false
@@ -66,42 +57,39 @@ struct KnowledgeView: View {
     @State private var createParent: URL?     // nil = the vault root
     @State private var createName = ""
 
-    // The Night Sky graph view — the window OPENS here (Constellation View is the default; the
-    // Reader door leads to the split view). The model outlives toggles, so the sky keeps its
-    // camera and star positions across reader trips; `cameFromSky` makes Back return to the sky
-    // after a star click.
-    @State private var mode: Mode = .sky
+    // The Night Sky graph view — the toolbar's Reader / Constellation switch leads to it; the page
+    // opens on the Reader. The model outlives toggles, so the sky keeps its camera and star
+    // positions across reader trips; `cameFromSky` makes Back return to the sky after a star click.
+    @State private var mode: Mode = .reader
     @StateObject private var skyModel = NightSkyModel()
     @State private var cameFromSky = false
 
     /// Reader (the split view) or the Night Sky (the full-window galaxy).
-    private enum Mode { case reader, sky }
+    private enum Mode: Hashable { case reader, sky }
 
     /// A navigation parked behind the unsaved-edits prompt.
     private enum PendingNav { case open(URL), follow(URL), back, sky, leave((Bool) -> Void) }
 
     var body: some View {
-        VStack(spacing: 0) {
-            pageHeader
+        Group {
             if mode == .sky {
                 skyPane
             } else {
                 splitView
             }
         }
-        .frame(minWidth: 900, minHeight: 600)
+        .frame(minWidth: 680, minHeight: 480)
         .background(Theme.bg)
+        .toolbar { knowledgeToolbar }
         .allowsHitTesting(isPresented)
         .disabled(!isPresented)
         .accessibilityHidden(!isPresented)
-        .task(id: EntranceKey(presented: isPresented, animated: animateEntrance, reduced: reducedMotion)) {
+        .task(id: isPresented) {
             guard isPresented else { deactivate(); return }
-            entranceReady = false
             MainNavigation.shared.leaveKnowledge = requestLeave
             VaultActivity.shared.editorBusy = editing
             await loadVault()
-            guard !Task.isCancelled,
-                  await HomePageEntrance.wait(animate: animateEntrance, reducedMotion: reducedMotion) else { return }
+            guard !Task.isCancelled else { return }
             entranceReady = true
         }
         .onChange(of: ProcessingCoordinator.shared.knowledgeRevision) { _, _ in
@@ -132,8 +120,8 @@ struct KnowledgeView: View {
     /// The reader half: the familiar sidebar + rendered-markdown split.
     private var splitView: some View {
         HSplitView {
-            if sidebarVisible { sidebar.frame(minWidth: 250, idealWidth: 290, maxWidth: 400) }
-            reader.frame(minWidth: 500)
+            if sidebarVisible { sidebar.frame(minWidth: 220, idealWidth: 260, maxWidth: 380) }
+            reader.frame(minWidth: 420)
         }
         // Window-open focus lands in the search box, not the sidebar's "+" button. defaultFocus
         // declares it; the delayed onAppear claim backs it up (AppKit assigns the initial key
@@ -147,8 +135,7 @@ struct KnowledgeView: View {
         }
     }
 
-    /// The Constellation View takes the whole window (the planetarium moment). The top-left
-    /// "Reader" door, Esc, and ⌘⇧G all lead back.
+    /// The Constellation View takes the whole page. The toolbar switch, Esc, and ⇧⌘G lead back.
     private var skyPane: some View {
         NightSkyView(vault: vault, vaultLoaded: loaded, model: skyModel,
                      entranceReady: entranceReady, isActive: isPresented,
@@ -485,37 +472,26 @@ struct KnowledgeView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
-            sidebarHeader
             searchField
-            ScrollView { sidebarList }
-                .contextMenu {   // right-click empty sidebar space → create at the vault ROOT
-                    Button { promptCreate(folder: false, in: nil) } label: { Label("New Note", systemImage: "doc.badge.plus") }
-                    Button { promptCreate(folder: true, in: nil) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
-                }
+                .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
+            sidebarList
+            Divider()
+            sidebarFooter
         }
-        .background(Theme.panel)   // subtle elevated chrome — distinct from the black reading pane
+        .background(Theme.panel)
     }
 
-    /// Left inset that lines the subtitle up under the "Knowledge" wordmark (past the orb + its gap).
-    private let wordmarkInset: CGFloat = 23   // OrbMark(15) + HStack spacing(8)
-
-    private var sidebarHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {   // title + count = one tight block
-                HStack(spacing: 8) {
-                    OrbMark(size: 15)
-                    Text("Knowledge").display(22).foregroundStyle(.white)
-                    Spacer()
-                    newMenu   // the always-visible "you can create things here" affordance
-                }
-                .frame(maxWidth: .infinity)
-                Text(countText).font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.secondary)
-                    .padding(.leading, wordmarkInset)   // under "Knowledge", not under the orb
+    /// The tree's foot, Finder-style: the create menu, then the note count and sync state.
+    private var sidebarFooter: some View {
+        HStack(spacing: 10) {
+            newMenu
+            VStack(alignment: .leading, spacing: 2) {
+                Text(countText).font(.caption.weight(.medium))
+                statusLine
             }
-            statusLine.padding(.leading, wordmarkInset)
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 12)
+        .padding(.horizontal, 12).padding(.vertical, 8)
     }
 
     private var countText: String {
@@ -523,114 +499,82 @@ struct KnowledgeView: View {
         return "\(n) note\(n == 1 ? "" : "s")"
     }
 
-    /// The quiet "+" in the header — the discoverable face of creation (folders also grow a
-    /// hover "+", and right-click remains the power path). Creates at the vault root.
+    /// Creates at the vault root; folders and empty list space offer the same via right-click.
     private var newMenu: some View {
         Menu {
             Button { promptCreate(folder: false, in: nil) } label: { Label("New Note", systemImage: "doc.badge.plus") }
             Button { promptCreate(folder: true, in: nil) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.Ink.bright)
-                .frame(width: 28, height: 28)
-                .contentShape(Circle())
-                .glassSurface(Circle())
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
         .help("New note or folder")
     }
 
-    /// The line under the count: "Saved locally on this Mac" (mirror off) or the live cloud-MCP sync
-    /// state — a calm white status dot (a spinner while pushing; deliberately NEVER colored — an
-    /// orange "will sync" read as a warning) then the state with an inline, single-color
-    /// "(🔒 Encrypted)". @Observable → re-renders live. AES-256-GCM seals the vault on this Mac
-    /// before upload; the relay stores ciphertext and decrypts in memory for authorised requests.
-    @ViewBuilder
+    /// "On this Mac" (mirror off) or the live cloud-MCP sync state. @Observable → live.
+    /// AES-256-GCM seals the vault on this Mac before upload; the relay stores ciphertext and
+    /// decrypts in memory for authorised requests.
     private var statusLine: some View {
-        if mirrorEnabled {
-            switch VaultActivity.shared.syncState {
-            case .synced:  cloudStatus("Synced to Cloud MCP", color: Theme.secondary, dot: .white, spinner: false)
-            case .pending: cloudStatus("Will sync soon", color: Theme.secondary, dot: .white, spinner: false)
-            case .syncing: cloudStatus("Syncing to Cloud MCP", color: Theme.secondary, dot: .white, spinner: true)
-            }
-        } else {
-            HStack(spacing: 7) {
-                Circle().fill(Theme.faint).frame(width: 6, height: 6)
-                Text("Saved locally on this Mac").font(.system(size: 11.5)).foregroundStyle(Theme.secondary)
-            }
-        }
-    }
-
-    /// A leading status glyph (a glowing dot, or a spinner while syncing) + "<verb> (🔒 Encrypted)"
-    /// as one single-colored line — the lock is inline in the Text so it tints with everything else.
-    private func cloudStatus(_ verb: String, color: Color, dot: Color, spinner: Bool) -> some View {
-        HStack(spacing: 7) {
-            if spinner {
-                ProgressView().controlSize(.small).scaleEffect(0.5).frame(width: 6, height: 6)
+        Group {
+            if mirrorEnabled {
+                switch VaultActivity.shared.syncState {
+                case .synced:  Label("Synced", systemImage: "lock.icloud")
+                        .help("Synced to your encrypted cloud MCP copy")
+                case .pending: Label("Sync pending", systemImage: "icloud")
+                        .help("Changes will sync to your encrypted cloud MCP copy soon")
+                case .syncing: Label("Syncing…", systemImage: "arrow.clockwise.icloud")
+                        .help("Syncing to your encrypted cloud MCP copy")
+                }
             } else {
-                Circle().fill(dot).frame(width: 6, height: 6)
-                    .shadow(color: dot.opacity(0.6), radius: 2.5)
+                Label("On this Mac", systemImage: "internaldrive")
+                    .help("Saved on this Mac only")
             }
-            HStack(spacing: 6) {
-                Text(verb)
-                Rectangle().fill(color.opacity(0.35)).frame(width: 1, height: 11)   // subtle divider
-                Text("\(Image(systemName: "lock.fill")) Encrypted")
-            }
-            .font(.system(size: 11.5))
-            .foregroundStyle(color)
         }
+        .labelStyle(.titleAndIcon)
+        .lineLimit(1)
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 
     private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(Theme.faint)
-            TextField("Search notes", text: $search)
-                .textFieldStyle(.plain).foregroundStyle(.white).font(.system(size: 13))
-                .tint(Theme.knowledgeAccent)
-                .focused($searchFocused)
-            if !search.isEmpty {
-                Button { search = "" } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(Theme.faint)
-                }.buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 11).padding(.vertical, 8)
-        .glassCard(radius: 9)
-        .padding(.horizontal, 14).padding(.bottom, 10)
+        TextField("Search", text: $search, prompt: Text("Search notes"))
+            .textFieldStyle(.roundedBorder)
+            .focused($searchFocused)
     }
 
-    @ViewBuilder
+    /// The folder tree as a native outline. Selecting a note goes through `requestOpen`, so
+    /// unsaved edits still prompt before the switch.
     private var sidebarList: some View {
-        // A plain VStack (NOT Lazy): the tree is small, and LazyVStack mangles disclosure
-        // insert/remove transitions (children fly the wrong way / too far). A real VStack reflows
-        // cleanly, so the clipped accordion in NodeRow reads right. Don't "optimize" this back.
-        VStack(alignment: .leading, spacing: 1) {
+        List(selection: Binding(get: { selection }, set: { url in
+            if let url, url != selection { requestOpen(url) }
+        })) {
             if search.isEmpty {
                 if let readme = vault?.readme {
-                    OverviewRow(selected: selection == readme) { requestOpen(readme) }
+                    Label("Overview", systemImage: "text.book.closed").tag(readme)
                 }
                 ForEach(vault?.nodes ?? []) { node in
-                    NodeRow(node: node, depth: 0, expanded: $expanded, selection: selection,
-                            onSelect: { requestOpen($0) },
-                            onCreate: { promptCreate(folder: $1, in: $0) },
-                            onDelete: { deleteItem($0) })
+                    KnowledgeTreeNode(node: node, expanded: $expanded,
+                                      onCreate: { promptCreate(folder: $1, in: $0) },
+                                      onDelete: { deleteItem($0) })
                 }
             } else if searchResults.isEmpty {
-                Text("No matches").font(.system(size: 12)).foregroundStyle(Theme.faint)
-                    .padding(.horizontal, 12).padding(.top, 14)
+                Text("No Matches").foregroundStyle(.secondary)
             } else {
                 ForEach(searchResults) { node in
-                    NoteRow(url: node.url, title: node.name, depth: 0, selected: node.url == selection,
-                            onDelete: { deleteItem($0) }) {
-                        requestOpen(node.url)
-                    }
+                    KnowledgeTreeNode(node: node, expanded: $expanded,
+                                      onCreate: { promptCreate(folder: $1, in: $0) },
+                                      onDelete: { deleteItem($0) })
                 }
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 10)
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .contextMenu {   // right-click empty list space → create at the vault ROOT
+            Button { promptCreate(folder: false, in: nil) } label: { Label("New Note", systemImage: "doc.badge.plus") }
+            Button { promptCreate(folder: true, in: nil) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
+        }
     }
 
     // MARK: Reader
@@ -641,40 +585,44 @@ struct KnowledgeView: View {
             .background(Theme.bg)
     }
 
-    /// Page chrome stays inside the main canvas, so Knowledge never installs a window toolbar
-    /// that could resize Home or Settings. The note's Back trail remains distinct from Home.
-    private var pageHeader: some View {
-        HStack(spacing: 12) {
-            HomeNavigationButton()
-            Rectangle().fill(.white.opacity(0.12)).frame(width: 1, height: 20)
-            Text("Knowledge").font(.system(size: 18, weight: .medium)).foregroundStyle(.white)
-            if mode == .reader {
+    /// Knowledge's window-toolbar items. Empty while another page is showing: the page stays
+    /// mounted behind the others, and its items must not leak into their toolbars.
+    @ToolbarContentBuilder private var knowledgeToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            if isPresented && mode == .reader {
                 Button { sidebarVisible.toggle() } label: {
-                    Label(sidebarVisible ? "Hide sidebar" : "Show sidebar", systemImage: "sidebar.left")
+                    Label(sidebarVisible ? "Hide Notes List" : "Show Notes List", systemImage: "list.bullet.indent")
                 }
-                .labelStyle(.iconOnly)
-                .help(sidebarVisible ? "Hide sidebar" : "Show sidebar")
-                .keyboardShortcut("s", modifiers: [.command, .control])
+                .help(sidebarVisible ? "Hide notes list" : "Show notes list")
+                if canGoBack || cameFromSky {
+                    Button(action: requestBack) { Label("Back", systemImage: "chevron.left") }
+                        .help(canGoBack ? "Previous note" : "Back to the constellation")
+                }
             }
-            if mode == .reader, canGoBack || cameFromSky {
-                Button(action: requestBack) { Label("Back", systemImage: "chevron.left") }
-                    .buttonStyle(BackButtonStyle())
-                    .help(canGoBack ? "Previous note" : "Back to the constellation")
+        }
+        ToolbarItem(placement: .principal) {
+            if isPresented {
+                Picker("View", selection: Binding(get: { mode }, set: { requestMode($0) })) {
+                    Text("Reader").tag(Mode.reader)
+                    Text("Constellation").tag(Mode.sky)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .help("Switch views (⇧⌘G)")
+                .background {
+                    Button("Switch View") { requestMode(mode == .sky ? .reader : .sky) }
+                        .keyboardShortcut("g", modifiers: [.command, .shift])
+                        .hidden()
+                }
             }
-            Spacer(minLength: 20)
-            SkyDoor(icon: mode == .sky ? "doc.plaintext" : "sparkles",
-                    label: mode == .sky ? "Reader View" : "Constellation View") {
-                requestMode(mode == .sky ? .reader : .sky)
-            }
-            if mode == .reader, selection != nil {
+        }
+        ToolbarItemGroup(placement: .primaryAction) {
+            if isPresented && mode == .reader && selection != nil {
                 editToolbarItem
                 if !editing { deleteToolbarButton }
                 revealToolbarButton
             }
         }
-        .buttonStyle(.sentientGlass)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
     }
 
     /// Move the open note to the macOS Trash (icon-only, between Edit and Reveal — reading mode only).
@@ -730,7 +678,7 @@ struct KnowledgeView: View {
                             .lineLimit(1).truncationMode(.middle)
                             .padding(.bottom, 11)
                         Text(note.title)
-                            .font(.system(size: 30, weight: .semibold)).foregroundStyle(.white)
+                            .font(.largeTitle.weight(.bold)).foregroundStyle(.primary)
                             .textSelection(.enabled)
                             .padding(.bottom, 22)
                         MarkdownView(markdown: note.markdown,
@@ -763,9 +711,7 @@ struct KnowledgeView: View {
                 .lineLimit(1).truncationMode(.middle)
                 .padding(.bottom, 12)
             TextEditor(text: $editText)
-                .font(.system(size: 15))
-                .foregroundStyle(.white.opacity(0.92))
-                .tint(Theme.knowledgeAccent)
+                .font(.body)
                 .lineSpacing(5)
                 .scrollContentBackground(.hidden)
                 .focused($editorFocused)
@@ -779,231 +725,54 @@ struct KnowledgeView: View {
     }
 
     private func emptyState(title: String, subtitle: String?) -> some View {
-        VStack(spacing: 14) {
-            Orb(size: 92, paused: !isPresented)
-            Text(title).font(.system(size: 20, weight: .medium)).foregroundStyle(Theme.Ink.statusInk)
-            if let subtitle {
-                Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.secondary)
-                    .multilineTextAlignment(.center).frame(maxWidth: 320)
-            }
+        ContentUnavailableView {
+            Label(title, systemImage: "books.vertical")
+        } description: {
+            if let subtitle { Text(subtitle) }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 // MARK: - Sidebar rows
 
-/// The pinned root README, shown as "Overview" with the brand orb glyph.
-private struct OverviewRow: View {
-    let selected: Bool
-    let onSelect: () -> Void
-    @State private var hover = false
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 8) {
-                OrbMark(size: 13)
-                Text("Overview")
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(selected ? Theme.knowledgeAccent : .white.opacity(0.85))
-                Spacer(minLength: 0)
-            }
-            .padding(.vertical, 6).padding(.horizontal, 10)
-            .background(rowBackground(selected: selected, hover: hover))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hover = $0 }
-        .padding(.bottom, 4)
-    }
-}
-
-/// A folder row: a chevron + folder glyph that toggles its disclosure.
-private struct FolderRow: View {
-    let url: URL
-    let name: String
-    let depth: Int
-    let isOpen: Bool
-    let onCreate: (URL, Bool) -> Void
-    let onDelete: (URL) -> Void
-    let toggle: () -> Void
-    @State private var hover = false
-
-    var body: some View {
-        // The disclosure button and the hover "+" sit SIDE BY SIDE (a Menu nested inside a Button's
-        // label wouldn't receive clicks reliably); the row background spans both.
-        HStack(spacing: 0) {
-            Button(action: toggle) {
-                HStack(spacing: 7) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.faint)
-                        .rotationEffect(.degrees(isOpen ? 90 : 0)).frame(width: 10)
-                    Image(systemName: isOpen ? "folder.fill" : "folder")
-                        .font(.system(size: 10.5)).foregroundStyle(Theme.secondary).frame(width: 14)
-                    Text(name)
-                        .font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white.opacity(0.9))
-                        .lineLimit(1).truncationMode(.tail)
-                    Spacer(minLength: 0)
-                }
-                .padding(.vertical, 5)
-                .padding(.leading, CGFloat(depth) * 14 + 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            // Hover-reveal "+" → create inside THIS folder (zero clutter until the cursor is here).
-            Menu {
-                Button { onCreate(url, false) } label: { Label("New Note", systemImage: "doc.badge.plus") }
-                Button { onCreate(url, true) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Theme.secondary)
-                    .frame(width: 18, height: 18)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .opacity(hover ? 1 : 0)
-            .padding(.trailing, 6)
-            .help("New note or folder in \(name)")
-        }
-        .background(rowBackground(selected: false, hover: hover))
-        .onHover { hover = $0 }
-        .contextMenu {   // create INSIDE this folder
-            Button { onCreate(url, false) } label: { Label("New Note", systemImage: "doc.badge.plus") }
-            Button { onCreate(url, true) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
-            Divider()
-            Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: { Label("Reveal in Finder", systemImage: "folder") }
-            Divider()
-            Button(role: .destructive) { onDelete(url) } label: { Label("Move to Trash", systemImage: "trash") }
-        }
-    }
-}
-
-/// A note (leaf) row: a doc glyph + title, accent when selected.
-private struct NoteRow: View {
-    let url: URL
-    let title: String
-    let depth: Int
-    let selected: Bool
-    let onDelete: (URL) -> Void
-    let onSelect: () -> Void
-    @State private var hover = false
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 7) {
-                Color.clear.frame(width: 10)   // align note titles under folder names
-                Image(systemName: "doc.text")
-                    .font(.system(size: 10.5)).foregroundStyle(selected ? Theme.knowledgeAccent : Theme.faint)
-                    .frame(width: 14)
-                Text(title)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(selected ? Theme.knowledgeAccent : .white.opacity(0.72))
-                    .lineLimit(1).truncationMode(.tail)
-                Spacer(minLength: 0)
-            }
-            .padding(.vertical, 5).padding(.trailing, 8)
-            .padding(.leading, CGFloat(depth) * 14 + 8)
-            .background(rowBackground(selected: selected, hover: hover))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hover = $0 }
-        .contextMenu {
-            Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: { Label("Reveal in Finder", systemImage: "folder") }
-            Divider()
-            Button(role: .destructive) { onDelete(url) } label: { Label("Move to Trash", systemImage: "trash") }
-        }
-    }
-}
-
-/// Recursive tree node: a folder (its header + a clipped, accordion-collapsing children block) or
-/// a note leaf.
-private struct NodeRow: View {
+/// One outline node: a folder disclosing its children, or a selectable note (tagged by URL).
+private struct KnowledgeTreeNode: View {
     let node: VaultNode
-    let depth: Int
     @Binding var expanded: Set<URL>
-    let selection: URL?
-    let onSelect: (URL) -> Void
     let onCreate: (URL, Bool) -> Void   // (parent folder, isFolder)
     let onDelete: (URL) -> Void
 
-    private var isOpen: Bool { expanded.contains(node.url) }
-
     var body: some View {
         if node.isFolder {
-            VStack(alignment: .leading, spacing: 1) {
-                FolderRow(url: node.url, name: node.name, depth: depth, isOpen: isOpen,
-                          onCreate: onCreate, onDelete: onDelete) {
-                    withAnimation(.easeInOut(duration: 0.22)) {
-                        if isOpen { expanded.remove(node.url) } else { expanded.insert(node.url) }
-                    }
+            DisclosureGroup(isExpanded: Binding(
+                get: { expanded.contains(node.url) },
+                set: { open in if open { expanded.insert(node.url) } else { expanded.remove(node.url) } }
+            )) {
+                ForEach(node.children) { child in
+                    KnowledgeTreeNode(node: child, expanded: $expanded, onCreate: onCreate, onDelete: onDelete)
                 }
-                // The clip WINDOW sits BELOW the header (the FolderRow is outside it), so the
-                // accordion slides/fades only in the region beneath the folder line — the children
-                // retract into that line and never ride up over the folder's name.
-                VStack(alignment: .leading, spacing: 1) {
-                    if isOpen {
-                        VStack(alignment: .leading, spacing: 1) {
-                            ForEach(node.children) { child in
-                                NodeRow(node: child, depth: depth + 1, expanded: $expanded,
-                                        selection: selection, onSelect: onSelect,
-                                        onCreate: onCreate, onDelete: onDelete)
-                            }
-                        }
-                        .transition(.accordion)
+            } label: {
+                Label(node.name, systemImage: "folder")
+                    .contextMenu {   // create INSIDE this folder
+                        Button { onCreate(node.url, false) } label: { Label("New Note", systemImage: "doc.badge.plus") }
+                        Button { onCreate(node.url, true) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
+                        Divider()
+                        revealAndTrash
                     }
-                }
-                .clipped()
             }
         } else {
-            NoteRow(url: node.url, title: node.name, depth: depth, selected: node.url == selection,
-                    onDelete: onDelete) {
-                onSelect(node.url)
-            }
+            Label(node.name, systemImage: "doc.text")
+                .lineLimit(1)
+                .tag(node.url)
+                .contextMenu { revealAndTrash }
         }
     }
-}
 
-// MARK: - The accordion transition (slide up + exponential fade)
-
-private extension AnyTransition {
-    /// The disclosed-children transition: the block slides up into the header (`.move`) AND its
-    /// opacity rides an exponential curve — so it's far more invisible the nearer it sits to the
-    /// collapsed ("unexpanded") position, only reading as solid once it's well open, and dissolving
-    /// fast as it retracts. (Opacity is decoupled from the slide so it can have its own curve.)
-    static var accordion: AnyTransition {
-        .move(edge: .top).combined(with: .modifier(
-            active:   ExponentialFade(expansion: 0),
-            identity: ExponentialFade(expansion: 1)))
+    @ViewBuilder private var revealAndTrash: some View {
+        Button { NSWorkspace.shared.activateFileViewerSelecting([node.url]) } label: { Label("Reveal in Finder", systemImage: "folder") }
+        Divider()
+        Button(role: .destructive) { onDelete(node.url) } label: { Label("Move to Trash", systemImage: "trash") }
     }
-}
-
-/// Opacity as an exponential function of how-open the block is (0 = collapsed, 1 = expanded).
-/// Animatable, so SwiftUI interpolates `expansion` across the disclosure and we map it through the
-/// curve every frame — making opacity ∝ exp(expansion) rather than linear.
-private struct ExponentialFade: ViewModifier, Animatable {
-    var expansion: Double
-    var animatableData: Double {
-        get { expansion }
-        set { expansion = newValue }
-    }
-    func body(content: Content) -> some View {
-        let c = 3.0                                   // curve strength — higher = more invisible near collapsed
-        let x = max(0, min(1, expansion))
-        let opacity = (exp(c * x) - 1) / (exp(c) - 1) // 0 at collapsed, 1 at open, convex between
-        return content.opacity(opacity)
-    }
-}
-
-// MARK: - Shared row chrome
-
-private func rowBackground(selected: Bool, hover: Bool) -> some View {
-    RoundedRectangle(cornerRadius: 7, style: .continuous)
-        .fill(selected ? Theme.knowledgeAccent.opacity(0.15) : (hover ? Color.white.opacity(0.05) : .clear))
 }
 
 #Preview("Knowledge") {

@@ -126,42 +126,6 @@ struct NightSkyView: View {
     }
 }
 
-// MARK: - The door (shared by both sides: "Constellation View" in the reader, "Reader" in the sky)
-
-/// The mode switch in the Knowledge header (and SkyDoorToolbarItem for the preview toolbar).
-/// The one accent-tinted glass capsule in the header, so the other mode stays discoverable without
-/// the old animated rainbow rim (which cost a 30fps redraw for as long as the window was open).
-/// ⌘⇧G fires whichever door is mounted.
-struct SkyDoor: View {
-    let icon: String
-    let label: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(label, systemImage: icon)
-        }
-        .labelStyle(.titleAndIcon)
-        .buttonStyle(.sentientGlassProminent)
-        .keyboardShortcut("g", modifiers: [.command, .shift])
-    }
-}
-
-/// The door's toolbar seat.
-struct SkyDoorToolbarItem: ToolbarContent {
-    let icon: String
-    let label: String
-    let help: String
-    var placement: ToolbarItemPlacement = .principal   // sky: top-center · reader: .navigation (top-left)
-    let action: () -> Void
-
-    var body: some ToolbarContent {
-        ToolbarItem(placement: placement) {
-            SkyDoor(icon: icon, label: label, action: action).help(help)
-        }
-    }
-}
-
 // MARK: - The hover card
 
 private struct SkyHoverCard: View {
@@ -354,15 +318,6 @@ private final class SkyEventNSView: NSView {
     }
     .frame(width: 400, height: 240)
     .preferredColorScheme(.dark)
-}
-
-#Preview("Sky door — glow rim") {
-    Theme.bg
-        .frame(width: 460, height: 140)
-        .toolbar {
-            SkyDoorToolbarItem(icon: "doc.plaintext", label: "Reader View", help: "") {}
-        }
-        .preferredColorScheme(.dark)
 }
 
 #Preview("Night Sky — real vault") {

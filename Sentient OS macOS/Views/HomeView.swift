@@ -8,8 +8,8 @@
 //  you?"); clicking is the user's fire (Privacy Constitution: we offer, they fire). A command
 //  bar at the foot lets you ask it to DO anything (computer use).
 //
-//  The chrome is deliberately quiet: a wordmark, conversation search, Analysis, Knowledge
-//  and Settings. Optional AI connections live inside Knowledge. Status lives inside Analysis.
+//  The chrome is the window's own: the sidebar navigates, and the toolbar carries Double Tap,
+//  the Analysis glance, and conversation search / clear. Status lives inside Analysis.
 //
 //  BEFORE PERSONAL SETUP, Sidekick is the main workspace. A small reward panel offers optional
 //  setup beside it; its examples never execute tasks or alter conversation state. The existing
@@ -51,7 +51,6 @@ struct HomeView: View {
     /// the preview note flips to the "reset & rebuild" celebration without any push machinery.
     @State private var planUpgraded = false
 
-    @Environment(\.openWindow) private var openWindow
     @Environment(AppState.self) private var appState
 
     @Environment(\.accessibilityReduceMotion) private var systemReducedMotion
@@ -77,9 +76,7 @@ struct HomeView: View {
     @State private var overviewDockTop: CGFloat = 0
     @State private var cardSizes: [String: CGSize] = [:]
     @State private var proactiveDockFrame = CGRect(x: 160, y: 18, width: 126, height: 34)
-    // The letter layer is ALWAYS mounted and driven purely by opacity/scale from plain
-    // @State — view INSERTION (`if let` overlays) can miss a redraw on macOS hidden-titlebar
-    // windows (the "appears only after a resize" bug); opacity changes cannot.
+    // The opened card's sheet.
     @State private var letter: Briefing?
     @State private var letterShown = false
     @State private var showAnalysis = false
@@ -184,10 +181,6 @@ struct HomeView: View {
                         #endif
                     }
                 }
-                .blur(radius: letterShown ? 7 : 0)
-                .opacity(letterShown ? 0.4 : 1)
-
-                letterLayer(geo)
             }
             .background {
                 SidekickOverviewScroll(
@@ -318,6 +311,7 @@ struct HomeView: View {
 
     var body: some View {
         lifecycleHome
+        .toolbar { toolbarActions }
         .sheet(isPresented: $showWhatsAppPicker) {
             ChatPicker(sourceName: "WhatsApp", loadChats: { try WhatsAppSource().listChats() },
                        initialSelection: Set(whatsappCSV.split(separator: ",").map(String.init))) { sel in
@@ -338,6 +332,7 @@ struct HomeView: View {
         // Gmail / Calendar connect sheets — the SAME sheets Dev Tools opens (connect / select / remove).
         .sheet(isPresented: $showGmailConnect) { CloudConnectSheet(.gmail) }
         .sheet(isPresented: $showCalendarConnect) { CloudConnectSheet(.calendar) }
+        .sheet(isPresented: $letterShown) { letterSheet }
         .sheet(isPresented: $showCodexSignIn, onDismiss: {
             Task { await refreshCodexSignIn() }
         }) { ChatGPTSignInSheet() }
@@ -379,49 +374,48 @@ struct HomeView: View {
             && !presentation.clearChatConfirmationShown && !appState.commandCoordinator.run.recovery.isPending
     }
 
+    /// The row above the greeting: the Proactive dock (or the notch hint). Navigation lives in
+    /// the window's sidebar and Home's actions in its toolbar (`toolbarActions`).
     private func topBar(compact: Bool) -> some View {
         HStack(spacing: 10) {
-            SidekickMark(size: 18, illuminated: true)
-            Text("Sentient OS")
-                .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(.white)
             if !kbOnly { proactiveDock }
             Spacer()
-            if !kbOnly && inConversation {
-                SidekickToolbarIconButton(symbol: "magnifyingglass") {
-                    withAnimation(SidekickStyle.motion(reducedMotion)) {
-                        presentation.searchShown.toggle()
+        }
+        .padding(.horizontal, 30).padding(.top, 18)
+    }
+
+    /// Home's window-toolbar actions. Empty while another page is showing: Home stays mounted
+    /// behind the other pages, and its items must not leak into their toolbars.
+    @ToolbarContentBuilder private var toolbarActions: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            if isPresented {
+                if !kbOnly {
+                    HomeDoubleTapButton(active: discoveryActive, presented: $showDoubleTap,
+                                        needsPersonalSetup: needsPersonalSetup,
+                                        onFinishSetup: finishPersonalSetup) {
+                        MainNavigation.shared.show(.analysis)
                     }
                 }
+                Button { showAnalysis = true } label: {
+                    Label(appState.processing.isBusy ? "Analyzing" : "Analysis",
+                          systemImage: appState.processing.needsAttention ? "exclamationmark.triangle" : "waveform.path")
+                }
+                .help("Analysis status")
+                .accessibilityIdentifier("analysis.toolbar")
+                .popover(isPresented: $showAnalysis, arrowEdge: .bottom) { analysisPopover }
+                if !kbOnly && inConversation {
+                    SidekickToolbarIconButton(symbol: "magnifyingglass") {
+                        withAnimation(SidekickStyle.motion(reducedMotion)) {
+                            presentation.searchShown.toggle()
+                        }
+                    }
                     .help("Search conversation").accessibilityLabel("Search conversation")
                     .accessibilityIdentifier("sidekick.search")
                     .keyboardShortcut("f", modifiers: .command)
-                SidekickClearChatButton(coordinator: appState.commandCoordinator, presentation: presentation)
+                    SidekickClearChatButton(coordinator: appState.commandCoordinator, presentation: presentation)
+                }
             }
-            if !kbOnly {
-                HomeDoubleTapButton(active: discoveryActive, presented: $showDoubleTap,
-                                    needsPersonalSetup: needsPersonalSetup,
-                                    onFinishSetup: finishPersonalSetup) {
-                    openWindow(id: ProcessingWindowView.windowID)
-                }.zIndex(1)
-            }
-            NavItem(title: compact ? nil : (appState.processing.isBusy ? "Analyzing" : "Analysis"), icon: "waveform.path",
-                    dot: appState.processing.needsAttention ? Theme.Ink.amber
-                        : (appState.processing.initialComplete ? Theme.Ink.green : Theme.accent),
-                    emphasized: !needsPersonalSetup && !appState.processing.initialComplete) { showAnalysis = true }
-                .accessibilityIdentifier("navigation.analysis")
-                .accessibilityLabel(appState.processing.isBusy ? "Analyzing" : "Analysis")
-                .help("Check analysis status")
-                .popover(isPresented: $showAnalysis) { analysisPopover }
-            NavItem(title: compact ? nil : "Knowledge", icon: "books.vertical") { HomeWindowOpening.open(.knowledge) }
-                .accessibilityLabel("Knowledge").help("Knowledge")
-                .anchorPreference(key: KnowledgeButtonBoundsKey.self, value: .bounds) { $0 }
-            NavItem(icon: "gearshape") { HomeWindowOpening.open(.settings) }
-                .accessibilityLabel("Settings")
-                .accessibilityIdentifier("navigation.settings")
-                .help("Settings (⌘,)")
-                .anchorPreference(key: SettingsButtonBoundsKey.self, value: .bounds) { $0 }
         }
-        .padding(.horizontal, 30).padding(.top, 18)
     }
 
     private var proactiveDock: some View {
@@ -466,10 +460,10 @@ struct HomeView: View {
                 .display(27)
                 .foregroundStyle(Theme.Ink.statusInk)
             if !appState.processing.initialComplete || appState.processing.isBusy || appState.processing.needsAttention {
-                Button { openWindow(id: ProcessingWindowView.windowID) } label: {
+                Button { MainNavigation.shared.show(.analysis) } label: {
                     HStack(spacing: 6) {
                         Text(appState.processing.statusLine)
-                        Image(systemName: "arrow.up.right").font(.system(size: 9))
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
                     }
                     .font(.system(size: 12.5)).foregroundStyle(SidekickStyle.secondary)
                 }
@@ -1096,79 +1090,37 @@ struct HomeView: View {
 
     // MARK: The expanded letter (always-mounted layer; see the note at the top)
 
-    private func letterLayer(_ geo: GeometryProxy) -> some View {
-        ZStack {
-            Color.black.opacity(0.5).ignoresSafeArea()
-                .onTapGesture { closeLetter() }
-            if let b = letter {
-                LetterView(briefing: b,
-                           phase: model.entry(b.id)?.phase ?? .offer,
-                           editable: model.entry(b.id)?.action != nil && b.draft != nil,   // real action card
-                           // The LIVE content for THIS card (reflects any prior edit) — seeds the editor
-                           // per briefing so a reused letter view never shows the previous card's draft.
-                           liveDraft: model.entry(b.id)?.action?.preparedContent ?? b.draft ?? "",
-                           liveRecipient: model.entry(b.id)?.action?.recipient ?? "",
-                           fireDimmed: appState.commandCoordinator.run.isRunning
-                               && model.entry(b.id)?.action.map { ProactiveExecutor.isFireable($0) } == true,
-                           onCommitEdit: { model.applyEdit(b.id, content: $0, recipient: $1) },
-                           onLiveEdit: { model.updateDraft(b.id, content: $0, recipient: $1) },
-                           onOffer: {
-                               closeLetter()
-                               model.run(b.id)   // real card → fires for real; demo → theater
-                           },
-                           onClose: closeLetter)
-                    .frame(width: 660)
-                    .frame(maxHeight: geo.size.height * 0.86)
-                    .scaleEffect(letterShown ? 1 : 0.94)
-            }
+    /// An opened card, as a sheet over Home.
+    @ViewBuilder private var letterSheet: some View {
+        if let b = letter {
+            LetterView(briefing: b,
+                       phase: model.entry(b.id)?.phase ?? .offer,
+                       editable: model.entry(b.id)?.action != nil && b.draft != nil,   // real action card
+                       // The LIVE content for THIS card (reflects any prior edit) — seeds the editor
+                       // per briefing so a reused letter view never shows the previous card's draft.
+                       liveDraft: model.entry(b.id)?.action?.preparedContent ?? b.draft ?? "",
+                       liveRecipient: model.entry(b.id)?.action?.recipient ?? "",
+                       fireDimmed: appState.commandCoordinator.run.isRunning
+                           && model.entry(b.id)?.action.map { ProactiveExecutor.isFireable($0) } == true,
+                       onCommitEdit: { model.applyEdit(b.id, content: $0, recipient: $1) },
+                       onLiveEdit: { model.updateDraft(b.id, content: $0, recipient: $1) },
+                       onOffer: {
+                           closeLetter()
+                           model.run(b.id)   // real card → fires for real; demo → theater
+                       },
+                       onClose: closeLetter)
+                .frame(width: 620)
+                .frame(minHeight: 340, idealHeight: 600, maxHeight: 760)
         }
-        .opacity(letterShown ? 1 : 0)
-        .allowsHitTesting(letterShown)
     }
 
     private func openLetter(_ b: Briefing) {
-        letter = b   // content lands while the layer is still invisible
-        withAnimation(.easeInOut(duration: 0.32)) { letterShown = true }
+        letter = b
+        letterShown = true
     }
 
     private func closeLetter() {
-        withAnimation(.easeInOut(duration: 0.26)) { letterShown = false }
-    }
-}
-
-// MARK: - Top-bar nav item
-
-private struct NavItem: View {
-    var title: String? = nil
-    var icon: String? = nil
-    var dot: Color? = nil
-    var emphasized = false          // first-run Analysis: the accent-tinted glass, no halo
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let icon {
-                    Image(systemName: icon)
-                        .font(.system(size: title == nil ? 16 : 14, weight: .semibold))
-                        .overlay(alignment: .bottomTrailing) {
-                            if let dot {
-                                Circle().fill(dot).frame(width: 5, height: 5)
-                                    .overlay(Circle().stroke(Color.black, lineWidth: 1))
-                                    .offset(x: 3, y: 2)
-                            }
-                        }
-                }
-                if let title { Text(title).font(.system(size: 13.5, weight: .medium)) }
-            }
-            .foregroundStyle(emphasized ? .white : Theme.Ink.bright)
-            .padding(.horizontal, title == nil ? 0 : 14)
-            .frame(minWidth: 36, minHeight: 36)
-            .contentShape(Capsule())
-            .glassSurface(Capsule(), tint: emphasized ? Theme.accent : nil)
-        }
-        .buttonStyle(PressScaleStyle())
-        .contentShape(.accessibility, Capsule())
+        letterShown = false
     }
 }
 
@@ -1582,11 +1534,6 @@ private struct LetterView: View {
     /// gets the letter-paper dress. The gift keeps its own; drafts stay working documents.
     private var isResearchNote: Bool { briefing.kind != .welcome && briefing.letter != nil }
 
-    /// The card's page: dog-eared letter paper for a research note, the plain rounded card otherwise.
-    private var pageShape: AnyShape {
-        isResearchNote ? AnyShape(LetterPaper())
-                       : AnyShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
 
     /// Auto-save is pending (unsaved edits still settling). Drives the ambient "Saving…" status.
     private var isDirty: Bool { editable && (editedDraft != savedDraft || editedRecipient != savedRecipient) }
@@ -1625,19 +1572,11 @@ private struct LetterView: View {
             HStack(alignment: .top) {
                 MonoCaps(briefing.kicker, size: 10, tracking: 2.2, color: briefing.accent)
                 Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.Ink.label)
-                        .padding(6)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.cancelAction)   // Esc closes
-                .padding(.trailing, isResearchNote ? 24 : 0)   // clear of the paper's folded corner
+                Button("Done", action: onClose)
+                    .keyboardShortcut(.cancelAction)   // Esc closes
             }
             Text(briefing.title)
-                .font(.system(size: 30, weight: .semibold)).foregroundStyle(.white)
+                .font(.title.weight(.bold))
                 .padding(.top, 8)
             if isResearchNote {   // the letterhead rule: a hairline of the card's accent, fading out
                 LinearGradient(colors: [briefing.accent.opacity(0.5), .clear],
@@ -1668,22 +1607,6 @@ private struct LetterView: View {
             if briefing.kind == .welcome { giftFooter.padding(.top, 16) }
         }
         .padding(28)
-        // A research note is a piece of letter paper: the page's top-right corner is dog-eared
-        // (LetterPaper cuts it, LetterPaperFold lies on the page). Every other card keeps the
-        // plain rounded card.
-        .background(Theme.Ink.cardBG, in: pageShape)
-        .overlay(alignment: .topTrailing) { if isResearchNote { LetterPaperFold() } }
-        .overlay {
-            let border = briefing.kind == .welcome ? BriefingCard.welcomeGradient
-                : LinearGradient(colors: [briefing.accent.opacity(0.45), .white.opacity(0.06)],
-                                 startPoint: .topLeading, endPoint: .bottomTrailing)
-            if isResearchNote {
-                LetterPaper().strokeBorder(border, lineWidth: 1)
-            } else {
-                RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(border, lineWidth: 1)
-            }
-        }
-        .shadow(color: .black.opacity(0.6), radius: 40, y: 18)
         // Seed the editor from THIS card's live content — on first appear AND every time a different
         // briefing opens. The letter layer is always-mounted and REUSED across cards (stable identity),
         // so .onAppear fires only once; without the .onChange a second card would show the first card's

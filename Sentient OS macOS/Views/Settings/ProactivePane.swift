@@ -131,116 +131,34 @@ struct ProactivePane: View {
 
 // MARK: - The speed-vs-intelligence slider
 
-/// A compact three-detent slider in the reference's proportions: a THICK pill permanently
-/// wearing the accent ramp at full strength, the detent
-/// dots living inside, and only the white circle moving. Drag or click; the readout underneath
-/// names the tier AND the honest spec (GPT-6 Sol · how hard it thinks) — live during a drag.
+/// A three-stop system slider (Faster · Balanced · Smarter). The readout underneath names the
+/// tier and the honest spec (model · how hard it thinks).
 private struct SpeedIntelligenceSlider: View {
     @Binding var selection: ComputerUseSpeed
 
-    /// The pointer's live position while dragging (nil = resting on the selection's detent).
-    @State private var dragFraction: CGFloat?
-
-    private static let width: CGFloat = 300
-    private static let trackHeight: CGFloat = 24
-    private static let thumb: CGFloat = 28          // slightly proud of the track, like the reference
-    /// The slider's ramp: the accent from light to deep (formerly green → cyan → purple).
-    private static var spectrum: [Color] { [Theme.accentRamp[1], Theme.accentRamp[2], Theme.accentRamp[4]] }
+    private var stop: Binding<Double> {
+        Binding(get: { Double(ComputerUseSpeed.allCases.firstIndex(of: selection) ?? 1) },
+                set: { selection = ComputerUseSpeed.allCases[min(max(Int($0.rounded()), 0), ComputerUseSpeed.allCases.count - 1)] })
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            track
-                .frame(width: Self.width, height: Self.thumb)
-            // One line under the pill: the landed tier under the left edge, the honest
-            // model spec under the right — both live during a drag.
+        VStack(alignment: .leading, spacing: 6) {
+            Slider(value: stop, in: 0...Double(ComputerUseSpeed.allCases.count - 1), step: 1) {
+                Text("Speed and intelligence")
+            } minimumValueLabel: {
+                Image(systemName: "hare").accessibilityLabel("Faster")
+            } maximumValueLabel: {
+                Image(systemName: "brain").accessibilityLabel("Smarter")
+            }
+            .labelsHidden()
             HStack(alignment: .firstTextBaseline) {
-                Text(hovered.label)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
+                Text(selection.label).font(.callout.weight(.medium))
                 Spacer()
-                Text(hovered.modelLine)
-                    .font(.system(size: 12)).foregroundStyle(SettingsStyle.secondary)
+                Text(selection.modelLine).font(.caption).foregroundStyle(.secondary)
             }
-            .frame(width: Self.width)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Speed and intelligence")
+        .frame(width: 300)
         .accessibilityValue("\(selection.label), \(selection.modelLine)")
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: selection = Self.tier(nearest: min(Self.fraction(of: selection) + 0.5, 1))
-            case .decrement: selection = Self.tier(nearest: max(Self.fraction(of: selection) - 0.5, 0))
-            @unknown default: break
-            }
-        }
-    }
-
-    private var fraction: CGFloat { dragFraction ?? Self.fraction(of: selection) }
-    /// The tier the thumb is nearest RIGHT NOW — previews in the readout mid-drag.
-    private var hovered: ComputerUseSpeed { Self.tier(nearest: fraction) }
-
-    private static func fraction(of tier: ComputerUseSpeed) -> CGFloat {
-        switch tier {
-        case .faster: 0
-        case .medium: 0.5
-        case .smarter: 1
-        }
-    }
-
-    private static func tier(nearest f: CGFloat) -> ComputerUseSpeed {
-        f < 0.25 ? .faster : (f < 0.75 ? .medium : .smarter)
-    }
-
-    private var track: some View {
-        let usable = Self.width - Self.thumb
-        let center = fraction * usable + Self.thumb / 2
-        let gradient = LinearGradient(colors: Self.spectrum,
-                                      startPoint: .leading, endPoint: .trailing)
-
-        return ZStack(alignment: .leading) {
-            // The permanent spectrum: the whole gradient always dresses the pill at full
-            // strength, its glow breathing underneath.
-            gradient
-                .frame(width: Self.width, height: Self.trackHeight)
-                .clipShape(Capsule())
-                .blur(radius: 10)
-                .opacity(0.4)
-            gradient
-                .frame(width: Self.width, height: Self.trackHeight)
-                .clipShape(Capsule())
-
-            // The detents, living INSIDE the pill.
-            ForEach([CGFloat](arrayLiteral: 0, 0.5, 1), id: \.self) { f in
-                Circle()
-                    .fill(.white.opacity(0.4))
-                    .frame(width: 4, height: 4)
-                    .offset(x: f * usable + Self.thumb / 2 - 2)
-            }
-
-            // The one moving thing.
-            Circle()
-                .fill(.white)
-                .frame(width: Self.thumb, height: Self.thumb)
-                .shadow(color: .black.opacity(0.45), radius: 4, y: 1)
-                .offset(x: center - Self.thumb / 2)
-        }
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { g in
-                    let f = min(max((g.location.x - Self.thumb / 2) / usable, 0), 1)
-                    withAnimation(.interactiveSpring(response: 0.15, dampingFraction: 0.85)) {
-                        dragFraction = f
-                    }
-                }
-                .onEnded { _ in
-                    let landed = hovered
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                        selection = landed
-                        dragFraction = nil
-                    }
-                }
-        )
     }
 }
 

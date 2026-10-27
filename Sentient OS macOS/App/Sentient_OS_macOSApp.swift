@@ -2,9 +2,9 @@
 //  Sentient_OS_macOSApp.swift
 //  Sentient OS macOS
 //
-//  @main app shell. The main window hosts onboarding and Home; analysis has its own window;
-//  Settings and Knowledge are pages in that same window. Connect-your-AIs is a guide; plus an
-//  always-present MenuBarExtra. The live store is CycleStore (Ingestion/CycleStore.swift),
+//  @main app shell. One main window hosts onboarding, then a sidebar of pages — Home,
+//  Knowledge, Analysis, Personal Setup and each Settings pane; plus an always-present
+//  MenuBarExtra. The live store is CycleStore (Ingestion/CycleStore.swift),
 //  reached directly by the views — the app shell owns no store.
 //
 
@@ -17,7 +17,7 @@ struct SentientOSApp: App {
     @State private var appState = AppState()
 
     private var mainWindowInitialSize: CGSize {
-        guard !appState.hasCompletedOnboarding else { return OnboardingWindowLayout.canvas }
+        guard !appState.hasCompletedOnboarding else { return CGSize(width: 1280, height: 840) }
         return OnboardingWindowLayout.initialSize(
             visibleSize: NSScreen.main?.visibleFrame.size ?? CGSize(width: 1440, height: 900))
     }
@@ -53,7 +53,7 @@ struct SentientOSApp: App {
                 }
                 .modifier(ComputerUseWindowGuard())
         }
-        .windowStyle(.hiddenTitleBar)            // OLED black runs edge-to-edge; no gray trim
+        .windowToolbarStyle(.unified)
         .windowResizability(.contentMinSize)
         .defaultSize(width: mainWindowInitialSize.width, height: mainWindowInitialSize.height)
         // Launch presentation is decided after AppKit delivers the opening Apple event, when
@@ -66,28 +66,28 @@ struct SentientOSApp: App {
                     .keyboardShortcut(",", modifiers: .command)
                     .disabled(!appState.hasCompletedOnboarding || ComputerUseUpgrade.shared.isBlockingInterface)
             }
+            SidebarCommands()
+            CommandGroup(before: .sidebar) {
+                Group {
+                    Button("Home") { HomeWindowOpening.open(.home) }
+                        .keyboardShortcut("1", modifiers: .command)
+                    Button("Knowledge") { HomeWindowOpening.open(.knowledge) }
+                        .keyboardShortcut("2", modifiers: .command)
+                    Button("Analysis") { HomeWindowOpening.open(.analysis) }
+                        .keyboardShortcut("3", modifiers: .command)
+                }
+                .disabled(!appState.hasCompletedOnboarding || ComputerUseUpgrade.shared.isBlockingInterface)
+                Divider()
+            }
+            CommandGroup(replacing: .help) {
+                Button("Sentient OS on GitHub") {
+                    NSWorkspace.shared.open(URL(string: "https://github.com/Sentient-OS-Labs/sentient-os")!)
+                }
+                Button("Report an Issue…") {
+                    NSWorkspace.shared.open(URL(string: "https://github.com/Sentient-OS-Labs/sentient-os/issues")!)
+                }
+            }
         }
-
-        Window("Make Sentient personal", id: PersonalSetupView.windowID) {
-            PersonalSetupView()
-                .environment(appState)
-                .modifier(ComputerUseWindowGuard())
-        }
-        .windowResizability(.contentMinSize)
-        .defaultSize(width: 840, height: 760)
-        .restorationBehavior(.disabled)
-        .defaultLaunchBehavior(.suppressed)
-
-        Window("Analysis", id: ProcessingWindowView.windowID) {
-            ProcessingWindowView()
-                .environment(appState)
-                .preferredColorScheme(.dark)
-                .modifier(ComputerUseWindowGuard())
-        }
-        .windowResizability(.contentMinSize)
-        .defaultSize(width: 760, height: 800)
-        .restorationBehavior(.disabled)
-        .defaultLaunchBehavior(.suppressed)
 
         // PROACTIVE · EXECUTE — the dev window for PART 3 (the executor). Lists the real
         // ready-to-fire actions from the latest research+prepare run, each with a working FIRE
@@ -100,19 +100,6 @@ struct SentientOSApp: App {
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 760, height: 820)
-        .restorationBehavior(.disabled)
-        .defaultLaunchBehavior(.suppressed)
-
-        // Connect your AIs — the guided setup (per-AI video steps + the sharing toggle), opened
-        // by the glow CTAs in the Give-AIs-Knowledge popover and Settings pane of the same name.
-        Window("", id: ConnectAIsView.windowID) {
-            ConnectAIsView()
-                .environment(appState)
-                .preferredColorScheme(.dark)
-                .modifier(ComputerUseWindowGuard())
-        }
-        .windowResizability(.contentMinSize)
-        .defaultSize(width: 1120, height: 900)
         .restorationBehavior(.disabled)
         .defaultLaunchBehavior(.suppressed)
 

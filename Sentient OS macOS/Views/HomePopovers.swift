@@ -6,8 +6,6 @@
 //   · AnalysisPopover — the work glance: things understood, vault size, an Analyze Now control
 //     with the last/next-run footer, the overnight-on-battery preference, and the source chips
 //     (sources are the INPUTS to analysis, so they live under "Analysis").
-//   · ShareKnowledgePopover — Knowledge's "Use with your AIs" entry opens optional connection
-//     setup. ConnectAIsView owns consent, sharing on/off, the link, and the prompt.
 //  Pure presentation; harvested from the retired Constellation home. The vault counts ARE real
 //  (disk); the demo deck substitutes its showcase last-run stamp.
 //
@@ -228,42 +226,6 @@ struct AnalysisPopover: View {
     }
 }
 
-// MARK: - Knowledge's optional AI connections
-
-/// A user-opened explanation of optional sharing. The CTA opens the existing setup window;
-/// ConnectAIsView owns consent, sharing on/off, the private link, and the system prompt.
-struct ShareKnowledgePopover: View {
-    @Environment(\.openWindow) private var openWindow
-
-    @State private var enabled = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MonoCaps("Use with your AIs", size: 10, tracking: 2.4, color: Theme.Ink.label)
-
-            Text("Bring your knowledge to ChatGPT, Claude, and other AIs.")
-                .display(20).foregroundStyle(.white)
-                .padding(.top, 11)
-
-            GlowButton(title: enabled ? "Manage connections" : "Connect an AI",
-                       systemImage: "link", glowIntensity: 0.28) {
-                openWindow(id: ConnectAIsView.windowID)
-            }
-            .padding(.top, 18)
-
-            Text(enabled ? "Sharing is on. You can turn it off in connection settings."
-                         : "Optional. Setup explains what’s shared before you enable it.")
-                .font(.system(size: 11)).foregroundStyle(Theme.Ink.body)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 13)
-        }
-        .padding(20)
-        .frame(width: 300)
-        .background(Theme.Ink.cardBG)
-        .task { enabled = await MirrorClient.shared.isEnabled }
-    }
-}
-
 // MARK: - Shared bits
 
 /// A source pill (✓ when armed). Tappable when an `action` is set (toggles a source / opens a
@@ -337,10 +299,4 @@ enum HomeStats {
         AnalysisPopover(thingsUnderstood: 3339, sources: .init(files: true, whatsapp: true, imessage: true, notes: true),
                         lastRun: "3:41 AM", onAnalyze: {})
     }.frame(width: 380, height: 460).preferredColorScheme(.dark)
-}
-
-#Preview("Give AIs Knowledge") {
-    ZStack { Theme.bg
-        ShareKnowledgePopover()
-    }.frame(width: 360, height: 300).preferredColorScheme(.dark)
 }

@@ -271,39 +271,15 @@ struct UpdateGateView: View {
     }
 }
 
-/// A slim OLED progress bar in the accent. `value` nil = indeterminate (a segment sliding on a
-/// loop); otherwise a determinate gradient fill with a soft tip glow.
+/// The system linear progress bar. `value` nil = indeterminate.
 private struct UpdateProgressBar: View {
     var value: Double?
 
     var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.08))
-
-                if let value {
-                    Capsule()
-                        .fill(LinearGradient(colors: GlowHalo.stops, startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(6, w * max(0, min(1, value))))
-                        .shadow(color: Theme.accent.opacity(0.6), radius: 8)
-                        .animation(.easeInOut(duration: 0.25), value: value)
-                } else {
-                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { ctx in
-                        let seg = w * 0.34
-                        let period = 1.25
-                        let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
-                        let x = (w + seg) * t - seg
-                        Capsule()
-                            .fill(LinearGradient(colors: GlowHalo.stops, startPoint: .leading, endPoint: .trailing))
-                            .frame(width: seg)
-                            .offset(x: x)
-                            .shadow(color: Theme.accent.opacity(0.5), radius: 8)
-                    }
-                    .mask(Capsule())
-                }
-            }
+        if let value {
+            ProgressView(value: max(0, min(1, value))).progressViewStyle(.linear)
+        } else {
+            ProgressView().progressViewStyle(.linear)
         }
-        .frame(height: 8)
     }
 }

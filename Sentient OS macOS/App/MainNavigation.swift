@@ -8,22 +8,21 @@ import SwiftUI
 final class MainNavigation {
     static let shared = MainNavigation()
 
-    enum Page: Equatable { case home, settings, knowledge }
+    enum Page: Equatable { case home, settings, knowledge, analysis, setup }
     private(set) var page: Page = .home
     private(set) var previousPage: Page?
     var settingsPane: SettingsView.Pane = .sources
     private(set) var hasOpenedKnowledge = false
 
-    /// Only Home exchanges expand/contract from a Home control. Direct secondary-page
-    /// routes keep their existing immediate presentation and never invent a source animation.
-    var animatesSettingsTransition: Bool {
-        (previousPage == .home && page == .settings)
-            || (previousPage == .settings && page == .home)
-    }
-
-    var animatesKnowledgeTransition: Bool {
-        (previousPage == .home && page == .knowledge)
-            || (previousPage == .knowledge && page == .home)
+    /// The window title for the current page.
+    var title: String {
+        switch page {
+        case .home: return "Home"
+        case .knowledge: return "Knowledge"
+        case .analysis: return "Analysis"
+        case .setup: return "Personal Setup"
+        case .settings: return settingsPane.title
+        }
     }
 
     /// Knowledge owns its editor and decides whether Save / Discard / Cancel is needed.
@@ -61,18 +60,4 @@ final class MainNavigation {
         hasOpenedKnowledge = false
     }
 
-}
-
-/// The same prominent way home on every secondary page.
-struct HomeNavigationButton: View {
-    var action: () -> Void = { HomeWindowOpening.open() }
-
-    var body: some View {
-        Button(action: action) {
-            Label("Home", systemImage: "arrow.left")
-        }
-        .buttonStyle(BackButtonStyle())
-        .help("Return to Home")
-        .accessibilityIdentifier("navigation.home")
-    }
 }

@@ -1,5 +1,5 @@
-// Main window navigation: onboarding becomes Home once the frontier model is connected.
-// Analysis runs in the app-owned coordinator and presents progress in its own window.
+// Main window navigation: onboarding becomes a sidebar window once the frontier model is
+// connected. Home and Knowledge stay mounted while hidden; the other pages are built on demand.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
 
 import SwiftUI
@@ -8,7 +8,6 @@ import Combine
 struct RootView: View {
     @Environment(AppState.self) private var appState
     @State private var navigation = MainNavigation.shared
-    @Environment(\.openWindow) private var openWindow
     @State private var showDevTools = false
     @State private var attemptedWritingStyleSelection: WritingStyle.Selection?
     @State private var writingStyleSelection = WritingStyle.selectionIdentity
@@ -66,36 +65,15 @@ struct RootView: View {
                         .padding(.trailing, 24).padding(.top, 24)
                 }
             } else {
-                home
-                    // Secondary pages grow over the retained Home canvas. Home stays inert;
-                    // its draft, scroll position and card state keep their existing lifetime.
-                    .allowsHitTesting(navigation.page == .home)
-                    .disabled(navigation.page != .home)
-                    .accessibilityHidden(navigation.page != .home)
-            }
-        }
-        .overlayPreferenceValue(SettingsButtonBoundsKey.self) { source in
-            if appState.hasCompletedOnboarding {
-                SettingsPageLayer(isPresented: navigation.page == .settings,
-                                  animate: navigation.animatesSettingsTransition, source: source)
-            }
-        }
-        .overlayPreferenceValue(KnowledgeButtonBoundsKey.self) { source in
-            if appState.hasCompletedOnboarding {
-                HomePageLayer(isPresented: navigation.page == .knowledge,
-                              animate: navigation.animatesKnowledgeTransition, source: source,
-                              sourceKind: .knowledge, retainingContent: true) {
-                    if navigation.hasOpenedKnowledge {
-                        KnowledgeView(isPresented: navigation.page == .knowledge,
-                                      animateEntrance: navigation.animatesKnowledgeTransition)
-                    }
+                NavigationSplitView {
+                    AppSidebar()
+                } detail: {
+                    detail
                 }
             }
         }
-        .frame(minWidth: appState.hasCompletedOnboarding ? (navigation.page == .home ? 840 : 1040)
-                   : OnboardingWindowLayout.minimum.width * onboardingScale,
-               minHeight: appState.hasCompletedOnboarding ? (navigation.page == .home ? 680 : 800)
-                   : OnboardingWindowLayout.minimum.height * onboardingScale)
+        .frame(minWidth: appState.hasCompletedOnboarding ? nil : OnboardingWindowLayout.minimum.width * onboardingScale,
+               minHeight: appState.hasCompletedOnboarding ? nil : OnboardingWindowLayout.minimum.height * onboardingScale)
         .background(OnboardingWindowFit(active: !appState.hasCompletedOnboarding) { onboardingScale = $0 })
         // Core tier: the home window came up (fires once per window instantiation — launch opens it
         // automatically; anything later is a deliberate menu-bar/Dock reopen, hence the trigger
@@ -107,32 +85,11 @@ struct RootView: View {
             Analytics.signal("Home.opened",
                              parameters: ["trigger": sinceBoot < 5 ? "launch" : "reopen"], tier: .core)
         }
-        // Background setup/download whispers share Home and onboarding's bottom-left slot.
-        // Secondary pages use their own status rows and keep this area clear:
-        // · the model-download card (ModelDownloadWhisper) — the on-device model landing in the
-        //   background while the user is elsewhere (it hides itself when onboarding's full-screen
-        //   downloading view shows the same bar big);
-        // · the computer-use setup line — the driver download is an unstructured background task
-        //   that outlives onboarding's processing takeover (knowledge base creation, even the home
-        //   in rare cases), so as long as it's actually running, this quiet line shows.
+        // Onboarding's bottom-left slot for the background download whispers (Home's detail
+        // column carries the same pair; see `whispers`).
         .overlay(alignment: .bottomLeading) {
-            VStack(alignment: .leading, spacing: 10) {
-                if navigation.page == .home { ModelDownloadWhisper(download: download) }
-                if computerSetup.isInstalling && navigation.page == .home {
-                    HStack(spacing: 7) {
-                        ProgressView().controlSize(.small).scaleEffect(0.6)
-                        Text("Setting up computer use in the background.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.faint)
-                    }
-                    .transition(.opacity)
-                }
-            }
-            .padding(.leading, 22).padding(.bottom, 12)
+            if !appState.hasCompletedOnboarding { whispers }
         }
-        .animation(.easeInOut(duration: 0.35), value: computerSetup.isInstalling)
-        .animation(.easeInOut(duration: 0.35), value: download.phase)
-        .animation(.easeInOut(duration: 0.35), value: download.fullScreenVisible)
         // The mandatory update gate floats above everything (home, processing, dev sheet) — when a
         // required update is found it takes over; otherwise it draws nothing. (Updates/)
         .modifier(LifetimeUpgradePresentation())
@@ -198,6 +155,52 @@ struct RootView: View {
         return writingStyleSelection
     }
 
+    /// The detail column. Home and Knowledge are retained while hidden so a draft, scroll
+    /// position or open note survives a trip to another page; the rest are built on demand.
+    private var detail: some View {
+        ZStack {
+            home.retained(visible: navigation.page == .home)
+            if navigation.hasOpenedKnowledge {
+                KnowledgeView(isPresented: navigation.page == .knowledge)
+                    .retained(visible: navigation.page == .knowledge)
+            }
+            switch navigation.page {
+            case .settings: SettingsView()
+            case .analysis: ProcessingWindowView()
+            case .setup: PersonalSetupView()
+            case .home, .knowledge: EmptyView()
+            }
+        }
+        .navigationTitle(navigation.title)
+        // Background setup/download whispers sit in Home's bottom-left corner:
+        // · the model-download card (ModelDownloadWhisper) — the on-device model landing in the
+        //   background while the user is elsewhere;
+        // · the computer-use setup line — the driver download is an unstructured background task
+        //   that can outlive onboarding, so as long as it's actually running, this quiet line shows.
+        .overlay(alignment: .bottomLeading) {
+            if navigation.page == .home { whispers }
+        }
+    }
+
+    private var whispers: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ModelDownloadWhisper(download: download)
+            if computerSetup.isInstalling {
+                HStack(spacing: 7) {
+                    ProgressView().controlSize(.small)
+                    Text("Setting up computer use in the background.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .transition(.opacity)
+            }
+        }
+        .padding(.leading, 22).padding(.bottom, 12)
+        .animation(.easeInOut(duration: 0.35), value: computerSetup.isInstalling)
+        .animation(.easeInOut(duration: 0.35), value: download.phase)
+        .animation(.easeInOut(duration: 0.35), value: download.fullScreenVisible)
+    }
+
     private var home: some View {
         HomeView(
             isPresented: navigation.page == .home,
@@ -207,15 +210,25 @@ struct RootView: View {
             deck: deck,
             onAnalyze: {
                 guard appState.hasCompletedPersonalSetup || appState.processing.initialComplete else {
-                    openWindow(id: PersonalSetupView.windowID)
+                    navigation.show(.setup)
                     return
                 }
                 if !appState.processing.isBusy && appState.processing.record.status != .requested {
                     appState.processing.requestNow()
                 }
-                openWindow(id: ProcessingWindowView.windowID)
+                navigation.show(.analysis)
             },
             onShowDevTools: { showDevTools = true },
-            onFinishSetup: { openWindow(id: PersonalSetupView.windowID) })
+            onFinishSetup: { navigation.show(.setup) })
+    }
+}
+
+private extension View {
+    /// Keeps a page mounted but inert and invisible while another page is showing.
+    func retained(visible: Bool) -> some View {
+        opacity(visible ? 1 : 0)
+            .allowsHitTesting(visible)
+            .disabled(!visible)
+            .accessibilityHidden(!visible)
     }
 }

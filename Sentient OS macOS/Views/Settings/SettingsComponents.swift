@@ -42,12 +42,13 @@ extension EnvironmentValues {
 }
 
 enum SettingsStyle {
-    static let secondary = Color.white.opacity(0.62)
-    static let border = Color.white.opacity(0.12)
-    static let control = Color(white: 0.075)
+    static let secondary = Color(nsColor: .secondaryLabelColor)
+    static let border = Color(nsColor: .separatorColor)
+    static let control = Color(nsColor: .controlBackgroundColor)
 }
 
-/// Readable page title and a centered, bounded measure. Sources retains its existing scaffold.
+/// Readable page title and a centered, bounded measure. Sources keeps its chip scaffold
+/// (no form style) but shares the centering.
 struct SettingsPane<Content: View>: View {
     @Environment(\.settingsCompactLayout) private var compactLayout
     let title: String
@@ -58,25 +59,24 @@ struct SettingsPane<Content: View>: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                // The window title names the pane; the heading stays for VoiceOver's rotor.
                 Text(title)
-                    .display(28)
-                    .foregroundStyle(.white)
+                    .font(.title2.weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
                 if let whisper {
                     Text(whisper)
-                        .font(.system(size: legacyLayout ? 12.5 : (compactLayout ? 14 : 15)))
-                        .foregroundStyle(.white.opacity(legacyLayout ? 0.72 : 0.62))
-                        .lineSpacing(legacyLayout ? 0 : 3)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, legacyLayout ? 7 : 8)
+                        .padding(.top, 4)
                 }
-                content.padding(.top, legacyLayout ? 26 : (compactLayout ? 20 : 30))
+                content.padding(.top, compactLayout ? 16 : 20)
             }
-            .frame(maxWidth: legacyLayout || compactLayout ? 640 : 720, alignment: .leading)
-            .padding(.horizontal, legacyLayout ? 38 : 40)
-            .padding(.top, legacyLayout || compactLayout ? 28 : 38)
-            .padding(.bottom, legacyLayout || compactLayout ? 28 : 44)
-            .frame(maxWidth: .infinity, alignment: legacyLayout ? .leading : .center)
+            .frame(maxWidth: 680, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.top, 20)
+            .padding(.bottom, 28)
+            .frame(maxWidth: .infinity)
         }
         .environment(\.settingsFormStyle, !legacyLayout)
     }
@@ -110,23 +110,15 @@ struct SettingsGroup<Content: View, Trailing: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: formStyle ? (compactLayout ? 10 : 14) : 13) {
-            VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: formStyle ? 8 : 10) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    if formStyle || headingStyle {
-                        Text(label)
-                            .font(.system(size: compactLayout ? 16 : 18, weight: .medium))
-                            .foregroundStyle(destructive ? Theme.Ink.red : .white)
-                            .accessibilityAddTraits(.isHeader)
-                    } else {
-                        MonoCaps(label, size: 9.5, tracking: 2.4, color: .white.opacity(0.7), weight: .semibold)
-                    }
+                    Text(label)
+                        .font(.headline)
+                        .foregroundStyle(destructive ? Theme.Ink.red : .primary)
+                        .accessibilityAddTraits(.isHeader)
                     if let badge {
-                        if formStyle || headingStyle {
-                            Text(badge).font(.system(size: 12)).foregroundStyle(SettingsStyle.secondary)
-                        } else {
-                            MonoCaps("· \(badge)", size: 8, tracking: 1.6, color: .white.opacity(0.5))
-                        }
+                        Text(badge).font(.subheadline).foregroundStyle(.secondary)
                     }
                     if Trailing.self != EmptyView.self {
                         Spacer(minLength: 12)
@@ -136,13 +128,14 @@ struct SettingsGroup<Content: View, Trailing: View>: View {
                 if let description { SettingsProse(description) }
             }
             if formStyle {
+                // The grouped box System Settings draws around related rows.
                 content
-                    .padding(.horizontal, compactLayout ? min(inset, 16) : inset)
-                    .padding(.vertical, compactLayout ? min(inset, 9) : inset)
+                    .padding(.horizontal, min(inset, compactLayout ? 12 : 14))
+                    .padding(.vertical, min(inset, compactLayout ? 6 : 8))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.white.opacity(0.015), in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(destructive ? Theme.Ink.red.opacity(0.32) : SettingsStyle.border, lineWidth: 1))
+                    .background(.quinary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(destructive ? Theme.Ink.red.opacity(0.4) : SettingsStyle.border.opacity(0.6), lineWidth: 0.5))
             } else {
                 content
             }
@@ -165,9 +158,9 @@ struct SettingsProse: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: formStyle ? 14 : 11.5))
-            .foregroundStyle(formStyle ? SettingsStyle.secondary : Theme.Ink.body)
-            .lineSpacing(3)
+            .font(formStyle ? .callout : .caption)
+            .foregroundStyle(.secondary)
+            .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -179,16 +172,16 @@ struct SettingsRow<Control: View>: View {
     @ViewBuilder var control: Control
 
     var body: some View {
-        HStack(alignment: .center, spacing: 24) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(.white)
+        HStack(alignment: .center, spacing: 20) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.body)
                 if let subtitle { SettingsProse(subtitle) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             control.fixedSize(horizontal: true, vertical: false)
         }
-        .padding(20)
-        .frame(minHeight: 76)
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
     }
 }
 
@@ -202,19 +195,19 @@ struct SettingToggleLine: View {
         if formStyle {
             SettingsRow(title: title, subtitle: sub) {
                 Toggle(title, isOn: $isOn)
-                    .labelsHidden().toggleStyle(.switch).tint(Theme.Ink.green)
-                    .controlSize(.regular)
+                    .labelsHidden().toggleStyle(.switch)
+                    .controlSize(.small)
             }
         } else {
             HStack(alignment: .center, spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
-                    Text(sub).font(.system(size: 11)).foregroundStyle(Theme.Ink.body)
+                    Text(title).font(.body)
+                    Text(sub).font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 12)
                 Toggle("", isOn: $isOn)
-                    .labelsHidden().toggleStyle(.switch).tint(Theme.Ink.green)
+                    .labelsHidden().toggleStyle(.switch).controlSize(.small)
             }
             .padding(.vertical, 5)
         }
@@ -266,35 +259,12 @@ struct SettingsMenu<Selection: Hashable, Options: View>: View {
     @ViewBuilder var options: Options
 
     var body: some View {
-        Menu {
-            Picker(title, selection: $selection) { options }
-                .pickerStyle(.inline)
-                .menuActionDismissBehavior(.enabled)
-        } label: {
-            HStack(spacing: 10) {
-                Text(value).font(.system(size: 14)).foregroundStyle(.white.opacity(0.9))
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(SettingsStyle.secondary)
-                    .accessibilityHidden(true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .frame(height: 34)
-            .glassSurface(Capsule())
-            // Padding, blank space and chevron belong to the native menu's label, so
-            // the entire visible control opens it instead of just the selected text.
-            .contentShape(Rectangle())
-        }
-        // macOS's borderless style flattens rich labels to a tiny native text picker.
-        // Button style preserves this full-sized label and its complete hit target.
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .accessibilityLabel(title)
-        .accessibilityValue(value)
-        .accessibilityIdentifier("settings.menu." + title)
+        Picker(title, selection: $selection) { options }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+            .accessibilityValue(value)
+            .accessibilityIdentifier("settings.menu." + title)
     }
 }
 
@@ -309,10 +279,9 @@ struct SettingsDetails<Content: View>: View {
             VStack(alignment: .leading, spacing: 10) { content }
                 .padding(.top, 10)
         } label: {
-            Text(title).font(.system(size: 13, weight: .medium))
-                .foregroundStyle(SettingsStyle.secondary)
+            Text(title).font(.callout)
+                .foregroundStyle(.secondary)
         }
-        .tint(SettingsStyle.secondary)
     }
 }
 
@@ -382,40 +351,23 @@ struct SettingsChip: View {
 
     private var chip: some View {
         Button { if !locked { action?() } } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
                 if locked {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.white.opacity(0.4))
+                    Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                } else if needsAttention {
+                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
                 } else if !isAction {
-                    Circle()
-                        .fill(needsAttention ? HealthDot.warnAmber : (on ? Theme.Ink.green : .white.opacity(0.4)))
-                        .frame(width: 5, height: 5)
+                    Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                 }
-                Text(label)
-                    .font(.system(size: 12, weight: on || isAction ? .medium : .regular))
-                    .foregroundStyle(.white.opacity(locked ? 0.55 : 1))
+                Text(label).foregroundStyle(locked ? .secondary : .primary)
                 if let detail {
-                    Text(detail).font(.system(size: 10.5))
-                        .foregroundStyle(on ? Theme.Ink.green.opacity(0.85) : .white.opacity(0.62))
+                    Text(detail).foregroundStyle(.secondary)
                 }
             }
-            .padding(.horizontal, 13).padding(.vertical, 7)
-            .background(isAction ? Color.white.opacity(0.05) : (on && !locked ? Theme.Ink.green.opacity(0.13) : Color.clear),
-                        in: Capsule())
-            .overlay {
-                if isAction {
-                    Capsule().strokeBorder(Color.white.opacity(0.32),
-                                           style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                } else {
-                    Capsule().strokeBorder(on && !locked ? Theme.Ink.green.opacity(0.38)
-                                                         : Color.white.opacity(locked ? 0.10 : 0.16),
-                                           lineWidth: 1)
-                }
-            }
-            .contentShape(Capsule())
         }
-        .buttonStyle(PressScaleStyle())
+        .buttonStyle(.bordered)
+        .accessibilityValue(isAction ? "" : (on ? "On" : "Off"))
     }
 }
 
@@ -591,6 +543,6 @@ struct SettingsHairline: View {
     var opacity: Double = 0.06
 
     var body: some View {
-        Rectangle().fill(color.opacity(opacity)).frame(height: 1)
+        Divider()
     }
 }

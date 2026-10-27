@@ -49,8 +49,9 @@ struct ChatPicker: View {
         VStack(spacing: 0) {
             header
             filterBar
-            Divider().overlay(Theme.stroke)
+            Divider()
             content
+            Divider()
             footer
         }
         .frame(minWidth: 460, idealWidth: 520, minHeight: 560)
@@ -60,7 +61,7 @@ struct ChatPicker: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Choose chats & groups").display(24).foregroundStyle(.white)
+            Text("Choose chats & groups").font(.title2.weight(.semibold))
             Text(loaded
                  ? "\(selection.count) selected · \(visible.count) active in the last \(ChatWindowing.lookbackDays) days"
                  : "Reading your chats…")
@@ -72,11 +73,8 @@ struct ChatPicker: View {
 
     private var filterBar: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(Theme.faint)
-                TextField("Search chats", text: $search).textFieldStyle(.plain).foregroundStyle(.white)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 9).glassCard(radius: 10)
+            TextField("Search chats", text: $search, prompt: Text("Search chats"))
+                .textFieldStyle(.roundedBorder)
 
             HStack(spacing: 7) {
                 bulk("All DMs")    { for c in filtered where !c.isGroup { selection.insert(c.id) } }
@@ -89,100 +87,75 @@ struct ChatPicker: View {
         .padding(.horizontal, 20).padding(.bottom, 12)
     }
 
-    /// The "show unsaved numbers" checkbox — mirrors the row checkmarks (accent when on).
+    /// The "show unsaved numbers" checkbox.
     private var unsavedToggle: some View {
-        Button { withAnimation(.easeOut(duration: 0.15)) { showUnsaved.toggle() } } label: {
-            HStack(spacing: 6) {
-                Image(systemName: showUnsaved ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 13)).foregroundStyle(showUnsaved ? Theme.accent : Theme.faint)
-                Text("Show unsaved numbers (\(unsavedCount))")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(showUnsaved ? .white : Theme.secondary)
-            }
-        }
-        .buttonStyle(.plain)
+        Toggle("Show unsaved numbers (\(unsavedCount))", isOn: $showUnsaved)
+            .toggleStyle(.checkbox)
     }
 
     private func bulk(_ title: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title).font(.caption.weight(.medium)).foregroundStyle(Theme.accent)
-                .padding(.horizontal, 11).padding(.vertical, 5)
-                .background(Color.white.opacity(0.06), in: Capsule())
-                .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
+        Button(title, action: action)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
     }
 
     @ViewBuilder private var content: some View {
         if let loadError {
-            centered {
-                Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundStyle(.orange)
-                Text("Couldn't read \(sourceName)").foregroundStyle(.white)
-                Text(loadError).font(.caption).foregroundStyle(Theme.faint)
-                    .multilineTextAlignment(.center).padding(.horizontal, 30)
+            ContentUnavailableView {
+                Label("Couldn't Read \(sourceName)", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(loadError)
             }
         } else if !loaded {
-            centered { ProgressView().tint(Theme.accent) }
+            centered { ProgressView() }
         } else if chats.isEmpty {
-            centered {
-                Image(systemName: "bubble.left.and.bubble.right").font(.largeTitle).foregroundStyle(Theme.faint)
-                Text("No active chats in the last \(ChatWindowing.lookbackDays) days").foregroundStyle(Theme.secondary)
-            }
+            ContentUnavailableView("No Active Chats", systemImage: "bubble.left.and.bubble.right",
+                                   description: Text("Nothing in the last \(ChatWindowing.lookbackDays) days."))
         } else if filtered.isEmpty {
-            centered {
-                Image(systemName: "person.crop.circle.badge.questionmark").font(.largeTitle).foregroundStyle(Theme.faint)
-                Text(search.isEmpty
-                     ? "Only unsaved numbers were active; tap “Unsaved numbers” to show them"
-                     : "No chats match “\(search)”")
-                    .font(.callout).foregroundStyle(Theme.secondary)
-                    .multilineTextAlignment(.center).padding(.horizontal, 40)
+            if search.isEmpty {
+                ContentUnavailableView("Only Unsaved Numbers", systemImage: "person.crop.circle.badge.questionmark",
+                                       description: Text("Turn on “Show unsaved numbers” to see them."))
+            } else {
+                ContentUnavailableView.search(text: search)
             }
         } else {
-            ScrollView {
-                LazyVStack(spacing: 6) {
-                    ForEach(filtered) { row($0) }
+            List(filtered) { chat in
+                Toggle(isOn: Binding(
+                    get: { selection.contains(chat.id) },
+                    set: { on in if on { selection.insert(chat.id) } else { selection.remove(chat.id) } })) {
+                    row(chat)
                 }
-                .padding(.horizontal, 16).padding(.vertical, 10)
+                .toggleStyle(.checkbox)
             }
+            .listStyle(.inset)
+            .alternatingRowBackgrounds()
         }
     }
 
     private func row(_ chat: ChatInfo) -> some View {
-        let on = selection.contains(chat.id)
-        return HStack(spacing: 12) {
-            Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 18)).foregroundStyle(on ? Theme.accent : Theme.faint)
-            Image(systemName: chat.isGroup ? "person.3.fill" : "person.fill")
-                .font(.system(size: 11)).foregroundStyle(Theme.secondary).frame(width: 16)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(chat.name).font(.subheadline.weight(.medium)).foregroundStyle(.white).lineLimit(1)
+        Label {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(chat.name).lineLimit(1)
                 Text("\(chat.isGroup ? "Group" : "DM") · \(chat.messageCount) msgs · \(chat.lastActive.formatted(.relative(presentation: .numeric)))")
-                    .font(.caption2).foregroundStyle(Theme.faint).lineLimit(1)
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
-            Spacer(minLength: 0)
+        } icon: {
+            Image(systemName: chat.isGroup ? "person.3" : "person").foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 12).padding(.vertical, 9)
-        .background(on ? Theme.accent.opacity(0.12) : Color.white.opacity(0.03),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(on ? Theme.accent.opacity(0.5) : Color.white.opacity(0.06), lineWidth: 1))
-        .contentShape(Rectangle())
-        .onTapGesture { if on { selection.remove(chat.id) } else { selection.insert(chat.id) } }
+        .padding(.vertical, 2)
     }
 
     private var footer: some View {
         HStack {
-            Button("Cancel") { dismiss() }.buttonStyle(.plain).foregroundStyle(Theme.secondary)
+            Text("\(selection.count) selected").font(.callout).foregroundStyle(.secondary)
             Spacer()
-            Button { onDone(selection); dismiss() } label: {
-                Text("Done").font(.headline).foregroundStyle(.black)
-                    .frame(width: 150, height: 40)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .buttonStyle(.plain).disabled(!loaded)
+            Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+            Button("Done") { onDone(selection); dismiss() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!loaded)
         }
         .padding(.horizontal, 20).padding(.vertical, 14)
-        .background(Theme.bg)
     }
 
     private func centered<C: View>(@ViewBuilder _ inner: () -> C) -> some View {

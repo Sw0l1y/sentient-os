@@ -9,13 +9,13 @@ extension EnvironmentValues {
     @Entry var sidekickHoveredCardID: String? = nil
 }
 
-/// Sentient's existing identity: black, neutral glass, precise white ink. The accent is
-/// a localized light source at an edge or mark, never a colored reading surface.
+/// Sentient's identity inside the system's: the window's own background, neutral glass, precise
+/// white ink. The accent is a localized light source at an edge or mark, never a reading surface.
 enum SidekickStyle {
     static let ink = Color(white: 0.93)
     static let secondary = Color(white: 0.53)
     static let accent = Color(white: 0.84)
-    static let base = Color.black
+    static let base = Color(nsColor: .windowBackgroundColor)
     static func motion(_ reduced: Bool) -> Animation {
         reduced ? .easeOut(duration: 0.16) : .spring(response: 0.54, dampingFraction: 0.86)
     }
@@ -296,7 +296,7 @@ struct SidekickWorkingText: View {
     }
 }
 
-/// Shared geometry and feedback for the conversation toolbar's search and clear actions.
+/// The conversation's search and clear actions — plain buttons the window toolbar styles.
 struct SidekickToolbarIconButton: View {
     let symbol: String
     var busy = false
@@ -304,17 +304,9 @@ struct SidekickToolbarIconButton: View {
 
     var body: some View {
         Button(action: action) {
-            ZStack {
-                if busy { ProgressView().controlSize(.mini) }
-                else { Image(systemName: symbol) }
-            }
-            .font(.system(size: 15, weight: .semibold))
-            .frame(width: 36, height: 36)
-            .foregroundStyle(Theme.Ink.bright)
-            .contentShape(Circle())
-            .glassSurface(Circle())
+            if busy { ProgressView().controlSize(.small) }
+            else { Image(systemName: symbol) }
         }
-        .buttonStyle(PressScaleStyle())
     }
 }
 

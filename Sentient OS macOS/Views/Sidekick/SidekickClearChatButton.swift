@@ -21,40 +21,15 @@ struct SidekickClearChatButton: View {
         .help(clearing ? "Clearing chat…" : "Clear chat…")
         .accessibilityLabel(clearing ? "Clearing chat" : "Clear chat…")
         .accessibilityIdentifier("sidekick.clearChat")
-        .sheet(isPresented: Binding(
+        .confirmationDialog("Clear chat?", isPresented: Binding(
             get: { presentation.clearChatConfirmationShown },
             set: { presentation.clearChatConfirmationShown = $0 }
-        )) {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Clear chat?").font(.system(size: 17, weight: .semibold))
-                Text(Self.reassurance).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
-                Text(Self.consequence).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
-                if coordinator.run.isRunning {
-                    Text("Sidekick will stop its current task before clearing the chat.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                HStack(spacing: 10) {
-                    Button {
-                        presentation.clearChatConfirmationShown = false
-                    } label: {
-                        Text("Cancel").frame(maxWidth: .infinity).frame(height: 34)
-                            .background(.white.opacity(0.08), in: Capsule())
-                    }
-                    .keyboardShortcut(.cancelAction)
-                    Button(action: confirmClear) {
-                        Text(coordinator.run.isRunning ? "Stop and clear chat" : "Clear chat")
-                            .frame(maxWidth: .infinity).frame(height: 34)
-                            .foregroundStyle(.white)
-                            .background(Color.blue, in: Capsule())
-                    }
-                    .keyboardShortcut(.defaultAction)
-                }
-                .font(.system(size: 13, weight: .medium)).buttonStyle(.plain)
-            }
-            .foregroundStyle(SidekickStyle.ink)
-            .padding(24).frame(width: 340)
-            .background(Color(white: 0.09))
-            .preferredColorScheme(.dark)
+        ), titleVisibility: .visible) {
+            Button(coordinator.run.isRunning ? "Stop and Clear Chat" : "Clear Chat", role: .destructive, action: confirmClear)
+            Button("Cancel", role: .cancel) { presentation.clearChatConfirmationShown = false }
+        } message: {
+            Text("\(Self.reassurance)\n\n\(Self.consequence)"
+                 + (coordinator.run.isRunning ? "\n\nSidekick will stop its current task before clearing the chat." : ""))
         }
         .alert("Chat couldn’t be cleared", isPresented: Binding(
             get: { failure != nil }, set: { if !$0 { failure = nil } }

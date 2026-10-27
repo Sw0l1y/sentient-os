@@ -293,40 +293,21 @@ private struct FarewellPill: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 13.5, weight: .medium))
-                .lineLimit(1)
-                .foregroundStyle(ink)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(RoundedRectangle(cornerRadius: 8).fill(fill))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(stroke, lineWidth: 1))
-                .contentShape(RoundedRectangle(cornerRadius: 8))
+        Group {
+            switch style {
+            case .quiet:
+                Button(action: action) { label }.buttonStyle(.bordered)
+            case .danger:
+                Button(role: .destructive, action: action) { label }.buttonStyle(.bordered).tint(.red)
+            case .bright:
+                Button(action: action) { label }.buttonStyle(.borderedProminent)
+            }
         }
-        .buttonStyle(PressScaleStyle())
+        .controlSize(.large)
     }
 
-    private var ink: Color {
-        switch style {
-        case .quiet:  Theme.Ink.bright
-        case .danger: Theme.Ink.red
-        case .bright: .black
-        }
-    }
-    private var fill: Color {
-        switch style {
-        case .quiet:  .white.opacity(0.07)
-        case .danger: Theme.Ink.red.opacity(0.09)
-        case .bright: .white
-        }
-    }
-    private var stroke: Color {
-        switch style {
-        case .quiet:  .white.opacity(0.16)
-        case .danger: Theme.Ink.red.opacity(0.42)
-        case .bright: .clear
-        }
+    private var label: some View {
+        Text(title).lineLimit(1).frame(maxWidth: .infinity)
     }
 }
 

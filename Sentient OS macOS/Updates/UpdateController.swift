@@ -203,10 +203,8 @@ final class UpdateController: NSObject, SPUUpdaterDelegate {
         SafeAppRelaunch.shared.allowsAutomaticRelaunch
             && !VaultActivity.shared.editorBusy && UserPresence.isAwayFromApp
             && !ComputerUseGate.shared.isPresenting
-            && !NSApp.windows.contains { window in
-                let id = window.identifier?.rawValue ?? ""
-                return (window.isVisible || window.isMiniaturized)
-                    && (id == PersonalSetupView.windowID || id.hasPrefix(PersonalSetupView.windowID + "-"))
-            }
+            && !(MainNavigation.shared.page == .setup && NSApp.windows.contains { window in
+                SentientOSApp.isHomeWindow(window) && (window.isVisible || window.isMiniaturized)
+            })
     }
 }

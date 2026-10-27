@@ -41,7 +41,6 @@ struct HealthPane: View {
 
     @State private var codexExpanded = false
     @State private var checked = false        // first full probe done (codex login check is seconds)
-    @State private var revealed = false       // drives the rise-in cascade after the first probe
 
     #if DEBUG
     init(expandEngine: Bool = false) { _codexExpanded = State(initialValue: expandEngine) }
@@ -108,9 +107,7 @@ struct HealthPane: View {
                             }
                         }
                     }
-                    .rise(8, revealed: revealed)
                 }
-                .task { revealed = true }
             }
         }
         .environment(\.settingsCompactLayout, true)
@@ -206,13 +203,8 @@ struct HealthPane: View {
                     if !unreadableProtectedSources.isEmpty {
                         HStack(spacing: 6) {
                             SettingsProse("Check access for \(unreadableProtectedSources.map(\.title).joined(separator: ", ")). After changing Full Disk Access:")
-                            Button { Permissions.relaunch() } label: {
-                                Text("Relaunch Sentient")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(Theme.Ink.bright)
-                                    .underline(true, color: Theme.Ink.deepMuted)
-                            }
-                            .buttonStyle(PressScaleStyle())
+                            Button("Relaunch Sentient") { Permissions.relaunch() }
+                                .buttonStyle(.link)
                             .disabled(!SafeAppRelaunch.shared.canRelaunch)
                         }
                         .padding(.bottom, 6)
@@ -221,7 +213,6 @@ struct HealthPane: View {
                         }
                     }
                 }
-                .rise(0, revealed: revealed)
                 SettingsHairline(opacity: 0.10)
                 Group {
                     if requiresOvernightSetup {
@@ -230,7 +221,7 @@ struct HealthPane: View {
                         SettingsProse("Overnight analysis is off. Wake setup is optional.")
                             .padding(.vertical, 9)
                     }
-                }.rise(1, revealed: revealed)
+                }
                 SettingsHairline(opacity: 0.10)
                 StatusLine(title: "Launch at login",
                            health: loginOn || !requiresOvernightSetup ? .ok : .warn,
@@ -243,7 +234,6 @@ struct HealthPane: View {
                         PermissionGuide.shared.guide(.loginItems, dragging: nil)
                     }
                 }
-                .rise(2, revealed: revealed)
             }
         }
     }
@@ -258,7 +248,6 @@ struct HealthPane: View {
                            fixTitle: micSpeech == .notAsked ? "Allow…" : "Fix…") {
                     fixMicSpeech()
                 }
-                .rise(3, revealed: revealed)
                 SettingsHairline(opacity: 0.10)
                 StatusLine(title: "Screen Recording",
                            health: screenRec ? .ok : .bad,   // the driver's eyes — computer use is off without it
@@ -267,7 +256,6 @@ struct HealthPane: View {
                            fixTitle: "Allow…") {
                     fixScreenRecording()
                 }
-                .rise(5, revealed: revealed)
                 SettingsHairline(opacity: 0.10)
                 StatusLine(title: "Notifications (optional)",
                            health: notifHealth,
@@ -276,7 +264,6 @@ struct HealthPane: View {
                            fixTitle: notifStatus == .notDetermined ? "Allow…" : "Fix…") {
                     fixNotifications()
                 }
-                .rise(6, revealed: revealed)
             }
         }
     }
@@ -554,17 +541,6 @@ struct HealthPane: View {
             await codex.refreshInstalled()
         }
         withAnimation(.easeOut(duration: 0.2)) { checked = true }   // first probe done → reveal
-    }
-}
-
-/// The gentle rise-in: each element starts a touch lower and transparent, then swoops up into
-/// place with a small stagger — subtle, physics-flavored, over in under half a second.
-private extension View {
-    func rise(_ index: Int, revealed: Bool) -> some View {
-        self.opacity(revealed ? 1 : 0)
-            .offset(y: revealed ? 0 : 14)
-            .animation(.spring(response: 0.45, dampingFraction: 0.85)
-                .delay(Double(index) * 0.055), value: revealed)
     }
 }
 

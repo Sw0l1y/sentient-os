@@ -17,7 +17,6 @@ struct HomeDoubleTapButton: View {
     @Environment(\.accessibilityReduceMotion) private var systemReduced
     @Environment(\.sidekickReduceMotionOverride) private var motionOverride
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
-    @State private var hovered = false
     @State private var homeIsKey = false
     @State private var noticeVisible = false
     @State private var highlight = 0.0
@@ -39,37 +38,20 @@ struct HomeDoubleTapButton: View {
             if ready { seenAt = completedAt }
             presented.toggle()
         } label: {
-            HStack(spacing: 7) {
-                Image(systemName: key.discoverySymbol).font(.system(size: 14.5, weight: .semibold))
-                Text("Double Tap").font(.system(size: 13.5, weight: .medium))
+            Label {
+                Text("Double Tap")
+            } icon: {
+                Image(systemName: key.discoverySymbol)
+                    .foregroundStyle(highlight > 0 || presented ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
             }
-            .foregroundStyle(hovered || noticeVisible || presented ? .white : Theme.Ink.bright)
-            .padding(.horizontal, 14).frame(height: 36)
-            .overlay(Capsule().strokeBorder(Theme.accent.opacity(0.7 * highlight), lineWidth: 1.5))
-            .contentShape(Capsule())
-            .glassSurface(Capsule(), tint: presented ? Theme.accent.opacity(0.35) : nil)
+            .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(PressScaleStyle()).fixedSize()
-        .onHover { hovered = $0 }
         .accessibilityIdentifier("navigation.doubleTap")
         .accessibilityLabel("Double Tap")
         .accessibilityValue(enabled ? (completedAt > 0 ? "Ready" : "Ready after your first analysis") : "Turned off")
-        .help(ready ? "Draft a reply with two taps of \(key.label)."
+        .help(noticeVisible ? "Double Tap is ready. Draft a reply with two taps of \(key.label)."
+              : ready ? "Draft a reply with two taps of \(key.label)."
               : (enabled ? "Double Tap unlocks after your first analysis." : "Double Tap is turned off."))
-        .overlay(alignment: .bottom) {
-            if noticeVisible {
-                Text("Double Tap is ready")
-                    .font(.system(size: 11.5, weight: .medium)).foregroundStyle(SidekickStyle.ink)
-                    .padding(.horizontal, 13).padding(.vertical, 9)
-                    .background(Color(white: 0.065), in: Capsule())
-                    .overlay(Capsule().strokeBorder(Theme.Ink.gold.opacity(0.24), lineWidth: 0.7))
-                    .shadow(color: .black.opacity(0.35), radius: 9, y: 4)
-                    .fixedSize().offset(y: 37)
-                    .accessibilityIdentifier("doubleTap.readyHint")
-                    .allowsHitTesting(false)
-                    .transition(SidekickStyle.entrance(reduced))
-            }
-        }
         .popover(isPresented: $presented) {
             lesson
         }
@@ -128,10 +110,10 @@ struct HomeDoubleTapButton: View {
             if !enabled {
                 Text("Double Tap is turned off.")
                     .font(.system(size: 13)).foregroundStyle(SidekickStyle.ink)
-                Button("Turn on Double Tap") {
+                Button("Turn On Double Tap") {
                     enabled = true
                     if completedAt > 0 { seenAt = completedAt }
-                }.buttonStyle(SidekickPressStyle())
+                }.buttonStyle(.borderedProminent)
             } else if completedAt <= 0 {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("Ready after your first analysis.")
@@ -146,10 +128,8 @@ struct HomeDoubleTapButton: View {
                     presented = false
                     if needsPersonalSetup { onFinishSetup() } else { onViewAnalysis() }
                 } label: {
-                    Label(needsPersonalSetup ? "Finish setup" : "View analysis", systemImage: "arrow.up.right")
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(SidekickStyle.ink)
-                        .padding(.vertical, 5).contentShape(Rectangle())
-                }.buttonStyle(.plain)
+                    Text(needsPersonalSetup ? "Finish Setup…" : "View Analysis")
+                }.buttonStyle(.bordered)
                     .accessibilityIdentifier(needsPersonalSetup ? "doubleTap.finishSetup" : "doubleTap.viewAnalysis")
             } else {
                 VStack(alignment: .leading, spacing: 9) {
@@ -165,7 +145,6 @@ struct HomeDoubleTapButton: View {
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(22).frame(width: 302)
-        .background(Theme.Ink.cardBG).preferredColorScheme(.dark)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("doubleTap.lesson")
     }

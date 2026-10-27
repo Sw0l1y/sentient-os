@@ -359,8 +359,16 @@ struct KnowledgeSourcesPicker: View {
         panel.allowsMultipleSelection = true
         panel.prompt = "Add"
         panel.message = "Add a folder for Sentient to read."
-        guard panel.runModal() == .OK else { return }
-        for url in panel.urls { CustomRoots.add(url) }
+        // A sheet on the window the user is in, not a free-floating app-modal panel.
+        let finish: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK else { return }
+            for url in panel.urls { CustomRoots.add(url) }
+        }
+        if let window = NSApp.keyWindow {
+            panel.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            panel.begin(completionHandler: finish)
+        }
     }
 }
 

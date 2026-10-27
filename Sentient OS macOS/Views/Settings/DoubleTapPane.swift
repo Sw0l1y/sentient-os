@@ -162,15 +162,11 @@ private struct DoubleTapCredentials: View {
             }
             VStack(alignment: .leading, spacing: 9) {
                 Text(provider.requiresKey ? "\(provider.name) API key" : "API key (optional)")
-                    .font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.Ink.statusInk)
+                    .font(.headline)
                 HStack(spacing: 10) {
                     SecureField(keySaved ? "Enter a replacement key"
                                 : provider.requiresKey ? "Enter your API key" : "Optional for keyless servers", text: $keyDraft)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14))
-                        .padding(11)
-                        .background(.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 9))
-                        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.stroke, lineWidth: 1))
+                        .textFieldStyle(.roundedBorder)
                         .accessibilityLabel("\(provider.name) API key")
                         .onSubmit(saveKey)
                     SettingsPillButton(title: "Save", action: saveKey)
@@ -258,11 +254,8 @@ private struct DoubleTapCredentials: View {
 
     private func inputField(_ placeholder: String, text: Binding<String>, label: String) -> some View {
         TextField(placeholder, text: text)
-            .textFieldStyle(.plain)
-            .font(.system(size: 14, design: .monospaced))
-            .padding(11)
-            .background(.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.stroke, lineWidth: 1))
+            .textFieldStyle(.roundedBorder)
+            .font(.body.monospaced())
             .autocorrectionDisabled()
             .accessibilityLabel(label)
     }

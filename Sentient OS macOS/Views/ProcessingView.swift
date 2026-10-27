@@ -83,7 +83,7 @@ struct ProcessingView: View {
     private struct Thought: Identifiable, Equatable { let id: Int; let text: String }
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Theme.bg.ignoresSafeArea()
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 Group {
@@ -470,11 +470,9 @@ struct ProcessingView: View {
                 justProcessed
             }
             Button(action: onDone) {
-                Text("Done").font(.headline).foregroundStyle(.black)
-                    .frame(width: 200, height: 48)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                Text("Done").frame(minWidth: 120)
             }
-            .buttonStyle(.plain).padding(.top, 6)
+            .buttonStyle(.borderedProminent).controlSize(.large).padding(.top, 6)
             if needsAnotherPass {
                 Button("Retry analysis") { session.retry() }.buttonStyle(BackButtonStyle())
             }
@@ -626,7 +624,7 @@ struct ProcessingView: View {
             .disabled(state == .stopping)
             Text(paused ? "Your progress is saved. Resume when you're ready."
                  : isWaiting ? "Keep Sentient open. Analysis will start when your Mac is ready."
-                 : "You can close this window. Analysis continues in the background.")
+                 : "You can leave this page. Analysis continues in the background.")
                 .font(.caption).foregroundStyle(.white.opacity(0.45))
             if showPrompt {
                 Text(progress.lastPath ?? "").font(.caption.monospaced()).foregroundStyle(Theme.faint)
