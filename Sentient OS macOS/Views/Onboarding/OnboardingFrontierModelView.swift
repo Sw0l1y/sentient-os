@@ -71,7 +71,7 @@ struct OnboardingFrontierModelView: View {
                             .foregroundStyle(Theme.Ink.bright)
 
                         Text(PrivacyCopy.frontierSummary)
-                            .font(.system(size: 14.5))
+                            .font(.title3)
                             .foregroundStyle(Theme.secondary)
                             .multilineTextAlignment(.center)
                             .lineSpacing(4)
@@ -93,7 +93,7 @@ struct OnboardingFrontierModelView: View {
                     if limitedChatGPT {
                         VStack(spacing: 10) {
                             Text("Your ChatGPT plan has limited usage. Try Sidekick now; Sentient will offer an upgrade if your provider reaches a limit.")
-                                .font(.system(size: 12.5)).foregroundStyle(Theme.secondary)
+                                .font(.body).foregroundStyle(Theme.secondary)
                                 .multilineTextAlignment(.center).frame(maxWidth: 520)
                         }
                         .accessibilityIdentifier("onboarding.limitedPlan")

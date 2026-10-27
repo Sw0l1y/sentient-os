@@ -53,9 +53,9 @@ struct OnboardingReadyView: View {
                     VStack(spacing: 24) {
                         VStack(spacing: 10) {
                             Text("Connect your world")
-                                .display(29).foregroundStyle(.white)
+                                .display(29).foregroundStyle(.primary)
                             Text("Choose at least three sources to give Sentient personal context. You can add more later.")
-                                .font(.system(size: 13))
+                                .font(.body)
                                 .foregroundStyle(Theme.secondary)
                                 .multilineTextAlignment(.center)
                                 .lineSpacing(4)
@@ -93,12 +93,12 @@ struct OnboardingReadyView: View {
                 VStack(spacing: 6) {
                     if CodexAuth.knowledgeBaseOnly {
                         Text("Choose when to build your knowledge.")
-                            .font(.system(size: 13)).foregroundStyle(Theme.secondary)
+                            .font(.body).foregroundStyle(Theme.secondary)
                     } else {
                         Text("Keep using Sidekick while your Mac learns.")
-                            .font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.Ink.bright)
+                            .font(.body.weight(.medium)).foregroundStyle(Theme.Ink.bright)
                         Text("Analysis runs in the background to give Sidekick personal context and unlock Double Tap.")
-                            .font(.system(size: 12)).foregroundStyle(Theme.secondary)
+                            .font(.callout).foregroundStyle(Theme.secondary)
                     }
                 }
                 .multilineTextAlignment(.center).lineSpacing(3)

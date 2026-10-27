@@ -101,14 +101,14 @@ struct MarkdownView: View {
     /// on a whisper of a panel. The README's vault-map tree is the main resident.
     private func codeBlock(_ lines: [String]) -> some View {
         Text(verbatim: lines.joined(separator: "\n"))
-            .font(.system(size: 12.5, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.78))
+            .font(.system(.body, design: .monospaced))
+            .foregroundStyle(.primary)
             .lineSpacing(3)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16).padding(.vertical, 14)
-            .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(0.045)))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.07), lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 9).fill(.quinary))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.stroke, lineWidth: 1))
             .padding(.vertical, 10)
     }
 
@@ -119,34 +119,34 @@ struct MarkdownView: View {
         if s.isEmpty {
             Color.clear.frame(height: 9)
         } else if s == "---" || s == "***" || s == "___" {
-            Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
+            Rectangle().fill(.quaternary).frame(height: 1)
                 .padding(.vertical, 12)
         } else if s.hasPrefix("### ") {
             Text(inline(String(s.dropFirst(4))))
-                .font(.system(size: 15.5, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.96))
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.primary)
                 .padding(.top, 14).padding(.bottom, 2)
         } else if s.hasPrefix("## ") {
             Text(inline(String(s.dropFirst(3))))
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.white)
+                .font(.title.weight(.semibold))
+                .foregroundStyle(.primary)
                 .padding(.top, 20).padding(.bottom, 4)
         } else if s.hasPrefix("# ") {
             Text(inline(String(s.dropFirst(2))))
-                .font(.system(size: 25, weight: .semibold))
-                .foregroundStyle(.white)
+                .font(.largeTitle.weight(.semibold))
+                .foregroundStyle(.primary)
                 .padding(.top, 10).padding(.bottom, 4)
         } else if let bullet = bulletText(s) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("•").font(.system(size: 15)).foregroundStyle(.white.opacity(0.42))
+                Text("•").font(.title3).foregroundStyle(.tertiary)
                 Text(inline(bullet))
-                    .font(.system(size: 14.5)).foregroundStyle(.white.opacity(0.82))
+                    .font(.title3).foregroundStyle(.primary)
                     .lineSpacing(5).fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 3)
         } else {
             Text(inline(s))
-                .font(.system(size: 14.5)).foregroundStyle(.white.opacity(0.82))
+                .font(.title3).foregroundStyle(.primary)
                 .lineSpacing(6).fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, 4)
         }

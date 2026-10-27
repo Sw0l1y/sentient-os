@@ -134,7 +134,7 @@ struct DevToolsView: View {
             HStack(spacing: 10) {
                 Image(systemName: "moon.stars")
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Overnight Processing…").font(.callout.weight(.medium)).foregroundStyle(.white)
+                    Text("Overnight Processing…").font(.callout.weight(.medium)).foregroundStyle(.primary)
                     Text("Helper approval · launch-at-login · manual arm")
                         .font(.caption2).foregroundStyle(Theme.faint)
                 }
@@ -143,7 +143,7 @@ struct DevToolsView: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity)
-            .background(.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 12))
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
     }
@@ -152,7 +152,7 @@ struct DevToolsView: View {
     /// switches the mode and the home re-deals instantly (HomeView re-deals on the deck change).
     private var proactiveCardsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("PROACTIVE CARDS").font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.faint)
+            Text("PROACTIVE CARDS").font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
             HStack(spacing: 8) {
                 deckButton(.real, "REAL CARDS")
                 deckButton(.jesai, "JESAI'S DEMO")
@@ -163,7 +163,7 @@ struct DevToolsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
-        .background(.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 12))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
     }
 
     /// Demo: while ON, the home's analysis takeover drops its window min size AND the Stop
@@ -173,7 +173,7 @@ struct DevToolsView: View {
         Toggle(isOn: $resizableAnalysisDemo) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Resizable analysis window for demo")
-                    .font(.callout.weight(.medium)).foregroundStyle(.white)
+                    .font(.callout.weight(.medium)).foregroundStyle(.primary)
                 Text("Home → Analyze Now resizes freely (no min size) and hides the Stop Analysis footer — for the website's screen rec.")
                     .font(.caption2).foregroundStyle(Theme.faint)
                     .fixedSize(horizontal: false, vertical: true)
@@ -183,7 +183,7 @@ struct DevToolsView: View {
         .controlSize(.small)
         .padding(12)
         .frame(maxWidth: .infinity)
-        .background(.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 12))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
     }
 
     /// Demo: the analysis bar opens as if this much were already done — "baseDone + real of
@@ -191,7 +191,7 @@ struct DevToolsView: View {
     private var demoBarBaselineSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Demo bar baseline")
-                .font(.callout.weight(.medium)).foregroundStyle(.white)
+                .font(.callout.weight(.medium)).foregroundStyle(.primary)
             HStack(spacing: 8) {
                 TextField("done", value: $demoBaseDone, format: .number)
                     .textFieldStyle(.roundedBorder).frame(width: 72)
@@ -206,7 +206,7 @@ struct DevToolsView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
-        .background(.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 12))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
     }
 
     /// One deck segment — lit when it's the active mode.
@@ -214,7 +214,7 @@ struct DevToolsView: View {
         let selected = (BriefingDeck(rawValue: deckRaw) ?? .real) == mode
         return Button { deckRaw = mode.rawValue } label: {
             Text(label)
-                .font(.caption2.weight(.bold)).tracking(1.5)
+                .font(.caption2.weight(.bold))
                 .foregroundStyle(selected ? .white : Theme.faint)
                 .frame(maxWidth: .infinity, minHeight: 32)
                 .background(.white.opacity(selected ? 0.14 : 0.04), in: RoundedRectangle(cornerRadius: 8))
@@ -231,7 +231,7 @@ struct DevToolsView: View {
     private var driverSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Computer-use driver")
-                .font(.callout.weight(.medium)).foregroundStyle(.white)
+                .font(.callout.weight(.medium)).foregroundStyle(.primary)
             HStack(spacing: 8) {
                 Circle()
                     .fill(ComputerUseSetup.current.ready ? Theme.Ink.green : Color.orange)
@@ -259,7 +259,7 @@ struct DevToolsView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
-        .background(.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 12))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
         .onAppear { ComputerUseSetup.current.refresh() }
     }
 
@@ -269,7 +269,7 @@ struct DevToolsView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Double Tap (\(ShortcutPreferences.current.label) twice → draft a reply)")
-                    .font(.callout.weight(.medium)).foregroundStyle(.white)
+                    .font(.callout.weight(.medium)).foregroundStyle(.primary)
                 Spacer()
                 Toggle("", isOn: $doubleTapEnabled).toggleStyle(.switch).controlSize(.small).labelsHidden()
             }
@@ -299,7 +299,7 @@ struct DevToolsView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
-        .background(.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 12))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
     }
 
     /// Opens the one CODEX SETUP window (install · log in · computer use) — all three steps live in
@@ -307,7 +307,7 @@ struct DevToolsView: View {
     private var codexSetupButton: some View {
         Button { showCodexSetup = true } label: {
             Label("CODEX SETUP", systemImage: "cpu")
-                .font(.caption.weight(.bold)).tracking(2)
+                .font(.caption.weight(.bold))
                 .frame(maxWidth: .infinity, minHeight: 40)
         }
         .buttonStyle(.bordered).tint(Theme.Ink.green)
@@ -316,7 +316,7 @@ struct DevToolsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("DEV TOOLS").font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.faint)
+                Text("DEV TOOLS").font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
                 Spacer()
                 Button("Done") { dismiss() }.controlSize(.small)
             }
@@ -425,7 +425,7 @@ struct DevToolsView: View {
 
     private func columnView<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(spacing: 12) {
-            Text(title).font(.callout.weight(.bold)).tracking(4).foregroundStyle(Theme.secondary)
+            Text(title).font(.callout.weight(.bold)).foregroundStyle(Theme.secondary)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .top)
@@ -470,7 +470,7 @@ struct DevToolsView: View {
     private var viewSummariesButton: some View {
         Button { showSummaries = true } label: {
             Label("VIEW SUMMARIES", systemImage: "list.bullet.rectangle")
-                .font(.caption.weight(.bold)).tracking(2)
+                .font(.caption.weight(.bold))
                 .frame(maxWidth: .infinity, minHeight: 40)
         }
         .buttonStyle(.bordered).tint(Theme.accent)
@@ -479,7 +479,7 @@ struct DevToolsView: View {
     private var viewActionItemsButton: some View {
         Button { showActionItems = true } label: {
             Label("VIEW ACTION ITEMS", systemImage: "bell.badge")
-                .font(.caption.weight(.bold)).tracking(2)
+                .font(.caption.weight(.bold))
                 .frame(maxWidth: .infinity, minHeight: 40)
         }
         .buttonStyle(.bordered).tint(.orange)
@@ -490,7 +490,7 @@ struct DevToolsView: View {
     private var permissionsButton: some View {
         Button { showPermissions = true } label: {
             Label("PERMISSIONS", systemImage: "hand.raised.fill")
-                .font(.caption.weight(.bold)).tracking(2)
+                .font(.caption.weight(.bold))
                 .frame(maxWidth: .infinity, minHeight: 40)
         }
         .buttonStyle(.bordered).tint(.white)
@@ -501,7 +501,7 @@ struct DevToolsView: View {
     private var hotkeyLabButton: some View {
         Button { showHotkeyLab = true } label: {
             Label("HOTKEY LAB", systemImage: "keyboard")
-                .font(.caption.weight(.bold)).tracking(2)
+                .font(.caption.weight(.bold))
                 .frame(maxWidth: .infinity, minHeight: 40)
         }
         .buttonStyle(.bordered).tint(.white)
@@ -652,7 +652,7 @@ struct DevToolsView: View {
 
     private var sourcePicker: some View {
         VStack(spacing: 9) {
-            Text("SOURCES").font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.faint)
+            Text("SOURCES").font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 116), spacing: 8)], spacing: 8) {
                 sourceChip("Downloads", selected: runDownloads) { runDownloads.toggle() }
@@ -691,7 +691,7 @@ struct DevToolsView: View {
     private var notesChip: some View {
         let on = runNotes && fdaGranted
         return HStack(spacing: 6) {
-            Image(systemName: on ? "checkmark.circle.fill" : "note.text").font(.system(size: 11))
+            Image(systemName: on ? "checkmark.circle.fill" : "note.text").font(.subheadline)
             Text("Apple Notes").font(.caption.weight(.medium)).lineLimit(1)
         }
         .foregroundStyle(on ? .black : (fdaGranted ? Theme.secondary : Theme.faint))
@@ -707,7 +707,7 @@ struct DevToolsView: View {
     private var gmailChip: some View {
         let on = runGmail
         return HStack(spacing: 6) {
-            Image(systemName: on ? "checkmark.circle.fill" : "envelope").font(.system(size: 11))
+            Image(systemName: on ? "checkmark.circle.fill" : "envelope").font(.subheadline)
             Text("Gmail").font(.caption.weight(.medium)).lineLimit(1)
         }
         .foregroundStyle(on ? .black : (gmailConnected ? Theme.secondary : Theme.accent))
@@ -723,7 +723,7 @@ struct DevToolsView: View {
     private var calendarChip: some View {
         let on = runCalendar
         return HStack(spacing: 6) {
-            Image(systemName: on ? "checkmark.circle.fill" : "calendar").font(.system(size: 11))
+            Image(systemName: on ? "checkmark.circle.fill" : "calendar").font(.subheadline)
             Text("Calendar").font(.caption.weight(.medium)).lineLimit(1)
         }
         .foregroundStyle(on ? .black : (calendarConnected ? Theme.secondary : Theme.accent))
@@ -738,7 +738,7 @@ struct DevToolsView: View {
     private func chatSourceChip(_ name: String, systemImage: String, isOn: Bool, count: Int,
                                 turnOff: @escaping () -> Void, openPicker: @escaping () -> Void) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: isOn ? "checkmark.circle.fill" : systemImage).font(.system(size: 11))
+            Image(systemName: isOn ? "checkmark.circle.fill" : systemImage).font(.subheadline)
             Text(isOn ? "\(name) · \(count)" : name).font(.caption.weight(.medium)).lineLimit(1)
         }
         .foregroundStyle(isOn ? .black : (fdaGranted ? Theme.secondary : Theme.faint))
@@ -754,7 +754,7 @@ struct DevToolsView: View {
                             _ tap: @escaping () -> Void) -> some View {
         HStack(spacing: 6) {
             Image(systemName: removable ? "xmark.circle.fill" : (selected ? "checkmark.circle.fill" : "circle"))
-                .font(.system(size: 11))
+                .font(.subheadline)
             Text(label).font(.caption.weight(.medium)).lineLimit(1).truncationMode(.middle)
         }
         .foregroundStyle(selected ? .black : Theme.secondary)
@@ -768,13 +768,13 @@ struct DevToolsView: View {
 
     private var chooseFolderChip: some View {
         HStack(spacing: 6) {
-            Image(systemName: "folder.badge.plus").font(.system(size: 11))
+            Image(systemName: "folder.badge.plus").font(.subheadline)
             Text("Choose folder…").font(.caption.weight(.medium)).lineLimit(1)
         }
         .foregroundStyle(Theme.accent)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 11).padding(.vertical, 6)
-        .background(Color.white.opacity(0.06), in: Capsule())
+        .background(.quinary, in: Capsule())
         .overlay(Capsule().strokeBorder(Theme.accent.opacity(0.4), lineWidth: 1))
         .contentShape(Capsule())
         .onTapGesture(perform: chooseFolder)
@@ -867,7 +867,7 @@ struct DevToolsView: View {
                               ? "antenna.radiowaves.left.and.right"
                               : "antenna.radiowaves.left.and.right.slash")
                     }
-                    Text("MCP TOGGLE").font(.caption.weight(.bold)).tracking(2)
+                    Text("MCP TOGGLE").font(.caption.weight(.bold))
                     Text(mirrorEnabled ? "ON" : "OFF")
                         .font(.caption2.weight(.bold))
                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -915,7 +915,7 @@ struct DevToolsView: View {
                     HStack(spacing: 7) {
                         if mirrorBusy { ProgressView().controlSize(.small) }
                         else { Image(systemName: "arrow.triangle.2.circlepath") }
-                        Text("MCP SYNC").font(.caption.weight(.bold)).tracking(2)
+                        Text("MCP SYNC").font(.caption.weight(.bold))
                     }
                     .frame(maxWidth: .infinity, minHeight: 40)
                 }
@@ -943,7 +943,7 @@ struct DevToolsView: View {
                     Image(systemName: "antenna.radiowaves.left.and.right")
                         .foregroundStyle(Theme.verdictColor(.survivor))
                     Text("MCP mirror — syncs after each KB update")
-                        .font(.caption.weight(.medium)).foregroundStyle(.white)
+                        .font(.caption.weight(.medium)).foregroundStyle(.primary)
                     Spacer()
                     if mirrorBusy { ProgressView().controlSize(.small) }
                 }
@@ -988,7 +988,7 @@ struct DevToolsView: View {
                 Image(systemName: fdaGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
                     .foregroundStyle(fdaGranted ? Theme.verdictColor(.survivor) : .orange)
                 Text(fdaGranted ? "Full Disk Access granted" : "Full Disk Access needed")
-                    .font(.caption.weight(.medium)).foregroundStyle(.white)
+                    .font(.caption.weight(.medium)).foregroundStyle(.primary)
                 Spacer()
                 Button("Re-check") { fdaGranted = Permissions.hasFullDiskAccess() }
                     .buttonStyle(.borderless).controlSize(.small).tint(Theme.accent)

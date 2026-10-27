@@ -45,22 +45,22 @@ struct HomePersonalSetupPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Finish Sentient Setup to unlock:")
-                .font(.system(size: 20, weight: .medium))
+                .font(.title.weight(.medium))
                 .foregroundStyle(SidekickStyle.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 12)
 
             ForEach(HomePersonalFeature.allCases) { feature in
                 featureButton(feature)
-                Rectangle().fill(.white.opacity(0.045)).frame(height: 1)
+                Rectangle().fill(.quinary).frame(height: 1)
             }
 
             // The rewards lead directly to the one setup action.
             Button(action: onFinishSetup) {
                 HStack(spacing: 16) {
-                    Text("Finish setup").font(.system(size: 14, weight: .medium))
+                    Text("Finish setup").font(.body.weight(.medium))
                     Spacer(minLength: 0)
-                    Image(systemName: "arrow.right").font(.system(size: 12, weight: .medium))
+                    Image(systemName: "arrow.right").font(.callout.weight(.medium))
                 }
                 .foregroundStyle(Color(white: 0.08))
                 .padding(.horizontal, 17).frame(height: 46)
@@ -76,7 +76,7 @@ struct HomePersonalSetupPanel: View {
         .padding(26)
         .background(Color(white: 0.055), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous)
-            .strokeBorder(.white.opacity(0.095), lineWidth: 1))
+            .strokeBorder(Theme.stroke, lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("personalSetup.panel")
     }
@@ -87,18 +87,18 @@ struct HomePersonalSetupPanel: View {
         return Button { onSelectFeature(feature) } label: {
             HStack(alignment: .top, spacing: 9) {
                 Image(systemName: feature.symbol)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.body.weight(.medium))
                     .frame(width: 16).padding(.top, 2)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(feature.title).font(.system(size: 14, weight: .medium))
+                    Text(feature.title).font(.body.weight(.medium))
                         .foregroundStyle(SidekickStyle.ink)
-                    Text(feature.detail).font(.system(size: 13))
+                    Text(feature.detail).font(.body)
                         .foregroundStyle(SidekickStyle.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: selected ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 9, weight: .medium)).padding(.top, 4)
+                    .font(.caption2.weight(.medium)).padding(.top, 4)
             }
             .foregroundStyle(selected ? SidekickStyle.ink : SidekickStyle.secondary)
             .padding(.horizontal, 12).padding(.vertical, 12)
@@ -138,7 +138,7 @@ struct HomeSidekickInvitation: View {
                 .foregroundStyle(SidekickStyle.ink)
             Text("What can I take off your hands?")
                 .font(.system(size: compact ? 24 : 27, weight: .regular))
-                .foregroundStyle(.white.opacity(0.80))
+                .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 16)
@@ -182,13 +182,13 @@ struct HomeSidekickSuggestions: View {
     private func suggestionButton(_ suggestion: Suggestion) -> some View {
         Button { onSelect(suggestion.prompt) } label: {
             HStack(spacing: 7) {
-                Image(systemName: suggestion.symbol).font(.system(size: 12))
-                Text(suggestion.title).font(.system(size: 11)).lineLimit(1)
+                Image(systemName: suggestion.symbol).font(.callout)
+                Text(suggestion.title).font(.subheadline).lineLimit(1)
             }
             .foregroundStyle(SidekickStyle.secondary)
             .padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 43)
-            .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(.white.opacity(0.07), lineWidth: 1))
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 11))
+            .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(Theme.stroke, lineWidth: 1))
             .contentShape(RoundedRectangle(cornerRadius: 11))
         }
         .buttonStyle(SidekickPressStyle())
@@ -213,10 +213,10 @@ struct HomePersonalFeaturePreview: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 Button(action: onClose) {
-                    Image(systemName: "xmark").font(.system(size: 11, weight: .medium))
+                    Image(systemName: "xmark").font(.subheadline.weight(.medium))
                         .foregroundStyle(SidekickStyle.secondary)
                         .frame(width: 30, height: 30)
-                        .background(.white.opacity(0.055), in: Circle())
+                        .background(.quinary, in: Circle())
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -224,15 +224,15 @@ struct HomePersonalFeaturePreview: View {
                 .help("Close example (Escape)")
                 .accessibilityLabel("Close " + feature.title + " example")
                 .accessibilityIdentifier("personalSetup.preview.close")
-                Text(feature.title).font(.system(size: 14, weight: .medium))
+                Text(feature.title).font(.body.weight(.medium))
                     .foregroundStyle(SidekickStyle.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
-                Text("EXAMPLE").font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .tracking(1.5).foregroundStyle(SidekickStyle.secondary)
+                Text("EXAMPLE").font(.system(.caption2, design: .monospaced, weight: .medium))
+                    .foregroundStyle(SidekickStyle.secondary)
             }
             .padding(.horizontal, 15).padding(.vertical, 12)
-            Rectangle().fill(.white.opacity(0.06)).frame(height: 1)
+            Rectangle().fill(.quinary).frame(height: 1)
             ScrollViewReader { proxy in
                 ScrollView {
                     example(width: max(1, geometry.size.width - 40))
@@ -251,7 +251,7 @@ struct HomePersonalFeaturePreview: View {
         }
         .background(Color(white: 0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.stroke, lineWidth: 1))
         .shadow(color: .black.opacity(0.35), radius: 28, y: 12)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("personalSetup.preview." + feature.rawValue)

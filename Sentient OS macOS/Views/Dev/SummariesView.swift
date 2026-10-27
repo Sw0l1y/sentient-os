@@ -29,7 +29,7 @@ struct SummariesView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("SUMMARIES · \(notes.count)")
-                    .font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.faint)
+                    .font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
                 Button("Export") { export() }.controlSize(.small).disabled(notes.isEmpty)
                 Button("Import") { beginImport() }.controlSize(.small)
                 Spacer()
@@ -94,13 +94,13 @@ struct SummariesView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Text(n.title ?? n.displayName)
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer()
                 Text(n.folder).font(.caption2).foregroundStyle(Theme.faint)
             }
             Text(n.text)
-                .font(.caption).foregroundStyle(.white.opacity(0.8))
+                .font(.caption).foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
             Text(n.displayPath)
                 .font(.system(.caption2, design: .monospaced)).foregroundStyle(Theme.faint)

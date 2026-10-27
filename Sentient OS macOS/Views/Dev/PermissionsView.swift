@@ -20,7 +20,7 @@ struct PermissionsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("PERMISSIONS").font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.faint)
+                Text("PERMISSIONS").font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
                 Spacer()
                 Button("Done") { dismiss() }.controlSize(.small)
             }
@@ -48,7 +48,7 @@ struct PermissionsView: View {
 
     private func sectionHeader(_ title: String) -> some View {
         HStack {
-            Text(title).font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.secondary)
+            Text(title).font(.caption2.weight(.bold)).foregroundStyle(Theme.secondary)
             Spacer()
         }
     }
@@ -74,7 +74,7 @@ struct PermissionsView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: icon).foregroundStyle(iconColor)
-                Text(title).font(.caption.weight(.semibold)).foregroundStyle(.white)
+                Text(title).font(.caption.weight(.semibold)).foregroundStyle(.primary)
                 Spacer()
                 Text(granted ? "GRANTED" : "NEEDED").font(.caption2.weight(.bold))
                     .foregroundStyle(granted ? Theme.verdictColor(.survivor) : .orange)

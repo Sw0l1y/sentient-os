@@ -21,7 +21,7 @@ struct PermissionSetupView<Content: View>: View {
                 .display(23)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 18)
 

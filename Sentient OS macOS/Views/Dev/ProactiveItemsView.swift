@@ -18,7 +18,7 @@ struct ProactiveItemsView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("ACTION ITEMS · \(items.count)")
-                    .font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.faint)
+                    .font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
                 Spacer()
                 Button("Refresh") { load() }.controlSize(.small)
                 Button("Done") { dismiss() }.controlSize(.small)
@@ -59,16 +59,16 @@ struct ProactiveItemsView: View {
                 Spacer()
             }
             Text(item.title)
-                .font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                .font(.subheadline.weight(.bold)).foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
             if !item.action.isEmpty {
                 Text(item.action)
-                    .font(.caption).foregroundStyle(.white.opacity(0.85))
+                    .font(.caption).foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if !item.importance.isEmpty {
                 Text(item.importance)
-                    .font(.caption).italic().foregroundStyle(.white.opacity(0.6))
+                    .font(.caption).italic().foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if !item.sources.isEmpty {
@@ -90,7 +90,7 @@ struct ProactiveItemsView: View {
             }
         }()
         return Text(label)
-            .font(.system(size: 8, weight: .bold)).tracking(1)
+            .font(.caption2.weight(.bold))
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.18), in: Capsule())
             .foregroundStyle(color)

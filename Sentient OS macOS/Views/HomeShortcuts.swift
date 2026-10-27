@@ -102,14 +102,14 @@ struct HomeDoubleTapButton: View {
             HStack(alignment: .center, spacing: 17) {
                 DoubleTapKeyLesson(key: key, animating: active && presented && !reduced)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Double Tap").font(.system(size: 19, weight: .medium)).foregroundStyle(.white)
+                    Text("Double Tap").font(.title2.weight(.medium)).foregroundStyle(.primary)
                     Text("Replies in your voice.")
-                        .font(.system(size: 12)).foregroundStyle(SidekickStyle.secondary)
+                        .font(.callout).foregroundStyle(SidekickStyle.secondary)
                 }
             }
             if !enabled {
                 Text("Double Tap is turned off.")
-                    .font(.system(size: 13)).foregroundStyle(SidekickStyle.ink)
+                    .font(.body).foregroundStyle(SidekickStyle.ink)
                 Button("Turn On Double Tap") {
                     enabled = true
                     if completedAt > 0 { seenAt = completedAt }
@@ -117,12 +117,12 @@ struct HomeDoubleTapButton: View {
             } else if completedAt <= 0 {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("Ready after your first analysis.")
-                        .font(.system(size: 13, weight: .medium)).foregroundStyle(SidekickStyle.ink)
+                        .font(.body.weight(.medium)).foregroundStyle(SidekickStyle.ink)
                         .accessibilityIdentifier("doubleTap.waiting")
                     Text(needsPersonalSetup
                          ? "Finish setup and connect three sources to give Double Tap your personal context. After your first analysis, click a reply box and tap \(key.label) twice."
                          : "Your first analysis gives Double Tap your personal context. Then click a reply box and tap \(key.label) twice.")
-                        .font(.system(size: 12)).foregroundStyle(SidekickStyle.secondary).lineSpacing(3)
+                        .font(.callout).foregroundStyle(SidekickStyle.secondary).lineSpacing(3)
                 }
                 Button {
                     presented = false
@@ -134,14 +134,14 @@ struct HomeDoubleTapButton: View {
             } else {
                 VStack(alignment: .leading, spacing: 9) {
                     Text("Click a reply box, then tap **\(key.label) twice**.")
-                        .font(.system(size: 13)).foregroundStyle(SidekickStyle.ink).lineSpacing(3)
+                        .font(.body).foregroundStyle(SidekickStyle.ink).lineSpacing(3)
                         .accessibilityIdentifier("doubleTap.instructions")
                     Text("Your draft appears right where you’re typing. Review it, then send.")
-                        .font(.system(size: 12)).foregroundStyle(SidekickStyle.secondary).lineSpacing(3)
+                        .font(.callout).foregroundStyle(SidekickStyle.secondary).lineSpacing(3)
                 }
             }
             Text("One tap opens Sidekick.")
-                .font(.system(size: 11)).foregroundStyle(SidekickStyle.secondary)
+                .font(.subheadline).foregroundStyle(SidekickStyle.secondary)
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(22).frame(width: 302)
@@ -159,7 +159,7 @@ private struct DoubleTapKeyLesson: View {
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: key.discoverySymbol)
-                .font(.system(size: 25, weight: .medium)).foregroundStyle(.white.opacity(0.9))
+                .font(.largeTitle.weight(.medium)).foregroundStyle(.primary)
                 .frame(width: 56, height: 50)
                 .background(Color(white: pressed ? 0.15 : 0.10), in: RoundedRectangle(cornerRadius: 11))
                 .overlay(RoundedRectangle(cornerRadius: 11)
@@ -207,9 +207,9 @@ struct HomeNotchHint: View {
             Button { coordinator.openNotchFromHome() } label: {
                 HStack(spacing: 5) {
                     Text(clickable ? "Try the notch" : "Press \(key.label)")
-                    Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .medium))
+                    Image(systemName: "arrow.up.right").font(.caption2.weight(.medium))
                 }
-                .font(.system(size: 11.5)).foregroundStyle(hovered ? SidekickStyle.ink : SidekickStyle.secondary)
+                .font(.callout).foregroundStyle(hovered ? SidekickStyle.ink : SidekickStyle.secondary)
                 .frame(maxWidth: .infinity, minHeight: 34).contentShape(Rectangle())
             }
             .buttonStyle(.plain).onHover { hovered = $0 }

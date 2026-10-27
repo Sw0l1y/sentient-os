@@ -20,17 +20,17 @@ struct ConnectorActionButton: View {
                     ProgressView().controlSize(.mini)
                 } else if kind == .done {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.subheadline.weight(.semibold))
                         .accessibilityHidden(true)
                 } else {
                     Image(systemName: "arrow.up.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.caption.weight(.bold))
                         .accessibilityHidden(true)
                 }
                 Text(title)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.body.weight(.medium))
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             .frame(maxWidth: .infinity, minHeight: 44)
             .contentShape(Capsule())
             .glassSurface(Capsule(), tint: kind == .done ? Theme.Ink.green : Theme.accent)

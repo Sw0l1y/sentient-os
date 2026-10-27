@@ -20,7 +20,7 @@ struct CodexSetupView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("CODEX SETUP").font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.faint)
+                Text("CODEX SETUP").font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
                 Spacer()
                 Button("Done") { dismiss() }.controlSize(.small)
             }
@@ -128,7 +128,7 @@ struct CodexSetupView: View {
                     .frame(width: 26, height: 26)
                     .background(Circle().fill(done ? Theme.Ink.green.opacity(0.22) : Color.white.opacity(0.06)))
                     .foregroundStyle(done ? Theme.Ink.green : Theme.secondary)
-                Text(title).font(.callout.weight(.semibold)).foregroundStyle(.white)
+                Text(title).font(.callout.weight(.semibold)).foregroundStyle(.primary)
                 Spacer()
                 Text(done ? "DONE" : "PENDING")
                     .font(.caption2.weight(.bold))
@@ -140,7 +140,7 @@ struct CodexSetupView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 14))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.stroke, lineWidth: 1))
     }
 

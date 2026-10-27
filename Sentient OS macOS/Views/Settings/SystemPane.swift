@@ -124,7 +124,7 @@ struct SystemPane: View {
             }
             if let last = appState.update.lastCheckDate {
                 Text("Last checked \(last.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.system(size: 12)).foregroundStyle(SettingsStyle.secondary)
+                    .font(.callout).foregroundStyle(SettingsStyle.secondary)
                     .padding(.horizontal, 20).padding(.bottom, 16)
             }
             if !UpdateController.appUpdatesEnabled {
@@ -187,12 +187,12 @@ struct SystemPane: View {
                     SettingsProse(DiagnosticExport.disclosure)
                     SettingsProse(DiagnosticExport.sharingNote)
                     if let diagnosticError {
-                        Text(diagnosticError).font(.system(size: 13)).foregroundStyle(Theme.Ink.amber)
+                        Text(diagnosticError).font(.body).foregroundStyle(Theme.Ink.amber)
                     }
                     if let diagnosticFile {
                         HStack {
                             Text("Saved. Review the file before sharing.")
-                                .font(.system(size: 13)).foregroundStyle(SettingsStyle.secondary)
+                                .font(.body).foregroundStyle(SettingsStyle.secondary)
                             Spacer()
                             SettingsPillButton(title: "Show in Finder") {
                                 NSWorkspace.shared.activateFileViewerSelecting([diagnosticFile])
@@ -236,7 +236,7 @@ struct SystemPane: View {
                     .padding(.horizontal, 20).padding(.bottom, 16)
             }
             if let resetError {
-                Text(resetError).font(.system(size: 13)).foregroundStyle(Theme.Ink.amber)
+                Text(resetError).font(.body).foregroundStyle(Theme.Ink.amber)
                     .padding(.horizontal, 20).padding(.bottom, 16)
             }
         }

@@ -89,26 +89,26 @@ struct SidekickTranscript: View {
                     }
                     if let error = presentation.error {
                         VStack(spacing: 8) {
-                            Text(error).font(.system(size: 12)).foregroundStyle(SidekickStyle.secondary)
+                            Text(error).font(.callout).foregroundStyle(SidekickStyle.secondary)
                             Button("Try again") { Task { await presentation.load(.latest, conversation: conversation) } }
                         }.frame(maxWidth: .infinity)
                     }
                     if presentation.rows.isEmpty && !presentation.loading && presentation.error == nil && conversation.storageError == nil {
                         VStack(spacing: 12) {
                             SidekickMark(size: 32, illuminated: true).padding(.bottom, 10)
-                            Text("A little help. A lot more possible.").font(.system(size: 23, weight: .medium))
+                            Text("A little help. A lot more possible.").font(.title.weight(.medium))
                             Text("Ask a question, follow a thought, or hand something over.")
-                                .font(.system(size: 13)).foregroundStyle(SidekickStyle.secondary)
+                                .font(.body).foregroundStyle(SidekickStyle.secondary)
                         }.frame(maxWidth: .infinity).padding(.vertical, 110)
                     }
                     ForEach(display) { row in
                         VStack(spacing: 18) {
                             if let date = row.timeBreak {
                                 HStack(spacing: 12) {
-                                    Rectangle().fill(.white.opacity(0.07)).frame(maxWidth: 70).frame(height: 0.5)
+                                    Rectangle().fill(.quaternary).frame(maxWidth: 70).frame(height: 0.5)
                                     Text(SidekickTranscriptLayout.timeBreakLabel(date))
-                                        .font(.system(size: 10.5)).foregroundStyle(SidekickStyle.secondary)
-                                    Rectangle().fill(.white.opacity(0.07)).frame(maxWidth: 70).frame(height: 0.5)
+                                        .font(.subheadline).foregroundStyle(SidekickStyle.secondary)
+                                    Rectangle().fill(.quaternary).frame(maxWidth: 70).frame(height: 0.5)
                                 }.frame(maxWidth: .infinity).padding(.vertical, 7)
                             }
                             SidekickMessageRow(record: row.record, showsWork: row.showsWork,
@@ -186,7 +186,7 @@ struct SidekickTranscript: View {
                         Task { await presentation.load(.latest, conversation: conversation) }
                     } label: {
                         Label(presentation.newMessages ? "New response" : "Back to latest", systemImage: "arrow.down")
-                            .font(.system(size: 12, weight: .medium)).padding(.horizontal, 15).padding(.vertical, 10)
+                            .font(.callout.weight(.medium)).padding(.horizontal, 15).padding(.vertical, 10)
                             .sidekickGlass(radius: 20, prominent: true)
                     }
                     .buttonStyle(SidekickPressStyle()).padding(.bottom, 10)
@@ -203,7 +203,7 @@ struct SidekickTranscript: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass").foregroundStyle(SidekickStyle.secondary)
             TextField("Find something in your history", text: $presentation.search)
-                .textFieldStyle(.plain).font(.system(size: 13))
+                .textFieldStyle(.plain).font(.body)
                 .accessibilityIdentifier("sidekick.history.search")
                 .focused($searchFocused)
                 .task {
@@ -216,7 +216,7 @@ struct SidekickTranscript: View {
                     .buttonStyle(.plain).accessibilityLabel("Clear search")
             }
             Button("Done") { withAnimation(SidekickStyle.motion(reduced)) { presentation.search = ""; presentation.searchShown = false } }
-                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(SidekickStyle.accent)
+                .buttonStyle(.plain).font(.callout).foregroundStyle(SidekickStyle.accent)
         }.padding(12).sidekickGlass(radius: 14)
             .padding(.horizontal, 28).padding(.bottom, 8).frame(maxWidth: 800)
             .task(id: presentation.search) { await presentation.find(conversation: conversation) }
@@ -226,7 +226,7 @@ struct SidekickTranscript: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
                 Text(presentation.searchResults.isEmpty ? "No matching messages yet" : "From your saved conversation")
-                    .font(.system(size: 11)).foregroundStyle(SidekickStyle.secondary).padding(.vertical, 12)
+                    .font(.subheadline).foregroundStyle(SidekickStyle.secondary).padding(.vertical, 12)
                 ForEach(presentation.searchResults, id: \.event.id) { record in
                     Button {
                         presentation.search = ""; presentation.searchShown = false
@@ -234,8 +234,8 @@ struct SidekickTranscript: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             Text(record.event.createdAt, format: .dateTime.month(.abbreviated).day().hour().minute())
-                                .font(.system(size: 10)).foregroundStyle(SidekickStyle.secondary)
-                            Text(String(record.event.text.prefix(700))).font(.system(size: 13)).lineLimit(3)
+                                .font(.caption).foregroundStyle(SidekickStyle.secondary)
+                            Text(String(record.event.text.prefix(700))).font(.body).lineLimit(3)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }.padding(16).sidekickGlass(radius: 16)
                     }.buttonStyle(.plain)
@@ -244,7 +244,7 @@ struct SidekickTranscript: View {
         }
     }
     private func pagingButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Label(title, systemImage: symbol).font(.system(size: 11, weight: .medium)) }
+        Button(action: action) { Label(title, systemImage: symbol).font(.subheadline.weight(.medium)) }
             .buttonStyle(.plain).foregroundStyle(SidekickStyle.secondary).disabled(presentation.loading)
             .frame(maxWidth: .infinity).padding(.vertical, 12)
     }
@@ -283,7 +283,7 @@ private struct SidekickMessageRow: View {
             }
             if event.kind == .taskFinished {
                 if let status = standaloneStatus {
-                    Text(status).font(.system(size: 12)).foregroundStyle(SidekickStyle.secondary)
+                    Text(status).font(.callout).foregroundStyle(SidekickStyle.secondary)
                         .textSelection(.enabled).padding(.horizontal, 12)
                 }
             } else { message }
@@ -309,7 +309,7 @@ private struct SidekickMessageRow: View {
                 if let reference = event.reply {
                     Button { conversation.show(messageID: reference.messageID) } label: {
                         Label(reference.selectedText.map { String($0.prefix(100)) } ?? "Earlier message", systemImage: "arrowshape.turn.up.left")
-                            .font(.system(size: 10.5)).lineLimit(2).foregroundStyle(SidekickStyle.accent)
+                            .font(.subheadline).lineLimit(2).foregroundStyle(SidekickStyle.accent)
                     }.buttonStyle(.plain)
                 }
                 if user {
@@ -345,11 +345,11 @@ private struct SidekickMessageRow: View {
             if hovered || copied || hoverOverride == event.id {
                 HStack(spacing: 8) {
                     Text(SidekickTranscriptLayout.hoverDate(event.createdAt))
-                        .font(.system(size: 10))
+                        .font(.caption)
                         .help(event.createdAt.formatted(date: .complete, time: .shortened))
                     Button(action: copy) {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 10.5)).frame(width: 22, height: 18).contentShape(Rectangle())
+                            .font(.subheadline).frame(width: 22, height: 18).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).help(copied ? "Copied" : "Copy message")
                     .accessibilityLabel(copied ? "Copied" : "Copy message")

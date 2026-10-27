@@ -35,8 +35,8 @@ struct LetterBody: View {
             Color.clear.frame(height: 2)                              // a paragraph break
         } else if line.hasPrefix("### ") {
             Text(Self.inline(String(line.dropFirst(4))))             // soulful subhead (serif italic)
-                .font(.system(size: 16).italic())
-                .foregroundStyle(.white.opacity(0.92))
+                .font(.title3.italic())
+                .foregroundStyle(.primary)
                 .padding(.top, 6)
         } else if line.hasPrefix("## ") {
             MonoCaps(String(line.dropFirst(3)).uppercased(), size: 10, tracking: 2.2,
@@ -44,37 +44,37 @@ struct LetterBody: View {
                 .padding(.top, 12)
         } else if line.hasPrefix("# ") {
             Text(Self.inline(String(line.dropFirst(2))))             // a stray title, defensive
-                .font(.system(size: 22, weight: .semibold)).foregroundStyle(.white)
+                .font(.title.weight(.semibold)).foregroundStyle(.primary)
                 .padding(.top, 4)
         } else if Self.isRule(line) {
-            Rectangle().fill(Color.white.opacity(0.1))               // a `---` rule → hairline divider
+            Rectangle().fill(.quaternary)               // a `---` rule → hairline divider
                 .frame(height: 1)
                 .padding(.vertical, 6)
         } else if let bullet = Self.bulletText(line) {
             HStack(alignment: .firstTextBaseline, spacing: 9) {
                 if neutral {
-                    Text("•").font(.system(size: 13.5)).foregroundStyle(.white.opacity(0.42))
+                    Text("•").font(.body).foregroundStyle(.tertiary)
                 } else {
-                    Text("✦").font(.system(size: 12)).foregroundStyle(accent)
+                    Text("✦").font(.callout).foregroundStyle(accent)
                 }
                 Text(Self.inline(bullet))
-                    .font(.system(size: 13.5)).foregroundStyle(.white.opacity(0.84)).lineSpacing(4.5)
+                    .font(.body).foregroundStyle(.primary).lineSpacing(4.5)
             }
         } else if let (number, item) = Self.numberedText(line) {
             HStack(alignment: .firstTextBaseline, spacing: 9) {
-                Text("\(number).").font(.system(size: 13.5)).monospacedDigit()
-                    .foregroundStyle(.white.opacity(0.42))
+                Text("\(number).").font(.body).monospacedDigit()
+                    .foregroundStyle(.tertiary)
                 Text(Self.inline(item))
-                    .font(.system(size: 13.5)).foregroundStyle(.white.opacity(0.84)).lineSpacing(4.5)
+                    .font(.body).foregroundStyle(.primary).lineSpacing(4.5)
             }
         } else if Self.isSignoff(line) {
             Text(Self.inline(line))                                  // "-- Your Sentient"
-                .font(.system(size: 13).italic())
-                .foregroundStyle(.white.opacity(0.55))
+                .font(.body.italic())
+                .foregroundStyle(.secondary)
                 .padding(.top, 10)
         } else {
             Text(Self.inline(line))
-                .font(.system(size: 14)).foregroundStyle(.white.opacity(0.84)).lineSpacing(5)
+                .font(.body).foregroundStyle(.primary).lineSpacing(5)
         }
     }
 

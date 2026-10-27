@@ -60,7 +60,7 @@ struct ShareKnowledgePane: View {
                         Circle().fill(enabled ? Theme.Ink.green : SettingsStyle.secondary)
                             .frame(width: 6, height: 6)
                         Text(enabled ? "Sharing is on" : "Sharing is off")
-                            .font(.system(size: 14)).foregroundStyle(SettingsStyle.secondary)
+                            .font(.body).foregroundStyle(SettingsStyle.secondary)
                     }
                     .padding(.horizontal, 20).padding(.vertical, 16)
                 }
@@ -74,11 +74,11 @@ struct ShareKnowledgePane: View {
         SettingsGroup(label: "Activity") {
             VStack(alignment: .leading, spacing: 7) {
                 Text(activityLine)
-                    .font(.system(size: 14))
+                    .font(.body)
                     .foregroundStyle(Theme.Ink.body)
                 if let last = stats?.lastAccess {
                     Text("Last read \(last.formatted(.relative(presentation: .named)))")
-                        .font(.system(size: 13)).foregroundStyle(SettingsStyle.secondary)
+                        .font(.body).foregroundStyle(SettingsStyle.secondary)
                 }
             }
         }

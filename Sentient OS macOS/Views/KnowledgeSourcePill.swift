@@ -45,7 +45,7 @@ struct KnowledgeSourcePill: View {
                         .truncationMode(.middle)
                         .frame(maxWidth: featured ? nil : 180, alignment: .leading)
                     if let detail {
-                        Text(detail).font(.system(size: 10.5))
+                        Text(detail).font(.subheadline)
                             .foregroundStyle(Theme.Ink.body)
                     }
                 }
@@ -94,7 +94,7 @@ struct KnowledgeSourcePill: View {
         } else {
             Image(systemName: systemImage)
                 .font(.system(size: featured ? 19 : 14, weight: .regular))
-                .foregroundStyle(.white.opacity(0.78))
+                .foregroundStyle(.primary)
                 .frame(width: iconSize, height: iconSize).accessibilityHidden(true)
         }
     }

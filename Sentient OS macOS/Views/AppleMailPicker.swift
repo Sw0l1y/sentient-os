@@ -29,25 +29,25 @@ struct AppleMailPicker: View {
             ConnectorLogo(asset: "AppleMailMark")
             Text("Apple Mail").display(20).foregroundStyle(Theme.Ink.statusInk).padding(.top, 18)
             Text("Choose the accounts to include.")
-                .font(.system(size: 12)).foregroundStyle(Theme.Ink.body).padding(.top, 10)
+                .font(.callout).foregroundStyle(Theme.Ink.body).padding(.top, 10)
             accountList.padding(.top, 22)
             Toggle("Read emails for proactive suggestions", isOn: $researchEnabled)
-                .toggleStyle(.checkbox).font(.system(size: 12)).padding(.top, 18)
+                .toggleStyle(.checkbox).font(.callout).padding(.top, 18)
             Text("Your chosen AI can read actual email text from these accounts to check and prepare suggestions. A cloud AI processes that text with its provider. This access only reads mail.")
-                .font(.system(size: 11)).foregroundStyle(Theme.Ink.body)
+                .font(.subheadline).foregroundStyle(Theme.Ink.body)
                 .fixedSize(horizontal: false, vertical: true).padding(.top, 6)
             HStack(spacing: 10) {
                 Button { dismiss() } label: {
-                    Text("Cancel").font(.system(size: 13.5, weight: .medium))
+                    Text("Cancel").font(.body.weight(.medium))
                         .foregroundStyle(Theme.Ink.bright)
                         .frame(maxWidth: .infinity, minHeight: 40)
-                        .background(Capsule().fill(.white.opacity(0.07)))
-                        .overlay(Capsule().strokeBorder(.white.opacity(0.16), lineWidth: 1))
+                        .background(Capsule().fill(.quaternary))
+                        .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
                         .contentShape(Capsule())
                 }
                 .buttonStyle(PressScaleStyle()).keyboardShortcut(.cancelAction)
                 Button { AppleMailResearchAccess.save(accounts: researchEnabled ? selected : []); onDone(selected); dismiss() } label: {
-                    Text("Done").font(.system(size: 13.5, weight: .semibold))
+                    Text("Done").font(.body.weight(.semibold))
                         .foregroundStyle(.black)
                         .frame(maxWidth: .infinity, minHeight: 40)
                         .background(Capsule().fill(.white))
@@ -58,7 +58,7 @@ struct AppleMailPicker: View {
                 .opacity(loading || (failed && !selected.isEmpty) ? 0.4 : 1)
             }.padding(.top, 24)
             Button("Deselect all") { selected.removeAll() }
-                .buttonStyle(.plain).font(.system(size: 11))
+                .buttonStyle(.plain).font(.subheadline)
                 .foregroundStyle(Theme.Ink.body).padding(.top, 16)
                 .disabled(loading || selected.isEmpty)
                 .opacity(selected.isEmpty ? 0 : 1).accessibilityHidden(selected.isEmpty)
@@ -79,14 +79,14 @@ struct AppleMailPicker: View {
             if loading { ProgressView("Loading accounts…").frame(maxWidth: .infinity, minHeight: 80) }
             else if failed {
                 Text(failureMessage)
-                    .font(.system(size: 12)).foregroundStyle(Theme.Ink.body)
+                    .font(.callout).foregroundStyle(Theme.Ink.body)
                 HStack {
                     if accessIssue { Button("Open Full Disk Access") { Permissions.openFullDiskAccessSettings() } }
                     Button("Try Again") { Task { await load() } }
                 }
             } else if accounts.isEmpty {
                 Text("No Mail accounts found. Add an account in Apple Mail, then try again.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.Ink.body)
+                    .font(.callout).foregroundStyle(Theme.Ink.body)
                 Button("Try Again") { Task { await load() } }
             } else {
                 ScrollView {
@@ -94,11 +94,11 @@ struct AppleMailPicker: View {
                         ForEach(accounts) { account in
                             Toggle(account.name, isOn: Binding(get: { selected.contains(account.id) }, set: {
                                 if $0 { selected.insert(account.id) } else { selected.remove(account.id) }
-                            })).toggleStyle(.checkbox).font(.system(size: 13))
+                            })).toggleStyle(.checkbox).font(.body)
                         }
                         ForEach(Array(selected.subtracting(accounts.map(\.id))).sorted(), id: \.self) { id in
                             Toggle("Unavailable account", isOn: Binding(get: { selected.contains(id) }, set: { if !$0 { selected.remove(id) } }))
-                                .toggleStyle(.checkbox).font(.system(size: 13)).foregroundStyle(Theme.Ink.body)
+                                .toggleStyle(.checkbox).font(.body).foregroundStyle(Theme.Ink.body)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
                 }.frame(height: min(CGFloat(accounts.count + selected.subtracting(accounts.map(\.id)).count) * 38 + 16, 230))

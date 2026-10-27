@@ -106,7 +106,7 @@ struct ConnectorConnectSheet: View {
                         Text(direct.accountLabel ?? "Uses the account you approved in the browser.")
                             .foregroundStyle(Theme.Ink.body)
                     }
-                    .font(.system(size: 11)).multilineTextAlignment(.center)
+                    .font(.subheadline).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 16)
                 }
@@ -124,7 +124,7 @@ struct ConnectorConnectSheet: View {
 
                 if startedDirectConnection {
                     Text("Sign in to \(name) in your browser, and then come back to Sentient.")
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.Ink.body)
+                        .font(.callout.weight(.bold)).foregroundStyle(Theme.Ink.body)
                         .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 14)
                 }
@@ -141,7 +141,7 @@ struct ConnectorConnectSheet: View {
 
                 if direct != nil {
                     Button(disconnecting ? "Disconnecting…" : "Disconnect account", action: disconnect)
-                        .buttonStyle(.plain).font(.system(size: 11))
+                        .buttonStyle(.plain).font(.subheadline)
                         .foregroundStyle(Theme.Ink.deepMuted)
                         .padding(.top, 18).disabled(busy)
                 }
@@ -166,20 +166,20 @@ struct ConnectorConnectSheet: View {
         VStack(spacing: 0) {
             if hostedSelected && !hostedCanRead {
                 Text("This selected source is unavailable with your current AI. Choose a supported connection or stop reading it here.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.Ink.body)
+                    .font(.callout).foregroundStyle(Theme.Ink.body)
                     .multilineTextAlignment(.center).padding(.top, 14)
                 Button("Stop reading \(name)", action: stopHostedReading)
-                    .buttonStyle(.plain).font(.system(size: 11)).padding(.top, 14)
+                    .buttonStyle(.plain).font(.subheadline).padding(.top, 14)
             }
             if !hostedConnected {
                 Text(hostedInstructions)
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.Ink.body)
+                    .font(.callout.weight(.bold)).foregroundStyle(Theme.Ink.body)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 14)
 
                 if hostedBackend == .claude && ["outlook-mail", "outlook-calendar"].contains(source.serviceSlug) {
                     Text("Uses Microsoft 365 with a work or school account.")
-                        .font(.system(size: 11)).foregroundStyle(Theme.faint)
+                        .font(.subheadline).foregroundStyle(Theme.faint)
                         .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 12)
                 }
@@ -193,7 +193,7 @@ struct ConnectorConnectSheet: View {
             if hostedConnected {
                 if hostedCanRead {
                     Button("Stop reading \(name)", action: stopHostedReading)
-                        .buttonStyle(.plain).font(.system(size: 11))
+                        .buttonStyle(.plain).font(.subheadline)
                         .foregroundStyle(Theme.Ink.deepMuted)
                         .padding(.top, 18)
                 } else if !hostedSelected {
@@ -207,7 +207,7 @@ struct ConnectorConnectSheet: View {
                     .padding(.top, 14).disabled(busy)
             }
             if let message {
-                Text(message).font(.system(size: 12)).foregroundStyle(Theme.Ink.amber)
+                Text(message).font(.callout).foregroundStyle(Theme.Ink.amber)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, 14)
             }
         }
@@ -224,7 +224,7 @@ struct ConnectorConnectSheet: View {
 
     private var taskOnlyNotice: some View {
         Text("Available for tasks. This app does not support knowledge-base analysis.")
-            .font(.system(size: 11)).foregroundStyle(Theme.Ink.body)
+            .font(.subheadline).foregroundStyle(Theme.Ink.body)
             .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
     }
 
@@ -237,9 +237,9 @@ struct ConnectorConnectSheet: View {
 
     private func bullet(_ icon: String, _ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 9) {
-            Image(systemName: icon).font(.system(size: 10.5, weight: .medium))
+            Image(systemName: icon).font(.subheadline.weight(.medium))
                 .foregroundStyle(Theme.faint).frame(width: 16)
-            Text(text).font(.system(size: 12)).foregroundStyle(Theme.Ink.body)
+            Text(text).font(.callout).foregroundStyle(Theme.Ink.body)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -264,7 +264,7 @@ struct ConnectorConnectSheet: View {
                     .foregroundStyle(Theme.faint)
             }
         }
-        .font(.system(size: 11, weight: .medium))
+        .font(.subheadline.weight(.medium))
         .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
     }
 
@@ -407,13 +407,13 @@ private struct ConnectorKnowledgeControl: View {
             SettingsHairline()
             HStack(spacing: 12) {
                 Text("Use for knowledge base")
-                    .font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white)
+                    .font(.body.weight(.medium)).foregroundStyle(.primary)
                 Spacer(minLength: 12)
                 Toggle("Use for knowledge base", isOn: $enabled)
                     .labelsHidden().toggleStyle(.switch).tint(Theme.Ink.green)
             }
             Text("Include this app in your analysis and nightly updates.")
-                .font(.system(size: 11)).foregroundStyle(Theme.Ink.body)
+                .font(.subheadline).foregroundStyle(Theme.Ink.body)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }

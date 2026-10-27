@@ -67,14 +67,14 @@ struct CloudConnectSheet: View {
                 Text(openedConnectorPage
                      ? "Connect \(service.title) to your \(backend == .claude ? "Claude" : "ChatGPT") account, and then come back to Sentient."
                      : "Sentient reads through your \(backend == .claude ? "Claude" : "ChatGPT") connector. Enable it and sign in on that page, then press Done.")
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.Ink.body)
+                    .font(.callout.weight(.bold)).foregroundStyle(Theme.Ink.body)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true).padding(.top, 14)
             }
 
             if selected && (backend == .custom || CodexAuth.connectorsLocked) {
                 Text("This selected source is unavailable with your current AI. You can stop reading it here or choose a supported connection.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.Ink.body)
+                    .font(.callout).foregroundStyle(Theme.Ink.body)
                     .multilineTextAlignment(.center).padding(.top, 14)
             }
             connectButton.padding(.top, 26)
@@ -86,7 +86,7 @@ struct CloudConnectSheet: View {
                 doneButton.padding(.top, 14)
             }
             if let connectionProblem {
-                Text(connectionProblem).font(.system(size: 12)).foregroundStyle(Theme.Ink.amber)
+                Text(connectionProblem).font(.callout).foregroundStyle(Theme.Ink.amber)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, 14)
             }
         }
@@ -128,7 +128,7 @@ struct CloudConnectSheet: View {
     private var stopLink: some View {
         Button(service.stopLine, action: stopReading)
             .buttonStyle(.plain)
-            .font(.system(size: 11))
+            .font(.subheadline)
             .foregroundStyle(Theme.Ink.deepMuted)
     }
 
@@ -169,7 +169,7 @@ struct CloseHoverButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(hover ? .white : Theme.Ink.label)
                 .frame(width: 24, height: 24)
                 .background(Circle().fill(.white.opacity(hover ? 0.1 : 0)))

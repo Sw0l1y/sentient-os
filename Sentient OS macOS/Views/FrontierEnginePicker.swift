@@ -240,17 +240,17 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
         } else if claude.loggingIn {
             LoginLinkButton(url: claude.loginURL)
             Text("Finish signing in in your browser.")
-                .font(.system(size: 12.5))
+                .font(.body)
                 .foregroundStyle(Theme.Ink.body)
             MonoWaitLine("waiting for the browser sign-in…")
         } else if claude.installGaveUp && !claude.installed {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Sentient couldn't finish installing Claude Code automatically.")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(Theme.Ink.body)
                 SettingsProse("You can install it yourself in a minute with this Terminal command, then come back here:")
                 Text("curl -fsSL https://claude.ai/install.sh | bash")
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(.subheadline, design: .monospaced))
                     .foregroundStyle(Theme.Ink.statusInk)
                     .textSelection(.enabled)
                 SettingsPillButton(title: "Try again") { prepareClaude(signIn: true) }
@@ -363,7 +363,7 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
                      placeholder: "low · none · xhigh · whatever your model supports",
                      text: $reasoningRaw)
             if formStyle {
-                Text("Applies wherever this model runs.").font(.system(size: 12)).foregroundStyle(SettingsStyle.secondary)
+                Text("Applies wherever this model runs.").font(.callout).foregroundStyle(SettingsStyle.secondary)
             } else {
                 MonoCaps("applies everywhere this model runs", size: 7.5, tracking: 1.6, color: Theme.Ink.deepMuted)
             }
@@ -408,7 +408,7 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
                     invalidate()
                 }
             if formStyle {
-                Text("Stored in your Mac’s Keychain.").font(.system(size: 12)).foregroundStyle(SettingsStyle.secondary)
+                Text("Stored in your Mac’s Keychain.").font(.callout).foregroundStyle(SettingsStyle.secondary)
             } else {
                 MonoCaps("stored in your mac's keychain", size: 7.5, tracking: 1.6, color: Theme.Ink.deepMuted)
             }
@@ -419,7 +419,7 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
         if formStyle {
             Text(["BASE URL": "Base URL", "MODEL": "Model", "REASONING": "Reasoning",
                   "API KEY": "API key", "OPENROUTER API KEY": "OpenRouter API key"][label] ?? label)
-                .font(.system(size: 14, weight: .medium)).foregroundStyle(.white)
+                .font(.body.weight(.medium)).foregroundStyle(.primary)
         } else {
             MonoCaps(label, size: 8.5, tracking: 2.0, color: Theme.Ink.deepMuted)
         }
@@ -573,7 +573,7 @@ struct FrontierActiveLine: View {
     var body: some View {
         HStack(spacing: 8) {
             HealthDot(color: Theme.Ink.green)
-            Text(text).font(.system(size: formStyle ? 14 : 12, weight: .medium)).foregroundStyle(.white)
+            Text(text).font(.system(size: formStyle ? 14 : 12, weight: .medium)).foregroundStyle(.primary)
         }
     }
 }

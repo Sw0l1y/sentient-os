@@ -177,7 +177,7 @@ struct HotkeyLabView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("HOTKEY LAB").font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.faint)
+                Text("HOTKEY LAB").font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
                 Spacer()
                 Button("Done") { dismiss() }.controlSize(.small)
             }
@@ -207,7 +207,7 @@ struct HotkeyLabView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.verdictColor(.survivor))
-                Text("Zero permission").font(.caption.weight(.semibold)).foregroundStyle(.white)
+                Text("Zero permission").font(.caption.weight(.semibold)).foregroundStyle(.primary)
                 Spacer()
                 Button("Restart monitors") { lab.startListening() }
                     .buttonStyle(.bordered).controlSize(.small).tint(Theme.accent)
@@ -216,7 +216,7 @@ struct HotkeyLabView: View {
                 .font(.caption2).foregroundStyle(Theme.faint).fixedSize(horizontal: false, vertical: true)
             HStack {
                 Text("diagnostic (ignore — NOT required):  ListenEvent preflight = \(lab.preflightListenEvent ? "true" : "false")  ·  Accessibility = \(lab.trustedForAccessibility ? "true" : "false")")
-                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.faint)
+                    .font(.system(.caption, design: .monospaced)).foregroundStyle(Theme.faint)
                 Spacer()
                 Button("Re-check") { lab.refreshDiagnostics() }
                     .buttonStyle(.borderless).controlSize(.small).tint(Theme.accent)
@@ -231,7 +231,7 @@ struct HotkeyLabView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Circle().fill(lab.rightCmdHeld ? Theme.accent : Theme.stroke).frame(width: 10, height: 10)
-                Text("Hold right ⌘").font(.caption.weight(.semibold)).foregroundStyle(.white)
+                Text("Hold right ⌘").font(.caption.weight(.semibold)).foregroundStyle(.primary)
                 Spacer()
                 Text(lab.listening ? "LISTENING" : "OFF").font(.caption2.weight(.bold))
                     .foregroundStyle(lab.listening ? Theme.verdictColor(.survivor) : Theme.faint)
@@ -250,7 +250,7 @@ struct HotkeyLabView: View {
     private var logPane: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("EVENT LOG").font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.faint)
+                Text("EVENT LOG").font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
                 Spacer()
                 Button("Clear") { lab.log.removeAll() }.buttonStyle(.borderless).controlSize(.small).tint(Theme.accent)
             }
@@ -258,7 +258,7 @@ struct HotkeyLabView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(Array(lab.log.enumerated()), id: \.offset) { i, line in
-                            Text(line).font(.system(size: 10, design: .monospaced))
+                            Text(line).font(.system(.caption, design: .monospaced))
                                 .foregroundStyle(Theme.secondary).id(i)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }

@@ -28,10 +28,10 @@ struct DoubleTapPane: View {
                             .accessibilityLabel("Double Tap custom instructions")
                         if instructions.trimmingCharacters(in: .whitespacesAndNewlines).utf8.count > CustomInstructions.doubleTapByteLimit {
                             Text("These instructions are too long. Shorten them before using Double Tap.")
-                                .font(.system(size: 13)).foregroundStyle(Theme.Ink.red)
+                                .font(.body).foregroundStyle(Theme.Ink.red)
                         } else {
                             Text("Saved automatically for every reply.")
-                                .font(.system(size: 12)).foregroundStyle(SettingsStyle.secondary)
+                                .font(.callout).foregroundStyle(SettingsStyle.secondary)
                         }
                     }
                 }
@@ -192,15 +192,15 @@ private struct DoubleTapCredentials: View {
                              : "Leave empty if your server does not require an API key.")
                     }
                 }
-                .font(.system(size: 12)).foregroundStyle(Theme.Ink.label)
+                .font(.callout).foregroundStyle(Theme.Ink.label)
                 if let keyError {
-                    Text(keyError).font(.system(size: 13)).foregroundStyle(Theme.Ink.red)
+                    Text(keyError).font(.body).foregroundStyle(Theme.Ink.red)
                 }
             }
 
             VStack(alignment: .leading, spacing: 9) {
                 Text("Model")
-                    .font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.Ink.statusInk)
+                    .font(.title3.weight(.medium)).foregroundStyle(Theme.Ink.statusInk)
                 if provider.hasModelPresets {
                     SettingsMenu(title: "Model", value: DoubleTapProvider.modelPresets.first(where: { provider.modelID($0.id) == model })?.label ?? "Other model…", selection: modelSelection) {
                         ForEach(DoubleTapProvider.modelPresets, id: \.id) { preset in
@@ -219,7 +219,7 @@ private struct DoubleTapCredentials: View {
                 if provider.hasCustomEndpoint {
                     SettingsProse("Choose a model with enough context for your knowledge base. If you use a local server, keep it running with the model loaded. Double Tap stops after 30 seconds.")
                     Text("Saved automatically. Applies to the next Double Tap reply.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.Ink.label)
+                        .font(.callout).foregroundStyle(Theme.Ink.label)
                 } else {
                     SettingsProse("Usage is billed to your \(provider.name) account.")
                 }
@@ -231,16 +231,16 @@ private struct DoubleTapCredentials: View {
     private var endpointFields: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Base URL")
-                .font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.Ink.statusInk)
+                .font(.title3.weight(.medium)).foregroundStyle(Theme.Ink.statusInk)
             inputField(provider.defaultBaseURL.isEmpty ? "https://your-endpoint.example/v1" : provider.defaultBaseURL,
                        text: $baseURL, label: "\(provider.name) base URL")
             if DoubleTapProvider.endpoint(baseURL: baseURL,
                                           api: DoubleTapProvider.API(rawValue: apiRaw) ?? .chatCompletions) == nil {
                 Text("Enter a valid http:// or https:// base URL, including its API prefix (usually /v1).")
-                    .font(.system(size: 13)).foregroundStyle(Theme.Ink.red)
+                    .font(.body).foregroundStyle(Theme.Ink.red)
             }
             Text("API format")
-                .font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.Ink.statusInk)
+                .font(.title3.weight(.medium)).foregroundStyle(Theme.Ink.statusInk)
                 .padding(.top, 7)
             SettingsMenu(title: "API format", value: (DoubleTapProvider.API(rawValue: apiRaw) ?? .chatCompletions).label, selection: $apiRaw) {
                 ForEach(DoubleTapProvider.API.allCases) { api in

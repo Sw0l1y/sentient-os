@@ -53,7 +53,7 @@ struct OnboardingPlanView: View {
                     Text("Right now, Sentient uses your ChatGPT plan's Codex frontier model for a small part of its compute.")
                     Text("You can still build your private knowledge base from this Mac and offer it to your AIs.")
                 }
-                .font(.system(size: 14.5))
+                .font(.title3)
                 .foregroundStyle(Theme.secondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
@@ -84,7 +84,7 @@ struct OnboardingPlanView: View {
                 OnboardingWhisper("YOUR CHATGPT PLAN · \(planName.uppercased())")
 
                 Text("Finish upgrading in your browser.\nThis screen notices on its own.")
-                    .font(.system(size: 15))
+                    .font(.title3)
                     .foregroundStyle(Theme.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
@@ -201,12 +201,12 @@ struct OnboardingPlanView: View {
     private func featureRow(_ icon: String, _ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 11) {
             Image(systemName: icon)
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(Theme.Ink.label)
                 .frame(width: 16)
             Text(text)
-                .font(.system(size: 13.5))
-                .foregroundStyle(.white.opacity(0.78))
+                .font(.body)
+                .foregroundStyle(.primary)
         }
     }
 }

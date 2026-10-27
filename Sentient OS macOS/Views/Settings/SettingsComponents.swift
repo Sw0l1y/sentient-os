@@ -376,11 +376,11 @@ struct SettingsChip: View {
 struct LockedChipTip: View {
     var body: some View {
         Text(CodexAuth.connectorLockedTip)
-            .font(.system(size: 10.5, weight: .medium))
-            .foregroundStyle(.white.opacity(0.88))
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.primary)
             .padding(.horizontal, 10).padding(.vertical, 5)
             .background(Color(white: 0.14), in: Capsule())
-            .overlay(Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 1))
+            .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
             .fixedSize()
             .allowsHitTesting(false)
             .transition(.opacity)
@@ -488,7 +488,7 @@ struct StatusLine: View {
             Spacer(minLength: 12)
             if formStyle {
                 Text(note.prefix(1).uppercased() + note.dropFirst())
-                    .font(.system(size: 13))
+                    .font(.body)
                     .foregroundStyle(health == .ok ? SettingsStyle.secondary : dot)
                     .multilineTextAlignment(.trailing)
                     .fixedSize(horizontal: false, vertical: true)
@@ -530,7 +530,7 @@ struct SettingsTextBox: View {
                 .padding(.horizontal, 7).padding(.vertical, 8)
         }
         .frame(minHeight: formStyle ? 96 : 64)
-        .background(Color.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
             .strokeBorder(formStyle && focused ? Color.white.opacity(0.38) : Theme.stroke, lineWidth: 1))
     }

@@ -47,7 +47,7 @@ struct ProactivePane: View {
                                 .frame(height: 104)
                                 .accessibilityLabel("Sidekick custom instructions")
                             if let memoryError {
-                                Text(memoryError).font(.system(size: 12)).foregroundStyle(.red)
+                                Text(memoryError).font(.callout).foregroundStyle(.red)
                                     .accessibilityLabel("Sidekick memory error: " + memoryError)
                                 if hasUnsavedMemoryEdit {
                                     Button("Retry saving") { saveMemory(memoryText) }
@@ -81,7 +81,7 @@ struct ProactivePane: View {
                         .accessibilityLabel("Morning suggestion instructions")
                 }
                 Text("Instructions and preferences save automatically.")
-                    .font(.system(size: 12)).foregroundStyle(SettingsStyle.secondary)
+                    .font(.callout).foregroundStyle(SettingsStyle.secondary)
             }
         }
         .onAppear(perform: refreshMemory)
@@ -123,7 +123,7 @@ struct ProactivePane: View {
 
     private func instructionLabel(_ title: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(.white)
+            Text(title).font(.title3.weight(.medium)).foregroundStyle(.primary)
             SettingsProse(detail)
         }
     }

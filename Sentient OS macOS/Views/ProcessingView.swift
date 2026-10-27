@@ -129,9 +129,9 @@ struct ProcessingView: View {
     private var loadingView: some View {
         VStack(spacing: 22) {
             Image(systemName: connectors.isEmpty ? cloudIcon : "cpu").font(.system(size: 46))
-                .foregroundStyle(.white.opacity(0.6)).symbolEffect(.pulse)
+                .foregroundStyle(.secondary).symbolEffect(.pulse)
             Text(connectors.isEmpty ? cloudLabel : "Loading on-device model")
-                .font(.title3.weight(.semibold)).foregroundStyle(.white)
+                .font(.title3.weight(.semibold)).foregroundStyle(.primary)
             ProgressView().tint(.white.opacity(0.4))
         }
     }
@@ -142,7 +142,7 @@ struct ProcessingView: View {
         if showPrompt {
             HStack(spacing: 0) {
                 promptPane
-                Rectangle().fill(.white.opacity(0.12)).frame(width: 1)
+                Rectangle().fill(.quaternary).frame(width: 1)
                 centerColumn.frame(maxWidth: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -155,10 +155,10 @@ struct ProcessingView: View {
     private var centerColumn: some View {
         VStack(spacing: 24) {
             Image(systemName: "sparkles").font(.system(size: 46))
-                .foregroundStyle(.white.opacity(0.65)).symbolEffect(.breathe, options: .speed(0.7))
+                .foregroundStyle(.secondary).symbolEffect(.breathe, options: .speed(0.7))
 
             Text(progress.sourceRead.map { "Analyzing \($0.name)" } ?? "Analyzing your sources")
-                .display(26).foregroundStyle(.white)
+                .display(26).foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
 
             VStack(spacing: 10) {
@@ -169,7 +169,7 @@ struct ProcessingView: View {
                     Spacer()
                     Text("\(percent)%").monospacedDigit()
                 }
-                .font(.subheadline).foregroundStyle(.white.opacity(0.9))
+                .font(.subheadline).foregroundStyle(.primary)
             }
             .frame(width: 320)
 
@@ -186,15 +186,15 @@ struct ProcessingView: View {
         let prompt = progress.lastPrompt ?? ""
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("PROMPT").font(.caption2.weight(.semibold)).tracking(1.5)
-                    .foregroundStyle(.white.opacity(0.45))
+                Text("PROMPT").font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
                 Spacer()
                 Text("\(prompt.count) chars").font(.caption2).monospacedDigit()
-                    .foregroundStyle(.white.opacity(0.25))
+                    .foregroundStyle(.quaternary)
             }
             ScrollView {
                 Text(prompt.isEmpty ? "—" : prompt)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(.subheadline, design: .monospaced))
                     .foregroundStyle(.white.opacity(prompt.isEmpty ? 0.25 : 0.82))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -203,7 +203,7 @@ struct ProcessingView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 14))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.08)))
     }
 
@@ -215,7 +215,7 @@ struct ProcessingView: View {
             if progress.failed > 0 { countTag(progress.failed, "failed", Theme.Ink.amber) }
             if let last = progress.lastSeconds {
                 Text("· \(String(format: "%.1f", last))s/file")
-                    .font(.caption).foregroundStyle(.white.opacity(0.4))
+                    .font(.caption).foregroundStyle(.tertiary)
             }
         }
     }
@@ -223,26 +223,26 @@ struct ProcessingView: View {
     private func countTag(_ n: Int, _ label: String, _ color: Color) -> some View {
         HStack(spacing: 4) {
             Text("\(n)").font(.caption.weight(.bold)).foregroundStyle(color).monospacedDigit()
-            Text(label).font(.caption).foregroundStyle(.white.opacity(0.45))
+            Text(label).font(.caption).foregroundStyle(.tertiary)
         }
     }
 
     private var justProcessed: some View {
         VStack(spacing: 12) {
-            Rectangle().fill(.white.opacity(0.1)).frame(height: 1).padding(.horizontal, 60)
+            Rectangle().fill(.quaternary).frame(height: 1).padding(.horizontal, 60)
             Text(progress.sourceRead?.caption ?? "JUST PROCESSED")
-                .font(.caption2).tracking(1.5).foregroundStyle(.white.opacity(0.3))
+                .font(.caption2).foregroundStyle(.tertiary)
             HStack(alignment: .top, spacing: 16) {
                 if let source = progress.sourceRead {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 14).fill(.white.opacity(0.04))
+                        RoundedRectangle(cornerRadius: 14).fill(.quinary)
                         if source.status == .reading {
                             Image(systemName: "arrow.down.doc")
-                                .font(.system(size: 25)).foregroundStyle(Theme.secondary)
+                                .font(.largeTitle).foregroundStyle(Theme.secondary)
                                 .symbolEffect(.pulse)
                         } else {
                             Image(systemName: source.status == .failed ? "exclamationmark.triangle" : "text.book.closed")
-                                .font(.system(size: 25))
+                                .font(.largeTitle)
                                 .foregroundStyle(source.status == .failed ? Theme.Ink.amber : Theme.secondary)
                         }
                     }.frame(width: 66, height: 66)
@@ -291,7 +291,7 @@ struct ProcessingView: View {
                             }
                         }
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.3))
+                        .foregroundStyle(.tertiary)
                         .frame(maxWidth: 340, alignment: .leading)
                         .padding(.top, 2)
                     }
@@ -314,11 +314,11 @@ struct ProcessingView: View {
             Orb(mode: .processing, size: 110)
             Text(prepStatus)
                 .display(22)
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
             if let prepSubtext {
                 Text(prepSubtext)
-                    .font(.caption).foregroundStyle(.white.opacity(0.4))
+                    .font(.caption).foregroundStyle(.tertiary)
             }
             liveThought.padding(.top, 6)
             patienceLine.padding(.top, 12)
@@ -337,12 +337,12 @@ struct ProcessingView: View {
                     .transition(.blurReplace)
             } else {
                 VStack(spacing: 7) {
-                    Text("THINKING").font(.caption2).tracking(1.5)
-                        .foregroundStyle(.white.opacity(0.3))
+                    Text("THINKING").font(.caption2)
+                        .foregroundStyle(.tertiary)
                     VStack(spacing: 5) {
                         ForEach(Array(thoughtTrail.enumerated()), id: \.element.id) { i, thought in
                             Text(thought.text)
-                                .font(.system(size: 11.5, design: .monospaced))
+                                .font(.system(.callout, design: .monospaced))
                                 .foregroundStyle(.white.opacity(trailOpacity(age: thoughtTrail.count - 1 - i)))
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -402,20 +402,20 @@ struct ProcessingView: View {
         VStack(spacing: 12) {
             Text(patienceLong ? "STILL WORKING · KEEP SENTIENT OPEN"
                  : (updatingExistingKnowledge ? "UPDATING YOUR KNOWLEDGE" : "BUILDING YOUR KNOWLEDGE"))
-                .font(.caption2).tracking(1.5)
-                .foregroundStyle(.white.opacity(0.3))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
             HStack(spacing: 9) {
                 Image(systemName: "macbook")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
                 Text("Keep Sentient open in your menu bar.")
                     .display(17)
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(.primary)
             }
             Text(updatingExistingKnowledge
                  ? "Your existing knowledge stays in place while this update is prepared. Large libraries can take several passes; completed work is kept."
                  : "The first analysis can take several passes for a large library. Completed work is kept, and future updates can run overnight while Sentient stays open in your menu bar.")
-                .font(.callout).foregroundStyle(.white.opacity(0.45))
+                .font(.callout).foregroundStyle(.tertiary)
                 .lineSpacing(2)
                 .padding(.top, 2)
         }
@@ -429,7 +429,7 @@ struct ProcessingView: View {
 
     private var sourceFailuresView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("SOURCES TO RETRY").font(.caption2).tracking(1.5).foregroundStyle(Theme.Ink.amber)
+            Text("SOURCES TO RETRY").font(.caption2).foregroundStyle(Theme.Ink.amber)
             ForEach(progress.sourceReadFailures.keys.sorted(), id: \.self) { name in
                 Text("\(name): \(progress.sourceReadFailures[name] ?? "The read did not finish.")")
                     .font(.caption).foregroundStyle(Theme.secondary).lineLimit(2)
@@ -453,10 +453,10 @@ struct ProcessingView: View {
             VStack(spacing: 6) {
                 Text(!progress.sourceReadFailures.isEmpty ? "Some sources need another try"
                     : needsAnotherPass ? "Analysis saved" : "Analysis complete")
-                    .display(28).foregroundStyle(.white).multilineTextAlignment(.center)
+                    .display(28).foregroundStyle(.primary).multilineTextAlignment(.center)
                 if progress.total > 0 || progress.done > 0 {
                     Text("\(progress.survivors) kept · \(progress.junk) junk · \(progress.quietReads) quiet · \(progress.failed) failed")
-                        .font(.subheadline).foregroundStyle(.white.opacity(0.55))
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
                 if progress.mailIncomplete || progress.mailDeferred > 0 {
                     Text(UserDefaults.standard.string(forKey: AppleMailHealth.key) ?? "Apple Mail will resume during the next analysis.")
@@ -488,8 +488,8 @@ struct ProcessingView: View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 46))
                 .foregroundStyle(.orange.opacity(0.85))
-            Text(Self.failTitle(kind)).font(.title3.weight(.semibold)).foregroundStyle(.white)
-            Text(Self.failBody(kind: kind, message: message)).font(.caption).foregroundStyle(.white.opacity(0.5))
+            Text(Self.failTitle(kind)).font(.title3.weight(.semibold)).foregroundStyle(.primary)
+            Text(Self.failBody(kind: kind, message: message)).font(.caption).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center).frame(maxWidth: 360)
             HStack(spacing: 12) {
                 Button(action: onExitEarly ?? onDone) {
@@ -520,7 +520,7 @@ struct ProcessingView: View {
             }
             if loginStarted, (ModelBackend.current == .claude ? claude.loggingIn : codex.loggingIn) {
                 Text("A browser window opened. Finish signing in there; I'll retry on my own.")
-                    .font(.caption).foregroundStyle(.white.opacity(0.4))
+                    .font(.caption).foregroundStyle(.tertiary)
             }
         }
         // The browser-login auto-notice, same as Settings → Health and onboarding: while our
@@ -588,19 +588,19 @@ struct ProcessingView: View {
         VStack(spacing: 22) {
             Image(systemName: state == .scheduled ? "moon.stars" : "pause.circle")
                 .font(.system(size: 40, weight: .light)).foregroundStyle(Theme.secondary)
-            Text(session.statusLine).display(27).foregroundStyle(.white)
+            Text(session.statusLine).display(27).foregroundStyle(.primary)
             if isWaiting {
                 if state == .waiting(.model) {
                     OnboardingModelDownloadView(download: ModelDownload.shared)
                         .frame(height: 230)
                 } else {
-                    Text(session.waitingDetail).font(.system(size: 14)).foregroundStyle(Theme.secondary)
+                    Text(session.waitingDetail).font(.body).foregroundStyle(Theme.secondary)
                 }
             } else if let notice = session.record.notice {
-                Text(notice).font(.system(size: 14)).foregroundStyle(Theme.secondary)
+                Text(notice).font(.body).foregroundStyle(Theme.secondary)
             }
             Text(CodexAuth.knowledgeBaseOnly ? "Your main window is ready to use." : "Sidekick is ready to use in your main window.")
-                .font(.system(size: 13)).foregroundStyle(Theme.faint)
+                .font(.body).foregroundStyle(Theme.faint)
             if state == .scheduled || state == .idle {
                 OnboardingNextButton(title: "Start now") { session.requestNow() }
                     .disabled(session.isBusy || session.isSuspended)
@@ -615,9 +615,9 @@ struct ProcessingView: View {
         VStack(spacing: 12) {
             Button { if paused { session.retry() } else { session.pause() } } label: {
                 Text(paused ? "Resume Analysis" : "Pause Analysis")
-                    .font(.subheadline.weight(.medium)).foregroundStyle(.white.opacity(0.9))
+                    .font(.subheadline.weight(.medium)).foregroundStyle(.primary)
                     .padding(.horizontal, 24).padding(.vertical, 10)
-                    .background(Capsule().fill(.white.opacity(0.08)))
+                    .background(Capsule().fill(.quaternary))
                     .overlay(Capsule().strokeBorder(.white.opacity(0.18)))
             }
             .buttonStyle(.plain)
@@ -625,7 +625,7 @@ struct ProcessingView: View {
             Text(paused ? "Your progress is saved. Resume when you're ready."
                  : isWaiting ? "Keep Sentient open. Analysis will start when your Mac is ready."
                  : "You can leave this page. Analysis continues in the background.")
-                .font(.caption).foregroundStyle(.white.opacity(0.45))
+                .font(.caption).foregroundStyle(.tertiary)
             if showPrompt {
                 Text(progress.lastPath ?? "").font(.caption.monospaced()).foregroundStyle(Theme.faint)
                     .lineLimit(1).truncationMode(.middle)

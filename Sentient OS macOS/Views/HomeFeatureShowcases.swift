@@ -40,7 +40,7 @@ struct HomeProactiveShowcase: View {
             } else {
                 HStack {
                     Label("Prepared overnight", systemImage: "sunrise")
-                        .font(.system(size: 13, weight: .medium)).foregroundStyle(SidekickStyle.ink)
+                        .font(.body.weight(.medium)).foregroundStyle(SidekickStyle.ink)
                     Spacer()
                     MonoCaps("2 ready", size: 8.5, tracking: 1.5, color: Theme.faint)
                 }
@@ -56,7 +56,7 @@ struct HomeProactiveShowcase: View {
                     }
                 }
                 Text("Sentient prepares the work. You decide what happens next.")
-                    .font(.system(size: 11.5)).foregroundStyle(SidekickStyle.secondary)
+                    .font(.callout).foregroundStyle(SidekickStyle.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -68,13 +68,13 @@ struct HomeProactiveShowcase: View {
             MonoCaps(example == .followup ? "DRAFT FOLLOW-UP" : "CANCELLATION PLAN",
                      size: 9, tracking: 1.8, color: accent)
             Text(example == .followup ? "Northstar: next steps" : "Before Pulse renews")
-                .font(.system(size: 25, weight: .semibold)).foregroundStyle(SidekickStyle.ink)
+                .font(.largeTitle.weight(.semibold)).foregroundStyle(SidekickStyle.ink)
             if example == .followup {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("To Alex Chen", systemImage: "envelope")
-                        .font(.system(size: 11.5)).foregroundStyle(SidekickStyle.secondary)
+                        .font(.callout).foregroundStyle(SidekickStyle.secondary)
                     Text("Hey Alex,\n\nHere’s the rollout plan: security review Thursday, then the wider team on Friday. I’ll send the SSO checklist ahead of the review.\n\nCould you confirm who should join from your side?")
-                        .font(.system(size: 13.5)).lineSpacing(5).foregroundStyle(SidekickStyle.ink)
+                        .font(.body).lineSpacing(5).foregroundStyle(SidekickStyle.ink)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .showcasePaper(accent: accent)
@@ -82,7 +82,7 @@ struct HomeProactiveShowcase: View {
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("$149").font(.system(size: 30, weight: .medium)).foregroundStyle(SidekickStyle.ink)
-                    Text("/ month, starting tomorrow").font(.system(size: 12)).foregroundStyle(SidekickStyle.secondary)
+                    Text("/ month, starting tomorrow").font(.callout).foregroundStyle(SidekickStyle.secondary)
                 }
                 VStack(alignment: .leading, spacing: 14) {
                     ShowcaseStep(number: "1", title: "Confirm the workspace", detail: "Check the plan and renewal date in billing.")
@@ -92,7 +92,7 @@ struct HomeProactiveShowcase: View {
                 ShowcaseSources(first: "Billing email", firstSymbol: "envelope", second: "Trial notes", secondSymbol: "doc.text")
             }
             Label("Nothing is sent or changed without your approval.", systemImage: "hand.raised")
-                .font(.system(size: 11)).foregroundStyle(SidekickStyle.secondary)
+                .font(.subheadline).foregroundStyle(SidekickStyle.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -117,11 +117,11 @@ struct HomeDoubleTapShowcase: View {
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 12 : 18) {
             HStack(spacing: 10) {
-                Text("A").font(.system(size: 12, weight: .medium)).foregroundStyle(SidekickStyle.ink)
-                    .frame(width: 34, height: 34).background(.white.opacity(0.07), in: Circle())
+                Text("A").font(.callout.weight(.medium)).foregroundStyle(SidekickStyle.ink)
+                    .frame(width: 34, height: 34).background(.quaternary, in: Circle())
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Alex Chen").font(.system(size: 12, weight: .medium)).foregroundStyle(SidekickStyle.ink)
-                    Text("Northstar · To you").font(.system(size: 10.5)).foregroundStyle(SidekickStyle.secondary)
+                    Text("Alex Chen").font(.callout.weight(.medium)).foregroundStyle(SidekickStyle.ink)
+                    Text("Northstar · To you").font(.subheadline).foregroundStyle(SidekickStyle.secondary)
                 }
                 Spacer(minLength: 8)
                 Button {
@@ -129,24 +129,24 @@ struct HomeDoubleTapShowcase: View {
                     else { replaying = true; replay &+= 1 }
                 } label: {
                     Label(reducedMotion ? (draftVisible ? "Hide draft" : "Show draft") : "Replay", systemImage: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .padding(.horizontal, 11).padding(.vertical, 7)
-                        .background(.white.opacity(0.06), in: Capsule())
+                        .background(.quinary, in: Capsule())
                 }
                 .buttonStyle(SidekickPressStyle()).foregroundStyle(SidekickStyle.ink).disabled(replaying)
                 .accessibilityIdentifier("personalSetup.doubleTap.replay")
             }
             VStack(alignment: .leading, spacing: 10) {
                 if !compact {
-                    Text("Northstar rollout").font(.system(size: 22, weight: .semibold)).foregroundStyle(SidekickStyle.ink)
+                    Text("Northstar rollout").font(.title.weight(.semibold)).foregroundStyle(SidekickStyle.ink)
                 }
                 Text("Can we expand the pilot? What do you need from us before the rollout?")
-                    .font(.system(size: 13)).lineSpacing(4).foregroundStyle(SidekickStyle.secondary)
+                    .font(.body).lineSpacing(4).foregroundStyle(SidekickStyle.secondary)
             }
             VStack(alignment: .leading, spacing: compact ? 10 : 13) {
                 HStack {
                     Label("Your reply", systemImage: "arrowshape.turn.up.left")
-                        .font(.system(size: 11.5, weight: .medium)).foregroundStyle(SidekickStyle.secondary)
+                        .font(.callout.weight(.medium)).foregroundStyle(SidekickStyle.secondary)
                     Spacer()
                     HStack(spacing: 5) {
                         keycap(1)
@@ -168,14 +168,14 @@ struct HomeDoubleTapShowcase: View {
                 .frame(minHeight: compact ? 0 : 66, alignment: .topLeading)
                 .transition(.opacity)
                 if !compact {
-                    Rectangle().fill(.white.opacity(0.06)).frame(height: 1)
+                    Rectangle().fill(.quinary).frame(height: 1)
                     ShowcaseSources(first: "Pilot notes", firstSymbol: "doc.text", second: "Thursday review", secondSymbol: "calendar")
                 }
             }
             .showcasePaper(padding: compact ? 12 : 18)
             if !compact {
                 Text("Your voice, with the details you didn’t have to type.")
-                    .font(.system(size: 11.5)).foregroundStyle(SidekickStyle.secondary)
+                    .font(.callout).foregroundStyle(SidekickStyle.secondary)
             }
         }
         .task(id: replay) {
@@ -195,7 +195,7 @@ struct HomeDoubleTapShowcase: View {
     }
 
     private func keycap(_ index: Int) -> some View {
-        Text(ShortcutPreferences.current.label).font(.system(size: 10, weight: .medium))
+        Text(ShortcutPreferences.current.label).font(.caption.weight(.medium))
             .foregroundStyle(.white.opacity(pressedKey == index ? 1 : 0.55))
             .padding(.horizontal, 7).frame(height: 24)
             .background(.white.opacity(pressedKey == index ? 0.18 : 0.045), in: RoundedRectangle(cornerRadius: 5))
@@ -244,7 +244,7 @@ struct HomeKnowledgeShowcase: View {
                              size: 8.5, tracking: 1.8, color: SkyRenderer.domainColor(selected.domain))
                     Text(selected.title).font(.system(size: compact ? 22 : 25, weight: .semibold))
                         .foregroundStyle(SidekickStyle.ink)
-                    Text(selected.preview).font(.system(size: 13.5)).lineSpacing(5)
+                    Text(selected.preview).font(.body).lineSpacing(5)
                         .foregroundStyle(SidekickStyle.secondary).fixedSize(horizontal: false, vertical: true)
                     if let index = graph.nodes.firstIndex(where: { $0.url == selected.url }) {
                         let related = graph.adjacency[index].filter { !graph.nodes[$0].isRoot }.sorted {
@@ -253,12 +253,12 @@ struct HomeKnowledgeShowcase: View {
                             return leftCrosses != rightCrosses ? leftCrosses : $0 < $1
                         }.prefix(3)
                         if !related.isEmpty {
-                            Rectangle().fill(.white.opacity(0.07)).frame(height: 1)
+                            Rectangle().fill(.quaternary).frame(height: 1)
                             MonoCaps("Connected notes", size: 8, tracking: 1.4, color: Theme.faint)
                             ForEach(Array(related), id: \.self) { index in
                                 Button { navigate(to: graph.nodes[index].url) } label: {
                                     Label(graph.nodes[index].title, systemImage: "link")
-                                        .font(.system(size: 12)).foregroundStyle(Theme.knowledgeLink)
+                                        .font(.callout).foregroundStyle(Theme.knowledgeLink)
                                         .padding(.vertical, 3)
                                 }.buttonStyle(.plain)
                             }
@@ -291,19 +291,19 @@ struct HomeKnowledgeShowcase: View {
                         MonoCaps("\(graph.nodes.count) notes · \(graph.domains.count) constellations",
                                  size: 8, tracking: 1.3, color: Theme.faint)
                         Spacer()
-                        Text("Hover, drag, or zoom").font(.system(size: 10.5)).foregroundStyle(SidekickStyle.secondary)
+                        Text("Hover, drag, or zoom").font(.subheadline).foregroundStyle(SidekickStyle.secondary)
                     }
                 }
                 // These are also a keyboard/VoiceOver route into the same sample notes.
                 HStack(spacing: 7) {
-                    Text("Explore").font(.system(size: 10.5)).foregroundStyle(SidekickStyle.secondary)
+                    Text("Explore").font(.subheadline).foregroundStyle(SidekickStyle.secondary)
                     ForEach(Note.allCases) { note in
                         Button {
                             if let node = sky.graph?.nodes.first(where: { $0.title == note.title }) { navigate(to: node.url) }
                         } label: {
-                            Text(note.shortTitle).font(.system(size: 11)).foregroundStyle(SidekickStyle.ink)
+                            Text(note.shortTitle).font(.subheadline).foregroundStyle(SidekickStyle.ink)
                                 .padding(.horizontal, 10).padding(.vertical, 7)
-                                .background(.white.opacity(0.05), in: Capsule())
+                                .background(.quinary, in: Capsule())
                         }
                         .buttonStyle(SidekickPressStyle())
                         .accessibilityLabel("Explore " + note.title)
@@ -337,7 +337,7 @@ struct HomeSidekickShowcase: View {
                 }
                 VStack(alignment: .leading, spacing: 17) {
                     MonoCaps("Call brief", size: 9, tracking: 1.8, color: Theme.faint)
-                    Text("Northstar, in three points").font(.system(size: 25, weight: .semibold)).foregroundStyle(SidekickStyle.ink)
+                    Text("Northstar, in three points").font(.largeTitle.weight(.semibold)).foregroundStyle(SidekickStyle.ink)
                     ShowcaseStep(number: "1", title: "The team wants to expand", detail: "Alex is ready to grow the pilot from 20 to 80 seats.")
                     ShowcaseStep(number: "2", title: "SSO is the open question", detail: "Confirm the identity provider and who owns the security review.")
                     ShowcaseStep(number: "3", title: "Keep Friday on track", detail: "Send the checklist before Thursday’s review, then confirm the rollout.")
@@ -348,14 +348,14 @@ struct HomeSidekickShowcase: View {
                 .accessibilityIdentifier("personalSetup.sidekick.brief")
             } else {
                 Text("Prep me for tomorrow’s Northstar call.")
-                    .font(.system(size: 13)).foregroundStyle(SidekickStyle.ink)
+                    .font(.body).foregroundStyle(SidekickStyle.ink)
                     .padding(.horizontal, 15).padding(.vertical, compact ? 9 : 12)
-                    .background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 15))
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 15))
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 VStack(alignment: .leading, spacing: compact ? 10 : 16) {
                     HStack(spacing: 8) {
                         SidekickMark(size: 14, illuminated: false)
-                        Text("Sidekick").font(.system(size: 11.5, weight: .medium)).foregroundStyle(SidekickStyle.secondary)
+                        Text("Sidekick").font(.callout.weight(.medium)).foregroundStyle(SidekickStyle.secondary)
                     }
                     Text("Alex wants to expand the pilot. SSO is the last blocker, and you promised the checklist before Thursday’s review.")
                         .font(.system(size: compact ? 13 : 14)).lineSpacing(compact ? 4 : 5).foregroundStyle(SidekickStyle.ink)
@@ -365,17 +365,17 @@ struct HomeSidekickShowcase: View {
                     }
                     Button { change { briefOpen = true } } label: {
                         HStack(spacing: 13) {
-                            Image(systemName: "doc.text").font(.system(size: 21, weight: .light))
+                            Image(systemName: "doc.text").font(.title.weight(.light))
                                 .foregroundStyle(SidekickStyle.secondary)
                             VStack(alignment: .leading, spacing: 5) {
-                                Text("Northstar call brief").font(.system(size: 17)).foregroundStyle(SidekickStyle.ink)
-                                Text("3 talking points · Open brief").font(.system(size: 11)).foregroundStyle(SidekickStyle.secondary)
+                                Text("Northstar call brief").font(.title2).foregroundStyle(SidekickStyle.ink)
+                                Text("3 talking points · Open brief").font(.subheadline).foregroundStyle(SidekickStyle.secondary)
                             }
                             Spacer(minLength: 4)
-                            Image(systemName: "arrow.up.right").font(.system(size: 12)).foregroundStyle(SidekickStyle.secondary)
+                            Image(systemName: "arrow.up.right").font(.callout).foregroundStyle(SidekickStyle.secondary)
                         }
                         .padding(compact ? 12 : 17).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                        .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
                         .contentShape(RoundedRectangle(cornerRadius: 12))
                     }
@@ -405,10 +405,10 @@ private struct ShowcaseSources: View {
         }
     }
     private func source(_ title: String, symbol: String) -> some View {
-        Label(title, systemImage: symbol).font(.system(size: 10.5))
+        Label(title, systemImage: symbol).font(.subheadline)
             .foregroundStyle(SidekickStyle.secondary).lineLimit(1)
             .padding(.horizontal, 9).padding(.vertical, 6)
-            .background(.white.opacity(0.04), in: Capsule())
+            .background(.quinary, in: Capsule())
     }
 }
 
@@ -418,7 +418,7 @@ private struct ShowcaseBackButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: "chevron.left").font(.system(size: 11.5, weight: .medium))
+            Label(title, systemImage: "chevron.left").font(.callout.weight(.medium))
                 .foregroundStyle(SidekickStyle.secondary).padding(.vertical, 4)
         }
         .buttonStyle(.plain).accessibilityIdentifier(identifier)
@@ -431,12 +431,12 @@ private struct ShowcaseStep: View {
     let detail: String
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Text(number).font(.system(size: 10.5, weight: .medium, design: .monospaced))
+            Text(number).font(.system(.subheadline, design: .monospaced, weight: .medium))
                 .foregroundStyle(SidekickStyle.secondary).frame(width: 24, height: 24)
-                .background(.white.opacity(0.05), in: Circle())
+                .background(.quinary, in: Circle())
             VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(SidekickStyle.ink)
-                Text(detail).font(.system(size: 12.5)).lineSpacing(3).foregroundStyle(SidekickStyle.secondary)
+                Text(title).font(.body.weight(.medium)).foregroundStyle(SidekickStyle.ink)
+                Text(detail).font(.body).lineSpacing(3).foregroundStyle(SidekickStyle.secondary)
             }
         }.fixedSize(horizontal: false, vertical: true)
     }
@@ -445,7 +445,7 @@ private struct ShowcaseStep: View {
 private extension View {
     func showcasePaper(accent: Color = .white, padding: CGFloat = 18) -> some View {
         self.padding(padding).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 13))
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 13))
             .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(
                 LinearGradient(colors: [accent.opacity(0.22), .white.opacity(0.06)], startPoint: .topLeading, endPoint: .bottomTrailing)))
     }

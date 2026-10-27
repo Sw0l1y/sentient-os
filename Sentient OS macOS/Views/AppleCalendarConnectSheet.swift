@@ -25,12 +25,12 @@ struct AppleCalendarConnectSheet: View {
                 Spacer()
             }
             Text("Choose the calendars Sentient reads on this Mac.")
-                .font(.system(size: 13)).foregroundStyle(Theme.secondary)
+                .font(.body).foregroundStyle(Theme.secondary)
             if authorization == .fullAccess {
                 if loading { ProgressView().controlSize(.small) }
                 else if loaded && calendars.isEmpty {
                     Text("No calendars are available. Add an account in Apple Calendar, then refresh.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.secondary)
+                        .font(.callout).foregroundStyle(Theme.secondary)
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
@@ -39,15 +39,15 @@ struct AppleCalendarConnectSheet: View {
                                     if value { selected.insert(calendar.id) } else { selected.remove(calendar.id) }
                                 })) {
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(calendar.title).font(.system(size: 13))
-                                        Text(calendar.account).font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                                        Text(calendar.title).font(.body)
+                                        Text(calendar.account).font(.subheadline).foregroundStyle(Theme.secondary)
                                     }
                                 }.toggleStyle(.checkbox)
                             }
                             let missing = selected.subtracting(Set(calendars.map(\.id)))
                             if !missing.isEmpty {
                                 Text("\(missing.count) previously selected calendars are unavailable. Refresh or remove them to resume analysis.")
-                                    .font(.system(size: 12)).foregroundStyle(Theme.Ink.amber)
+                                    .font(.callout).foregroundStyle(Theme.Ink.amber)
                                 Button("Remove unavailable calendars") { selected.subtract(missing) }
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -58,7 +58,7 @@ struct AppleCalendarConnectSheet: View {
                     Button("Clear selection") { selected.removeAll() }
                 }.disabled(loading)
             } else {
-                Text(permissionExplanation).font(.system(size: 12)).foregroundStyle(Theme.secondary)
+                Text(permissionExplanation).font(.callout).foregroundStyle(Theme.secondary)
                 if authorization == .notDetermined || authorization == .writeOnly {
                     Button("Allow Calendar Access") { Task { await connect() } }.disabled(loading)
                 } else if authorization == .denied {
@@ -68,12 +68,12 @@ struct AppleCalendarConnectSheet: View {
                 }
             }
             if !PipelineActivity.shared.isRunning, let issue = AppleCalendarSource.issueMessage(readIssue) {
-                Text(issue).font(.system(size: 12)).foregroundStyle(Theme.Ink.amber)
+                Text(issue).font(.callout).foregroundStyle(Theme.Ink.amber)
             }
-            if let message { Text(message).font(.system(size: 12)).foregroundStyle(Theme.Ink.amber) }
+            if let message { Text(message).font(.callout).foregroundStyle(Theme.Ink.amber) }
             if PipelineActivity.shared.isRunning {
                 Text("You can change calendar selections after analysis finishes.")
-                    .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                    .font(.subheadline).foregroundStyle(Theme.secondary)
             }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
@@ -86,7 +86,7 @@ struct AppleCalendarConnectSheet: View {
                 .disabled(loading || !loaded || authorization != .fullAccess || PipelineActivity.shared.isRunning)
             }
         }
-        .padding(28).frame(width: 510).background(Theme.bg).foregroundStyle(.white)
+        .padding(28).frame(width: 510).background(Theme.bg).foregroundStyle(.primary)
         .task { await refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await refresh() }

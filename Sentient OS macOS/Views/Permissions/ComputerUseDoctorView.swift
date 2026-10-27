@@ -9,13 +9,13 @@ struct ComputerUseDoctorView: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 10) {
                 SidekickMark(size: 28, illuminated: true)
-                Text("SENTIENT CHECKUP").font(.system(size: 11, weight: .semibold)).tracking(2)
-                    .foregroundStyle(.white.opacity(0.55))
+                Text("SENTIENT CHECKUP").font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 9) {
-                Text(doctor.report?.title ?? "Computer-use check").font(.system(size: 25, weight: .semibold))
+                Text(doctor.report?.title ?? "Computer-use check").font(.largeTitle.weight(.semibold))
                 Text(doctor.report?.explanation ?? "Test the tools Sidekick uses across your computer.")
-                    .font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
+                    .font(.body).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true).lineSpacing(3)
             }
             ScrollView {
@@ -24,19 +24,19 @@ struct ComputerUseDoctorView: View {
                         HStack(spacing: 12) {
                             if step.status == .running { ProgressView().controlSize(.small).frame(width: 16) }
                             else { Image(systemName: symbol(step.status)).frame(width: 16).foregroundStyle(color(step.status)) }
-                            Text(step.check.title).font(.system(size: 13))
+                            Text(step.check.title).font(.body)
                             Spacer()
-                            Text(label(step.status)).font(.system(size: 11)).foregroundStyle(.white.opacity(0.48))
+                            Text(label(step.status)).font(.subheadline).foregroundStyle(.tertiary)
                         }.padding(.vertical, 11)
                     }
                 }.padding(.horizontal, 16)
-                    .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16))
+                    .background(.quinary, in: RoundedRectangle(cornerRadius: 16))
                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08)))
             }
             if let controls = doctor.controls {
                 TestControlsHost(controls: controls).frame(height: 100)
                     .padding(.horizontal, 10)
-                    .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
+                    .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
                     .accessibilityIdentifier("computerUse.checkControls")
             }
             if doctor.report?.outcome == .permissionsNeeded {
@@ -49,11 +49,11 @@ struct ComputerUseDoctorView: View {
                     }
                 }
                 Text("In Automation, expand Sentient OS and allow ChatGPT/Codex Computer Use.")
-                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.55))
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
             HStack {
                 if doctor.isRunning {
-                    Text("Only this test window is used.").font(.system(size: 11)).foregroundStyle(.white.opacity(0.4))
+                    Text("Only this test window is used.").font(.subheadline).foregroundStyle(.tertiary)
                     Spacer()
                     SettingsPillButton(title: "Cancel check") { doctor.cancel() }
                 } else {
@@ -64,21 +64,21 @@ struct ComputerUseDoctorView: View {
             }
         }
         .padding(28).frame(width: 540, height: 620)
-        .background(Color(white: 0.025)).foregroundStyle(.white)
+        .background(Color(white: 0.025)).foregroundStyle(.primary)
         .sheet(isPresented: $reviewing) { reportPreview }
     }
 
     private var reportPreview: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Review your diagnostic report").font(.system(size: 21, weight: .semibold))
+            Text("Review your diagnostic report").font(.title.weight(.semibold))
             Text("Includes versions, permission status, test results and recent technical error categories and codes. Tool errors may have recovered during the task. No screenshots, messages, account details or document contents. Sending shares this report with the Sentient team, stored in Supabase.")
-                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ScrollView([.vertical, .horizontal]) {
                 Text(doctor.report.flatMap { try? $0.encoded() }.map { String(decoding: $0, as: UTF8.self) } ?? "Report unavailable")
-                    .font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
+                    .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-            }.background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
-            if let message = doctor.uploadMessage { Text(message).font(.system(size: 12)).foregroundStyle(.secondary) }
+            }.background(.quinary, in: RoundedRectangle(cornerRadius: 12))
+            if let message = doctor.uploadMessage { Text(message).font(.callout).foregroundStyle(.secondary) }
             HStack {
                 Button("Done") { reviewing = false }.keyboardShortcut(.cancelAction)
                 Spacer()

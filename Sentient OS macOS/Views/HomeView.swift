@@ -430,12 +430,12 @@ struct HomeView: View {
                         Image(systemName: "square.stack.3d.up")
                         Text("Proactive")
                         if !model.entries.isEmpty {
-                            Text("\(model.entries.count)").font(.system(size: 9, weight: .semibold))
+                            Text("\(model.entries.count)").font(.caption2.weight(.semibold))
                                 .padding(.horizontal, 5).padding(.vertical, 2)
-                                .background(.white.opacity(0.08), in: Capsule())
+                                .background(.quaternary, in: Capsule())
                         }
                     }
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .sidekickGlass(radius: 15, prominent: true)
                 }
@@ -463,14 +463,14 @@ struct HomeView: View {
                 Button { MainNavigation.shared.show(.analysis) } label: {
                     HStack(spacing: 6) {
                         Text(appState.processing.statusLine)
-                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                        Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
                     }
-                    .font(.system(size: 12.5)).foregroundStyle(SidekickStyle.secondary)
+                    .font(.body).foregroundStyle(SidekickStyle.secondary)
                 }
                 .buttonStyle(.plain).accessibilityIdentifier("analysis.home.status")
             } else {
                 Text(model.entries.isEmpty ? "A little help, whenever you need it." : "A few things to make your day easier.")
-                    .font(.system(size: 12.5)).foregroundStyle(SidekickStyle.secondary)
+                    .font(.body).foregroundStyle(SidekickStyle.secondary)
             }
         }
     }
@@ -659,15 +659,15 @@ struct HomeView: View {
         if personalSetupPending && deck == .real {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Your personal context starts here.")
-                    .font(.system(size: 18, weight: .medium)).foregroundStyle(SidekickStyle.ink)
+                    .font(.title2.weight(.medium)).foregroundStyle(SidekickStyle.ink)
                 Text(kbOnly
                      ? "Connect three sources, then choose when Sentient builds your knowledge."
                      : "Connect three sources, then choose when Sentient builds your knowledge. Sidekick is ready to use now.")
-                    .font(.system(size: 12.5)).foregroundStyle(SidekickStyle.secondary).lineSpacing(4)
+                    .font(.body).foregroundStyle(SidekickStyle.secondary).lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
                 Button { showAnalysis = false; finishPersonalSetup() } label: {
                     Label("Finish setup", systemImage: "arrow.right")
-                        .font(.system(size: 12.5, weight: .medium))
+                        .font(.body.weight(.medium))
                 }
                 .buttonStyle(.plain).accessibilityIdentifier("analysis.home.finishSetup")
             }
@@ -761,7 +761,7 @@ struct HomeView: View {
                         Image(systemName: "chevron.right").frame(width: 44, height: 44).contentShape(Circle())
                     }.disabled(layout.page + 1 == layout.pageCount).accessibilityLabel("Next suggestions")
                 }
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(SidekickStyle.secondary)
+                .font(.body.weight(.semibold)).foregroundStyle(SidekickStyle.secondary)
                 .buttonStyle(SuggestionPageButtonStyle())
                 .position(x: geo.size.width / 2, y: layout.region.maxY - SidekickOverviewLayout.pagerHeight / 2)
                 .transition(.opacity)
@@ -823,16 +823,16 @@ struct HomeView: View {
         VStack(spacing: 14) {
             SidekickMark(size: 48, illuminated: true).padding(.bottom, 20)
             Text("What can I take off your hands?")
-                .font(.system(size: 22, weight: .medium))
+                .font(.title.weight(.medium))
                 .foregroundStyle(Theme.Ink.statusInk)
                 .offset(y: -8)
             if appState.processing.initialComplete {
                 Text("Your context is already here. Pick up anywhere.")
-                    .font(.system(size: 13)).foregroundStyle(SidekickStyle.secondary)
+                    .font(.body).foregroundStyle(SidekickStyle.secondary)
             } else {
                 VStack(spacing: 9) {
                     Text(personalContextStatus)
-                        .font(.system(size: 13)).foregroundStyle(SidekickStyle.secondary)
+                        .font(.body).foregroundStyle(SidekickStyle.secondary)
                         .multilineTextAlignment(.center).lineSpacing(4)
                     analysisStatusLink
                 }
@@ -855,7 +855,7 @@ struct HomeView: View {
     private var analysisStatusLink: some View {
         Button { showAnalysis = true } label: {
             Text("Check analysis status")
-                .underline().font(.system(size: 12.5, weight: .medium))
+                .underline().font(.body.weight(.medium))
                 .foregroundStyle(Theme.Ink.bright)
                 .padding(.horizontal, 8).frame(minHeight: 32)
                 .contentShape(Rectangle())
@@ -892,7 +892,7 @@ struct HomeView: View {
         Text(appState.processing.initialComplete
              ? "Your knowledge base is built, private, and yours to explore.\nThe living Sentient uses your ChatGPT Plus:"
              : "Your first analysis will build your private knowledge base.\nThe living Sentient uses your ChatGPT Plus:")
-            .font(.system(size: 13.5))
+            .font(.body)
             .foregroundStyle(Theme.secondary)
             .multilineTextAlignment(.center)
             .lineSpacing(4)
@@ -900,7 +900,7 @@ struct HomeView: View {
         if personalSetupPending {
             Button(action: finishPersonalSetup) {
                 Label("Finish personal setup", systemImage: "arrow.right")
-                    .font(.system(size: 12.5, weight: .medium)).foregroundStyle(Theme.Ink.bright)
+                    .font(.body.weight(.medium)).foregroundStyle(Theme.Ink.bright)
                     .padding(.horizontal, 8).frame(minHeight: 32)
             }
             .buttonStyle(SidekickPressStyle())
@@ -923,7 +923,7 @@ struct HomeView: View {
         }
         .padding(.top, compact ? 22 : 28)
         Text("Upgraded? Reset rebuilds your knowledge with Gmail, Calendar, and the full engine.")
-            .font(.system(size: 11.5))
+            .font(.callout)
             .foregroundStyle(Theme.faint)
             .padding(.top, 12)
     }
@@ -935,7 +935,7 @@ struct HomeView: View {
             .foregroundStyle(Theme.Ink.statusInk)
             .padding(.top, 16)
         Text("Reset Sentient and it rebuilds your knowledge with Gmail and Calendar,\nthen keeps it alive: proactive mornings, Sidekick, learning night after night.")
-            .font(.system(size: 13.5))
+            .font(.body)
             .foregroundStyle(Theme.secondary)
             .multilineTextAlignment(.center)
             .lineSpacing(4)
@@ -953,12 +953,12 @@ struct HomeView: View {
     private func previewRow(_ icon: String, _ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 11) {
             Image(systemName: icon)
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(Theme.Ink.label)
                 .frame(width: 16)
             Text(text)
-                .font(.system(size: 13.5))
-                .foregroundStyle(.white.opacity(0.78))
+                .font(.body)
+                .foregroundStyle(.primary)
         }
     }
 
@@ -969,13 +969,13 @@ struct HomeView: View {
     private var devToolsOverlay: some View {
         Button(action: onShowDevTools) {
             HStack(spacing: 5) {
-                Image(systemName: "wrench.and.screwdriver").font(.system(size: 8.5))
+                Image(systemName: "wrench.and.screwdriver").font(.caption2)
                 Text("DEV TOOLS")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced)).tracking(1.6)
+                    .font(.system(.caption2, design: .monospaced, weight: .medium))
             }
             .foregroundStyle(Theme.Ink.deepMuted)
             .padding(.horizontal, 10).padding(.vertical, 5)
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.07), lineWidth: 1))
+            .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -1004,8 +1004,8 @@ struct HomeView: View {
                     .frame(maxWidth: 744)
             }
             HStack(spacing: 5) {
-                Image(systemName: "lock.shield").font(.system(size: 9))
-                Text("Private by design.").font(.system(size: 10))
+                Image(systemName: "lock.shield").font(.caption2)
+                Text("Private by design.").font(.caption)
             }.foregroundStyle(SidekickStyle.secondary.opacity(0.62))
         }
         .padding(.horizontal, 38).padding(.top, 8).padding(.bottom, 14)
@@ -1016,17 +1016,17 @@ struct HomeView: View {
         Button(action: showConversation) {
             HStack(spacing: 14) {
                 ZStack {
-                    Circle().fill(.white.opacity(0.055)).frame(width: 32, height: 32)
-                    Image(systemName: "arrow.up").font(.system(size: 12, weight: .semibold))
+                    Circle().fill(.quinary).frame(width: 32, height: 32)
+                    Image(systemName: "arrow.up").font(.callout.weight(.semibold))
                 }
                 VStack(alignment: .leading, spacing: 5) {
                     Text(conversation.messages.isEmpty ? "Sidekick’s ready to take over your work." : "Continue the conversation")
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(SidekickStyle.ink)
+                        .font(.callout.weight(.medium)).foregroundStyle(SidekickStyle.ink)
                     if let last = conversation.previewMessage {
                         Text(peekText(last.event))
-                            .font(.system(size: 11)).foregroundStyle(SidekickStyle.secondary).lineLimit(1)
+                            .font(.subheadline).foregroundStyle(SidekickStyle.secondary).lineLimit(1)
                     } else if conversation.messages.isEmpty {
-                        Text("Ready to work across your computer. Just say the word.").font(.system(size: 11)).foregroundStyle(SidekickStyle.secondary)
+                        Text("Ready to work across your computer. Just say the word.").font(.subheadline).foregroundStyle(SidekickStyle.secondary)
                     }
                 }
                 Spacer(minLength: 0)
@@ -1035,7 +1035,7 @@ struct HomeView: View {
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
-            .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 14))
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 14))
             .overlay(alignment: .top) { LinearGradient(colors: [.clear, .white.opacity(0.13), .clear], startPoint: .leading, endPoint: .trailing).frame(height: 1).padding(.horizontal, 22) }
             .frame(maxWidth: 722)
             .frame(maxWidth: .infinity)
@@ -1639,8 +1639,8 @@ private struct LetterView: View {
         HStack(spacing: 14) {
             if giftSaved {
                 HStack(spacing: 6) {
-                    Image(systemName: "checkmark").font(.system(size: 10.5, weight: .semibold))
-                    Text("Saved to your Desktop").font(.system(size: 12.5, weight: .semibold))
+                    Image(systemName: "checkmark").font(.subheadline.weight(.semibold))
+                    Text("Saved to your Desktop").font(.body.weight(.semibold))
                 }
                 .foregroundStyle(Theme.Ink.green)
                 .padding(.vertical, 8)
@@ -1649,7 +1649,7 @@ private struct LetterView: View {
                             icon: "square.and.arrow.down", action: saveGift)
             }
             Text("Your gift will be cleared from the home screen soon.")
-                .font(.system(size: 11.5)).foregroundStyle(Theme.Ink.label)
+                .font(.callout).foregroundStyle(Theme.Ink.label)
             Spacer(minLength: 0)
         }
     }
@@ -1712,14 +1712,14 @@ private struct LetterView: View {
                     if editable {
                         HStack(spacing: 5) {
                             if isDirty {
-                                Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 9.5))
-                                Text("Saving…").font(.system(size: 11))
+                                Image(systemName: "arrow.triangle.2.circlepath").font(.caption)
+                                Text("Saving…").font(.subheadline)
                             } else if everEdited {
-                                Image(systemName: "checkmark").font(.system(size: 9.5))
-                                Text("Saved").font(.system(size: 11))
+                                Image(systemName: "checkmark").font(.caption)
+                                Text("Saved").font(.subheadline)
                             } else {
-                                Image(systemName: "pencil").font(.system(size: 9.5))
-                                Text("Editable").font(.system(size: 11))
+                                Image(systemName: "pencil").font(.caption)
+                                Text("Editable").font(.subheadline)
                             }
                         }
                         .foregroundStyle(!isDirty && everEdited ? Theme.Ink.green : Theme.Ink.label)
@@ -1733,8 +1733,8 @@ private struct LetterView: View {
                         Task { try? await Task.sleep(for: .seconds(2)); copied = false }
                     } label: {
                         HStack(spacing: 5) {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.system(size: 9.5))
-                            Text(copied ? "Copied" : "Copy").font(.system(size: 11))
+                            Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.caption)
+                            Text(copied ? "Copied" : "Copy").font(.subheadline)
                         }
                         .foregroundStyle(copied ? Theme.Ink.green : Theme.Ink.bright)
                         .contentShape(Rectangle())
@@ -1749,15 +1749,15 @@ private struct LetterView: View {
                         if editable {
                             TextField("", text: $editedRecipient)
                                 .textFieldStyle(.plain)
-                                .font(.system(size: 13)).foregroundStyle(.white.opacity(0.92))
+                                .font(.body).foregroundStyle(.primary)
                                 .tint(briefing.accent)
                         } else {
                             Text(editedRecipient.isEmpty ? liveRecipient : editedRecipient)
-                                .font(.system(size: 13)).foregroundStyle(.white.opacity(0.92))
+                                .font(.body).foregroundStyle(.primary)
                                 .textSelection(.enabled)
                         }
                     }
-                    Rectangle().fill(.white.opacity(0.07)).frame(height: 1)   // hairline between "who" and "what"
+                    Rectangle().fill(.quaternary).frame(height: 1)   // hairline between "who" and "what"
                 }
                 // "Subject:" — an email draft opens with a Subject line; it composes like a real
                 // email (its own field row) while the draft string that FIRES stays one verbatim
@@ -1769,15 +1769,15 @@ private struct LetterView: View {
                         if editable {
                             TextField("", text: draftSubject)
                                 .textFieldStyle(.plain)
-                                .font(.system(size: 13)).foregroundStyle(.white.opacity(0.92))
+                                .font(.body).foregroundStyle(.primary)
                                 .tint(briefing.accent)
                         } else {
                             Text(split.subject)
-                                .font(.system(size: 13)).foregroundStyle(.white.opacity(0.92))
+                                .font(.body).foregroundStyle(.primary)
                                 .textSelection(.enabled)
                         }
                     }
-                    Rectangle().fill(.white.opacity(0.07)).frame(height: 1)
+                    Rectangle().fill(.quaternary).frame(height: 1)
                 }
                 // A computer-use PLAN speaks in the machine's voice: mono step lines, airy leading,
                 // step numbers in quiet grey — PlanEditor (an NSTextView bridge; SwiftUI's TextEditor
@@ -1788,8 +1788,8 @@ private struct LetterView: View {
                         PlanEditor(text: draftBody, accent: briefing.accent)
                     } else {
                         TextEditor(text: draftBody)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.92))
+                            .font(.body)
+                            .foregroundStyle(.primary)
                             .lineSpacing(4)
                             .tint(briefing.accent)
                             .scrollContentBackground(.hidden)
@@ -1799,17 +1799,17 @@ private struct LetterView: View {
                 } else {
                     Text(split?.body ?? draft)
                         .font(briefing.isPlan ? Font(NSFont.monospacedSystemFont(ofSize: 12, weight: .regular))
-                                              : .system(size: 13))
-                        .foregroundStyle(.white.opacity(0.88))
+                                              : .body)
+                        .foregroundStyle(.primary)
                         .lineSpacing(briefing.isPlan ? 9 : 4)
                         .textSelection(.enabled)
                 }
             }
             .padding(14)
         }
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(Color.white.opacity(0.07), lineWidth: 1))
+            .strokeBorder(Theme.stroke, lineWidth: 1))
     }
 }
 

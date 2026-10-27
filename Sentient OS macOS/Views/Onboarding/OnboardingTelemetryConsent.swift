@@ -55,7 +55,7 @@ struct OnboardingTelemetryConsent: View {
     private var pillBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(PrivacyCopy.headline)
-                .font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
+                .font(.body.weight(.medium)).foregroundStyle(.primary)
             HStack(spacing: 10) {
                 SettingsPillButton(title: "Read More") { showPrivacyPolicy = true }
                 SettingsPillButton(title: "Configure Telemetry") { setOpen(!open) }
@@ -79,7 +79,7 @@ struct OnboardingTelemetryConsent: View {
                               isOn: $analyticsEnabled)
             // Always visible: core reporting is independent of this switch.
             Text(PrivacyCopy.coreAnalytics)
-                .font(.system(size: 10.5))
+                .font(.subheadline)
                 .foregroundStyle(Theme.Ink.body)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
@@ -90,7 +90,7 @@ struct OnboardingTelemetryConsent: View {
         .background(Theme.Ink.cardBG,
                     in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+            .strokeBorder(Theme.stroke, lineWidth: 1))
     }
 
     private func setOpen(_ value: Bool) {

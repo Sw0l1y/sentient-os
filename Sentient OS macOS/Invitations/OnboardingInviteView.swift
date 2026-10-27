@@ -89,13 +89,13 @@ struct OnboardingInviteView: View {
     private var entryTicket: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Have a gift code?").font(.system(size: 26, weight: .medium))
+                Text("Have a gift code?").font(.largeTitle.weight(.medium))
                 Spacer()
                 Button {
                     codeFocused = false
                     withAnimation(motion) { expanded = false }
                 } label: {
-                    Image(systemName: "xmark").font(.system(size: 11, weight: .medium))
+                    Image(systemName: "xmark").font(.subheadline.weight(.medium))
                         .frame(width: 28, height: 28)
                         .background(InvitePaper.ink.opacity(0.07), in: Circle())
                 }
@@ -109,7 +109,7 @@ struct OnboardingInviteView: View {
                 HStack(spacing: 8) {
                     TextField("Enter invite code", text: $code)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.body.weight(.medium))
                         .autocorrectionDisabled()
                         .tint(InvitePaper.ink)
                         .focused($codeFocused)
@@ -121,7 +121,7 @@ struct OnboardingInviteView: View {
                             if program.isBusy {
                                 ProgressView().controlSize(.small).tint(InvitePaper.light)
                             } else {
-                                Image(systemName: "arrow.right").font(.system(size: 13, weight: .semibold))
+                                Image(systemName: "arrow.right").font(.body.weight(.semibold))
                             }
                         }
                         .frame(width: 32, height: 32)
@@ -143,12 +143,12 @@ struct OnboardingInviteView: View {
                 .disabled(program.isRedeeming)
 
                 if let error = program.errorMessage {
-                    Text(error).font(.system(size: 11, weight: .medium))
+                    Text(error).font(.subheadline.weight(.medium))
                         .foregroundStyle(Color(red: 0.55, green: 0.16, blue: 0.12))
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text(program.isRedeeming ? "Checking your invitation…" : "Redeem your invitation.")
-                        .font(.system(size: 10)).opacity(0.6)
+                        .font(.caption).opacity(0.6)
                 }
             }
             .padding(.horizontal, 20).padding(.vertical, 14)

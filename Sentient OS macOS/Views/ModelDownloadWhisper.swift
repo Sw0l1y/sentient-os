@@ -42,7 +42,7 @@ struct ModelDownloadWhisper: View {
                 if case .failed = download.phase { paused } else { downloading }
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: 1))
             .transition(.opacity)
@@ -63,7 +63,7 @@ struct ModelDownloadWhisper: View {
                 Spacer()
                 Text(download.phase == .verifying ? "verifying…" : "\(Int(fraction * 100))%")
             }
-            .font(.system(size: 10.5)).monospacedDigit()
+            .font(.subheadline).monospacedDigit()
             .foregroundStyle(Theme.secondary)
         }
         .frame(width: 212)
@@ -73,7 +73,7 @@ struct ModelDownloadWhisper: View {
         VStack(alignment: .leading, spacing: 6) {
             MonoCaps("Model download paused", size: 9, tracking: 2.0, color: Theme.Ink.amber)
             Text("It will resume when you continue.")
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .foregroundStyle(Theme.faint)
         }
         .frame(width: 212, alignment: .leading)

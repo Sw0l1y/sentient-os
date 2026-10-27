@@ -21,11 +21,11 @@ struct InviteTicketFace: View {
                 VStack(alignment: .leading, spacing: 7) {
                     if claimed {
                         Text(lateGift ? "A GIFT FROM US" : "YOUR LIFETIME PASS")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .tracking(1.8).opacity(0.65)
+                            .font(.system(.caption2, design: .monospaced, weight: .medium))
+                            .opacity(0.65)
                     }
                     Text(claimed ? (lateGift ? "Enjoy Sidekick." : "Yours. For life.") : "Have a gift code?")
-                        .font(.system(size: 26, weight: .medium))
+                        .font(.largeTitle.weight(.medium))
                 }
                 Spacer(minLength: 10)
                 InviteStamp(claimed: claimed).frame(width: 40, height: 40)
@@ -36,10 +36,10 @@ struct InviteTicketFace: View {
 
             HStack(spacing: 8) {
                 Text(claimed ? (lateGift ? "Your Sidekick gift is saved" : "Sentient OS · Lifetime access") : "Enter your code")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.callout.weight(.medium))
                 Spacer()
                 Image(systemName: claimed ? "checkmark" : "arrow.up.right")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 22).padding(.vertical, 14)
@@ -57,9 +57,9 @@ struct InviteStamp: View {
             Circle().strokeBorder(InvitePaper.ink.opacity(0.35), lineWidth: 1)
             Circle().strokeBorder(InvitePaper.ink.opacity(0.12), lineWidth: 1).padding(4)
             if claimed {
-                Image(systemName: "checkmark").font(.system(size: 17, weight: .medium))
+                Image(systemName: "checkmark").font(.title2.weight(.medium))
             } else {
-                Image(systemName: "sparkle").font(.system(size: 20, weight: .regular))
+                Image(systemName: "sparkle").font(.title)
             }
         }
         .foregroundStyle(InvitePaper.ink)
@@ -105,7 +105,7 @@ struct InviteTicketMaterial: ViewModifier {
                     }
             }
             .clipShape(InviteTicketShape())
-            .overlay { InviteTicketShape().strokeBorder(.white.opacity(0.28), lineWidth: 1).allowsHitTesting(false) }
+            .overlay { InviteTicketShape().strokeBorder(Theme.stroke, lineWidth: 1).allowsHitTesting(false) }
             .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 10)
     }
 }

@@ -31,14 +31,14 @@ struct OnboardingModelDownloadView: View {
             Spacer()
 
             Image(systemName: "sparkles").font(.system(size: 46))
-                .foregroundStyle(.white.opacity(0.65)).symbolEffect(.breathe, options: .speed(0.7))
+                .foregroundStyle(.secondary).symbolEffect(.breathe, options: .speed(0.7))
 
             VStack(spacing: 14) {
                 Text("Downloading your AI")
                     .display(30)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                 Text("Sentient's on-device model is what reads your life privately, right on this Mac.\nOne-time download; your analysis starts the moment it lands.")
-                    .font(.system(size: 15))
+                    .font(.title3)
                     .foregroundStyle(Theme.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
@@ -47,7 +47,7 @@ struct OnboardingModelDownloadView: View {
             if case .failed(let reason) = download.phase {
                 VStack(spacing: 18) {
                     Text(reason)
-                        .font(.system(size: 13))
+                        .font(.body)
                         .foregroundStyle(Theme.Ink.amber)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 440)
@@ -63,7 +63,7 @@ struct OnboardingModelDownloadView: View {
                         Text(download.phase == .verifying ? "verifying…" : "\(Int(fraction * 100))%")
                             .monospacedDigit()
                     }
-                    .font(.subheadline).foregroundStyle(.white.opacity(0.9))
+                    .font(.subheadline).foregroundStyle(.primary)
                 }
                 .frame(width: 380)
                 .transition(.opacity)

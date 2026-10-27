@@ -22,7 +22,7 @@ struct CautionCapsule: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             HealthDot(color: accent)
             Text(message)
-                .font(.system(size: 12.5))
+                .font(.body)
                 .foregroundStyle(Theme.Ink.statusInk)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -31,7 +31,7 @@ struct CautionCapsule: View {
             }
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(Theme.Ink.label)
                     .padding(4)
                     .contentShape(Rectangle())
@@ -41,7 +41,7 @@ struct CautionCapsule: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 11)
         .frame(maxWidth: 480, alignment: .leading)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
             .strokeBorder(accent.opacity(0.28), lineWidth: 1))
     }

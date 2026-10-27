@@ -75,7 +75,7 @@ struct AnalysisPopover: View {
             MonoCaps("Analysis", size: 10, tracking: 2.4, color: Theme.Ink.label)
 
             Text(understoodLine)
-                .display(21).foregroundStyle(.white)
+                .display(21).foregroundStyle(.primary)
                 .padding(.top, 13)
             MonoCaps(vaultLine, size: 9, tracking: 1.6, color: Theme.Ink.deepMuted)
                 .padding(.top, 7)
@@ -84,7 +84,7 @@ struct AnalysisPopover: View {
             runFooter.padding(.top, 11)
             if armed && hasBattery { batteryToggleLine.padding(.top, 13) }
 
-            Rectangle().fill(.white.opacity(0.06)).frame(height: 1).padding(.vertical, 16)
+            Rectangle().fill(.quinary).frame(height: 1).padding(.vertical, 16)
 
             MonoCaps("Sources", size: 9, tracking: 2.2, color: Theme.Ink.label)
             VStack(alignment: .leading, spacing: 8) {
@@ -147,12 +147,12 @@ struct AnalysisPopover: View {
     /// Under the button: last run + when the next one comes, or the reason nothing can run.
     private var runFooter: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(processing.statusLine).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.secondary)
+            Text(processing.statusLine).font(.callout.weight(.medium)).foregroundStyle(Theme.secondary)
             if case .waiting = processing.state {
-                Text(processing.waitingDetail).font(.system(size: 11.5)).foregroundStyle(Theme.Ink.amber)
+                Text(processing.waitingDetail).font(.callout).foregroundStyle(Theme.Ink.amber)
             }
             if let notice = processing.record.notice, !notice.isEmpty {
-                Text(notice).font(.system(size: 11.5)).foregroundStyle(Theme.Ink.amber)
+                Text(notice).font(.callout).foregroundStyle(Theme.Ink.amber)
             }
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
                 GridRow {
@@ -184,7 +184,7 @@ struct AnalysisPopover: View {
     private var batteryToggleLine: some View {
         HStack(spacing: 12) {
             Text("Run on battery too")
-                .font(.system(size: 11.5)).foregroundStyle(Theme.Ink.body)
+                .font(.callout).foregroundStyle(Theme.Ink.body)
             Spacer(minLength: 12)
             Toggle("", isOn: $overnightOnBattery)
                 .labelsHidden().toggleStyle(.switch).controlSize(.mini).tint(Theme.Ink.green)
@@ -195,7 +195,7 @@ struct AnalysisPopover: View {
     /// frame makes the Grid's value column claim the full width right of the labels.
     private func footerValue(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 11.5)).foregroundStyle(Theme.Ink.body)
+            .font(.callout).foregroundStyle(Theme.Ink.body)
             .lineSpacing(2.5)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -204,7 +204,7 @@ struct AnalysisPopover: View {
     private var analyzeButton: some View {
         Button(action: onAnalyze) {
             Text(analyzeButtonTitle)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(armed ? .black : .white.opacity(0.35))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
@@ -247,14 +247,14 @@ struct SourceChip: View {
         let chip = HStack(spacing: 5) {
             if locked {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 7))
-                    .foregroundStyle(.white.opacity(0.28))
+                    .font(.caption2)
+                    .foregroundStyle(.quaternary)
             } else if on {
                 Text("✓").foregroundStyle(Theme.Ink.green)
             }
             Text(name).foregroundStyle(on && !locked ? Theme.Ink.chipInk : .white.opacity(0.28))
         }
-        .font(.system(size: 9, weight: .medium, design: .monospaced)).tracking(0.8)
+        .font(.system(.caption2, design: .monospaced, weight: .medium))
         .padding(.horizontal, 9).padding(.vertical, 4)
         .background(Capsule().fill(.white.opacity(hover && action != nil && !locked ? 0.06 : 0)))
         .overlay(Capsule().strokeBorder(Theme.Ink.chipBorder, lineWidth: 1))

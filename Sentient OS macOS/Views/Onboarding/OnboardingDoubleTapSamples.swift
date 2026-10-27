@@ -37,51 +37,51 @@ struct DoubleTapDemoEmailWindow: View {
                     DemoTrafficLights()
                     Spacer()
                     Image(systemName: "arrowshape.turn.up.left")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.23))
+                        .font(.callout)
+                        .foregroundStyle(.quaternary)
                 }
                 Text("Mail")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.36))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 20)
             .frame(height: 42)
             .accessibilityHidden(true)
 
-            Rectangle().fill(.white.opacity(0.065)).frame(height: 1)
+            Rectangle().fill(.quaternary).frame(height: 1)
 
             VStack(alignment: .leading, spacing: 22) {
                 HStack(alignment: .top, spacing: 12) {
                     Text("A")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.6))
+                        .font(.title3.weight(.medium))
+                        .foregroundStyle(.secondary)
                         .frame(width: 36, height: 36)
-                        .background(.white.opacity(0.055), in: Circle())
-                        .overlay(Circle().strokeBorder(.white.opacity(0.065), lineWidth: 1))
+                        .background(.quinary, in: Circle())
+                        .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 1))
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(DemoEmail.sender)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.83))
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
                         Text("to you")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.33))
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
                     }
                     Spacer()
                     Text("Just now")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.3))
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
                         .padding(.top, 2)
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text(DemoEmail.subject)
-                        .font(.system(size: 21, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.9))
+                        .font(.title.weight(.medium))
+                        .foregroundStyle(.primary)
                     Text(DemoEmail.message)
-                        .font(.system(size: 14))
+                        .font(.body)
                         .lineSpacing(6)
-                        .foregroundStyle(.white.opacity(0.54))
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -101,21 +101,21 @@ struct DoubleTapDemoEmailWindow: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 7) {
                 Image(systemName: "arrowshape.turn.up.left")
-                    .font(.system(size: 10))
+                    .font(.caption)
                 Text("Reply to Alex")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                 Spacer()
                 Text(replied ? "Draft" : "")
-                    .font(.system(size: 10))
+                    .font(.caption)
             }
-            .foregroundStyle(.white.opacity(0.32))
+            .foregroundStyle(.tertiary)
 
             ZStack(alignment: .topLeading) {
                 // The final text always participates in layout. The email never grows on paste.
                 Text(DemoEmail.reply)
-                    .font(.system(size: 14))
+                    .font(.body)
                     .lineSpacing(4)
-                    .foregroundStyle(.white.opacity(0.86))
+                    .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
                     .opacity(replied ? 1 : 0)
                     .accessibilityHidden(!replied)
@@ -125,7 +125,7 @@ struct DoubleTapDemoEmailWindow: View {
             .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
         }
         .padding(18)
-        .background(.white.opacity(0.018), in: RoundedRectangle(cornerRadius: 10))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(replied ? 0.12 : 0.075), lineWidth: 1))
         .accessibilityLabel(replied ? "Your draft reply" : "Empty reply field")
     }
@@ -150,22 +150,22 @@ struct DoubleTapDemoMessageWindow: View {
                     DemoTrafficLights()
                     Spacer()
                     Image(systemName: "video")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .font(.title3)
+                        .foregroundStyle(.tertiary)
                 }
                 HStack(spacing: 9) {
                     Text("M")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.75))
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.primary)
                         .frame(width: 30, height: 30)
-                        .background(.white.opacity(0.08), in: Circle())
+                        .background(.quaternary, in: Circle())
                     VStack(alignment: .leading, spacing: 3) {
                         Text(DemoMessage.recipient)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.9))
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
                         Text("iMessage")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.white.opacity(0.38))
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
                     }
                 }
             }
@@ -175,22 +175,22 @@ struct DoubleTapDemoMessageWindow: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Messages with Maya")
 
-            Rectangle().fill(.white.opacity(0.065)).frame(height: 1)
+            Rectangle().fill(.quaternary).frame(height: 1)
 
             VStack(spacing: 14) {
                 Text("Today 5:42 PM")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.3))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
 
                 HStack {
                     Text(DemoMessage.incoming)
-                        .font(.system(size: 14))
+                        .font(.body)
                         .lineSpacing(4)
-                        .foregroundStyle(.white.opacity(0.88))
+                        .foregroundStyle(.primary)
                         .padding(.horizontal, 15)
                         .padding(.vertical, 11)
-                        .background(.white.opacity(0.085), in: RoundedRectangle(cornerRadius: 17))
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 17))
                         .accessibilityLabel("Maya: \(DemoMessage.incoming)")
                     Spacer(minLength: 80)
                 }
@@ -212,23 +212,23 @@ struct DoubleTapDemoMessageWindow: View {
     private var composeField: some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: "plus.circle")
-                .font(.system(size: 22, weight: .light))
-                .foregroundStyle(.white.opacity(0.27))
+                .font(.title.weight(.light))
+                .foregroundStyle(.quaternary)
                 .accessibilityHidden(true)
 
             HStack(alignment: .bottom, spacing: 12) {
                 ZStack(alignment: .topLeading) {
                     Text(DemoMessage.reply)
-                        .font(.system(size: 14))
+                        .font(.body)
                         .lineSpacing(4)
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                         .opacity(replied ? 1 : 0)
                         .accessibilityHidden(!replied)
 
                     Text("iMessage")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.white.opacity(0.28))
+                        .font(.body)
+                        .foregroundStyle(.quaternary)
                         .padding(.leading, 5)
                         .opacity(replied ? 0 : 1)
                         .accessibilityHidden(true)
@@ -239,13 +239,13 @@ struct DoubleTapDemoMessageWindow: View {
 
                 // Decorative only: the lesson drafts into the composer, and never sends.
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 23))
+                    .font(.title)
                     .foregroundStyle(replied ? DemoMessage.blue : .white.opacity(0.14))
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(.white.opacity(0.022), in: RoundedRectangle(cornerRadius: 18))
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 18))
             .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(replied ? 0.18 : 0.12), lineWidth: 1))
             .accessibilityElement(children: .contain)
             .accessibilityLabel(replied ? "Draft reply to Maya" : "Empty iMessage field")

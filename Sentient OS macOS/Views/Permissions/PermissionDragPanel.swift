@@ -259,7 +259,7 @@ struct PermissionPanelView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.black)
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.white.opacity(0.14), lineWidth: 1))
+                    .stroke(Theme.stroke, lineWidth: 1))
         )
         .preferredColorScheme(.dark)
     }
@@ -272,8 +272,8 @@ struct PermissionPanelView: View {
                     MonoCaps(guide.job?.pane.title.uppercased() ?? "", size: 8.5, tracking: 2.0,
                              color: Theme.Ink.label)
                     Text(guide.instruction)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white)
+                        .font(.body)
+                        .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -282,14 +282,14 @@ struct PermissionPanelView: View {
                 if guide.isSettingsFrontmost == false {
                     Button { guide.reopenSettings() } label: {
                         Image(systemName: "gear")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.body.weight(.semibold))
                             .foregroundStyle(Theme.Ink.label)
                     }
                     .buttonStyle(.plain)
                 }
                 Button { guide.close() } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.title3.weight(.semibold))
                         .symbolRenderingMode(.palette)
                         .foregroundStyle(Theme.Ink.label, Color.white.opacity(0.12))
                 }
@@ -310,7 +310,7 @@ private struct GuideDirectionIcon: View {
 
     var body: some View {
         Image(systemName: isDragMode ? "arrowshape.up.fill" : "switch.2")
-            .font(.system(size: 14, weight: .bold))
+            .font(.body.weight(.bold))
             .symbolRenderingMode(.hierarchical)
             .foregroundStyle(Theme.Ink.green)
             .offset(y: isDragging || !isDragMode ? 0 : (driftPhase ? -2 : 2))
@@ -485,19 +485,19 @@ private struct AppDragCardContent: View {
                 .resizable()
                 .frame(width: 32, height: 32)
             Text(FileManager.default.displayName(atPath: url.path))
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white)
+                .font(.body.weight(.medium))
+                .foregroundStyle(.primary)
             Spacer()
             VStack(spacing: 1) {
                 Image(systemName: "hand.draw")
-                    .font(.system(size: 13))
+                    .font(.body)
                 MonoCaps("Drag", size: 7, tracking: 1.6, color: Theme.Ink.label)
             }
             .foregroundStyle(Theme.Ink.label)
             .padding(.trailing, 4)
         }
         .padding(8)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))

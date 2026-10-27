@@ -134,41 +134,41 @@ struct SidekickWorkDisclosure: View {
                 HStack(spacing: 6) {
                     SidekickWorkingText(text: title, shimmering: running && !waiting && active && visible)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 8.5, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                 }.contentShape(Rectangle())
             }
-            .buttonStyle(.plain).font(.system(size: 11.5))
+            .buttonStyle(.plain).font(.callout)
             .foregroundStyle(SidekickStyle.secondary)
             .help(expanded ? "Hide recorded activity" : "Show recorded activity")
             .accessibilityLabel(title + (expanded ? ", hide activity" : ", show activity"))
             .accessibilityIdentifier("sidekick.work.\(taskID.uuidString)")
         } else {
-            Text(title).font(.system(size: 11.5)).foregroundStyle(SidekickStyle.secondary)
+            Text(title).font(.callout).foregroundStyle(SidekickStyle.secondary)
         }
     }
 
     private var activity: some View {
         VStack(alignment: .leading, spacing: 11) {
             if let failureDescription {
-                Text(String(failureDescription.prefix(800))).font(.system(size: 12))
+                Text(String(failureDescription.prefix(800))).font(.callout)
                     .foregroundStyle(SidekickStyle.secondary).textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let progressNote {
-                Text(progressNote).font(.system(size: 12)).foregroundStyle(SidekickStyle.secondary)
+                Text(progressNote).font(.callout).foregroundStyle(SidekickStyle.secondary)
                     .lineLimit(4).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("sidekick.liveProgress")
             } else if running && steps.isEmpty && !failed {
                 Text(waiting ? "Waiting for your answer…" : "Sidekick is thinking through your task…")
-                    .font(.system(size: 11.5)).foregroundStyle(SidekickStyle.secondary)
+                    .font(.callout).foregroundStyle(SidekickStyle.secondary)
                     .accessibilityIdentifier("sidekick.thinking")
             }
             if steps.isEmpty && (failed || (!running && (loading || !hasLoaded))) {
                 HStack(spacing: 8) {
                     if expanded && !failed { ProgressView().controlSize(.mini) }
                     Text(failed ? "Activity couldn’t be loaded." : "Loading activity…")
-                        .font(.system(size: 11.5)).foregroundStyle(SidekickStyle.secondary)
+                        .font(.callout).foregroundStyle(SidekickStyle.secondary)
                     if failed { Button("Try again") { revision &+= 1 }.buttonStyle(.plain) }
                 }.frame(minHeight: 16)
             }
@@ -195,16 +195,16 @@ struct SidekickWorkDisclosure: View {
                         }
                     }
                     if expanded && loading { ProgressView().controlSize(.mini) }
-                }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(SidekickStyle.secondary)
+                }.buttonStyle(.plain).font(.subheadline).foregroundStyle(SidekickStyle.secondary)
                     .disabled(loading)
             }
             if failed && !steps.isEmpty {
                 Button("Couldn’t refresh activity. Try again") { revision &+= 1 }
-                    .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(SidekickStyle.secondary)
+                    .buttonStyle(.plain).font(.subheadline).foregroundStyle(SidekickStyle.secondary)
             }
         }
         .padding(.leading, 17)
-        .overlay(alignment: .leading) { Rectangle().fill(.white.opacity(0.09)).frame(width: 1) }
+        .overlay(alignment: .leading) { Rectangle().fill(.quaternary).frame(width: 1) }
         .accessibilityIdentifier("sidekick.activity.\(taskID.uuidString)")
         .id(SidekickPresentation.workTailID(taskID))
     }
@@ -262,9 +262,9 @@ private struct SidekickActivityRow: View {
         DisclosureGroup(isExpanded: $details) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(step.record.event.activity?.name ?? "Activity")
-                    .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                    .font(.system(.subheadline, design: .monospaced, weight: .medium))
                 if let activity = step.record.event.activity {
-                    Text(activity.status.rawValue.capitalized).font(.system(size: 10.5))
+                    Text(activity.status.rawValue.capitalized).font(.subheadline)
                     if let arguments = activity.arguments { detail(arguments) }
                     if let result = activity.result { detail(result) }
                 }
@@ -274,17 +274,17 @@ private struct SidekickActivityRow: View {
                 SidekickActivityIcon(identifier: step.appIdentifier, symbol: step.symbol)
                     .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(step.title).font(.system(size: 12)).foregroundStyle(SidekickStyle.secondary)
+                    Text(step.title).font(.callout).foregroundStyle(SidekickStyle.secondary)
                     if let app = step.appName, !step.title.localizedCaseInsensitiveContains(app) {
-                        Text(app).font(.system(size: 10)).foregroundStyle(SidekickStyle.secondary.opacity(0.8))
+                        Text(app).font(.caption).foregroundStyle(SidekickStyle.secondary.opacity(0.8))
                     }
                 }
                 if step.record.event.activity?.status == .failed {
-                    Text("Step incomplete").font(.system(size: 10)).foregroundStyle(SidekickStyle.secondary)
+                    Text("Step incomplete").font(.caption).foregroundStyle(SidekickStyle.secondary)
                 } else if step.record.event.activity?.status == .interrupted {
-                    Text("Not confirmed").font(.system(size: 10)).foregroundStyle(SidekickStyle.secondary)
+                    Text("Not confirmed").font(.caption).foregroundStyle(SidekickStyle.secondary)
                 } else if step.record.event.activity?.status == .started {
-                    Text("Started").font(.system(size: 10)).foregroundStyle(SidekickStyle.secondary)
+                    Text("Started").font(.caption).foregroundStyle(SidekickStyle.secondary)
                 }
             }
         }
@@ -293,10 +293,10 @@ private struct SidekickActivityRow: View {
     }
     private func detail(_ text: String) -> some View {
         ScrollView([.horizontal, .vertical]) {
-            Text(text).font(.system(size: 10.5, design: .monospaced))
+            Text(text).font(.system(.subheadline, design: .monospaced))
                 .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
         }.frame(maxHeight: 180).padding(9)
-            .background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 7))
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 7))
     }
 }
 
@@ -307,7 +307,7 @@ struct SidekickActivityIcon: View {
         Group {
             if let identifier, let icon = SidekickActivityIconCache.icon(for: identifier) {
                 Image(nsImage: icon).resizable().scaledToFit()
-            } else { Image(systemName: symbol).font(.system(size: 12)) }
+            } else { Image(systemName: symbol).font(.callout) }
         }.frame(width: 16, height: 16).accessibilityHidden(true)
     }
 }

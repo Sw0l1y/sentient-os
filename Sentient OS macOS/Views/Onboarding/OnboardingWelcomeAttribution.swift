@@ -14,7 +14,7 @@ struct OnboardingWelcomeAttribution: View {
                 HStack(spacing: 4) {
                     Text("Made with")
                     Image(systemName: "heart.fill")
-                        .font(.system(size: 10))
+                        .font(.caption)
                         .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.52))
                     Text("by")
                 }
@@ -49,14 +49,14 @@ private struct WelcomeContactButton: View {
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(verbatim: contact.name)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(Theme.Ink.bright)
                     Text(verbatim: contact.phone)
-                        .font(.system(size: 11)).monospacedDigit()
+                        .font(.subheadline).monospacedDigit()
                         .foregroundStyle(Theme.secondary)
                 }
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(copied ? Theme.Ink.green : Theme.secondary)
                     .frame(width: 14)
             }
@@ -105,7 +105,7 @@ struct WelcomeFounderContact {
 #Preview("Founder contacts") {
     OnboardingWelcomeAttribution(line:
         "Made with love by Alex (+1 (202) 555-0101) and Sam (+1 (202) 555-0102)")
-        .font(.system(size: 12)).foregroundStyle(Theme.secondary)
+        .font(.callout).foregroundStyle(Theme.secondary)
         .padding(40).background(.black).preferredColorScheme(.dark)
 }
 #endif

@@ -12,9 +12,9 @@ extension EnvironmentValues {
 /// Sentient's identity inside the system's: the window's own background, neutral glass, precise
 /// white ink. The accent is a localized light source at an edge or mark, never a reading surface.
 enum SidekickStyle {
-    static let ink = Color(white: 0.93)
-    static let secondary = Color(white: 0.53)
-    static let accent = Color(white: 0.84)
+    static let ink = Color(nsColor: .labelColor)
+    static let secondary = Color(nsColor: .secondaryLabelColor)
+    static let accent = Color(nsColor: .labelColor)
     static let base = Color(nsColor: .windowBackgroundColor)
     static func motion(_ reduced: Bool) -> Animation {
         reduced ? .easeOut(duration: 0.16) : .spring(response: 0.54, dampingFraction: 0.86)

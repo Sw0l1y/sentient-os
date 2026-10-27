@@ -30,12 +30,12 @@ struct ComputerUseUpdateNotice: View {
                         .foregroundStyle(Theme.Ink.label)
                         .accessibilityHidden(true)
                     Text("Updating computer use")
-                        .font(.system(size: 12.5, weight: .medium))
+                        .font(.body.weight(.medium))
                         .foregroundStyle(Theme.Ink.statusInk)
                     Spacer(minLength: 8)
                     if case .downloading(let fraction) = progress, let fraction {
                         Text(fraction, format: .percent.precision(.fractionLength(0)))
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.system(.subheadline, design: .monospaced))
                             .foregroundStyle(Theme.Ink.label)
                     }
                 }
@@ -48,8 +48,8 @@ struct ComputerUseUpdateNotice: View {
                         GeometryReader { geometry in
                             let phase = reduceMotion ? 0.5 : (sin(context.date.timeIntervalSinceReferenceDate * 2) + 1) / 2
                             ZStack(alignment: .leading) {
-                                Capsule().fill(Color.white.opacity(0.08))
-                                Capsule().fill(Color.white.opacity(0.4))
+                                Capsule().fill(.quaternary)
+                                Capsule().fill(.tertiary)
                                     .frame(width: geometry.size.width * 0.28)
                                     .offset(x: geometry.size.width * 0.72 * phase)
                             }
@@ -59,14 +59,14 @@ struct ComputerUseUpdateNotice: View {
                         .accessibilityLabel("Updating computer use")
                 }
                 Text(progress?.message ?? "Preparing the update…")
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(Theme.Ink.label)
             }
             .padding(.horizontal, 16).padding(.vertical, 13)
             .frame(width: 330)
-            .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Color.white.opacity(0.13), lineWidth: 1))
+                .strokeBorder(Theme.stroke, lineWidth: 1))
         }
     }
 }

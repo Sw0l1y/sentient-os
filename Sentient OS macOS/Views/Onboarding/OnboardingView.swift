@@ -117,13 +117,13 @@ private struct OnboardingDevButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 8.5))
+                Image(systemName: icon).font(.caption2)
                 Text(title)
-                    .font(.system(size: 9, weight: .medium, design: .monospaced)).tracking(1.6)
+                    .font(.system(.caption2, design: .monospaced, weight: .medium))
             }
             .foregroundStyle(Theme.Ink.deepMuted)
             .padding(.horizontal, 10).padding(.vertical, 5)
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.07), lineWidth: 1))
+            .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -144,7 +144,7 @@ struct OnboardingNextButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(enabled ? .black : .white.opacity(0.35))
                 .frame(minWidth: minimumLabelWidth)
                 .padding(.horizontal, 36)
@@ -228,7 +228,7 @@ private struct RightClickBlocker: NSViewRepresentable {
 struct OnboardingTrustFooter: View {
     var body: some View {
         Text(PrivacyCopy.trustRibbon)
-            .font(.system(size: 12))
+            .font(.callout)
             .foregroundStyle(Theme.faint)
             .padding(.bottom, 28)
     }

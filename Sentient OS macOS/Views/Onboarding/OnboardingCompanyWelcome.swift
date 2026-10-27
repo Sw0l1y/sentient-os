@@ -34,8 +34,8 @@ struct OnboardingCompanyWelcome: View {
                     .modifier(WelcomeArrival(arrived: arrived, delay: 0.06, reduceMotion: reduceMotion, x: -18))
 
                     Text("×")
-                        .font(.system(size: 25, weight: .ultraLight))
-                        .foregroundStyle(.white.opacity(0.42))
+                        .font(.largeTitle.weight(.ultraLight))
+                        .foregroundStyle(.tertiary)
                         .accessibilityHidden(true)
                         .modifier(WelcomeArrival(arrived: arrived, delay: 0.2, reduceMotion: reduceMotion))
 
@@ -64,7 +64,7 @@ struct OnboardingCompanyWelcome: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             .multilineTextAlignment(.center)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Sentient OS for \(company.companyName)")
@@ -72,7 +72,7 @@ struct OnboardingCompanyWelcome: View {
             .modifier(WelcomeArrival(arrived: arrived, delay: 0.2, reduceMotion: reduceMotion))
 
             Text(verbatim: company.welcomeLine)
-                .font(.system(size: 17, weight: .regular))
+                .font(.title2)
                 .foregroundStyle(Theme.Ink.bright)
                 .lineSpacing(5)
                 .multilineTextAlignment(.center)
@@ -88,7 +88,7 @@ struct OnboardingCompanyWelcome: View {
                     OnboardingWelcomeAttribution(line: attribution)
                 }
             }
-            .font(.system(size: 12))
+            .font(.callout)
             .foregroundStyle(Theme.secondary)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
@@ -206,7 +206,7 @@ private struct WelcomeCompanyLogo: View {
             } else {
                 Text(verbatim: String(company.companyName.prefix(1)).uppercased())
                     .font(.system(size: 39, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
             }
         }
         .frame(width: 62, height: 62)

@@ -339,13 +339,13 @@ struct ComputerUseUpgradeView: View {
                 .display(23)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 18)
 
             if model.phase != .grants {
                 Text("Prepare computer use for your selected AI engine.")
-                    .font(.system(size: 12.5))
+                    .font(.body)
                     .foregroundStyle(Theme.secondary)
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)
@@ -402,19 +402,19 @@ struct ComputerUseUpgradeView: View {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small).scaleEffect(0.7)
                     Text(model.setup.status ?? "Starting…")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(.subheadline, design: .monospaced))
                         .foregroundStyle(Theme.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } else if let line = model.failureLine {
                 Text(line)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(.subheadline, design: .monospaced))
                     .foregroundStyle(.red.opacity(0.85))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(model.setup.backend == .openAI ? "Downloaded from Sentient and verified on this Mac." : "A one-time 40 MB download, verified on this Mac.")
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(Theme.faint)
             }
         }

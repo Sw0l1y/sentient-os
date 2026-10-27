@@ -36,7 +36,7 @@ struct SidekickComposer: View {
                     Text(error).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                 }
-                .font(.system(size: 12)).foregroundStyle(Color(red: 1, green: 0.75, blue: 0.65))
+                .font(.callout).foregroundStyle(Color(red: 1, green: 0.75, blue: 0.65))
                 .padding(.horizontal, 10)
             }
             VStack(alignment: .leading, spacing: 12) {
@@ -47,23 +47,23 @@ struct SidekickComposer: View {
                     HStack(spacing: 10) {
                         RoundedRectangle(cornerRadius: 2).fill(SidekickStyle.accent).frame(width: 3)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Replying to a message").font(.system(size: 11, weight: .semibold)).foregroundStyle(SidekickStyle.accent)
+                            Text("Replying to a message").font(.subheadline.weight(.semibold)).foregroundStyle(SidekickStyle.accent)
                             Text(replyPreview(reference))
-                                .font(.system(size: 12)).lineLimit(2).foregroundStyle(SidekickStyle.secondary)
+                                .font(.callout).lineLimit(2).foregroundStyle(SidekickStyle.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                         Button { conversation.show(messageID: reference.messageID) } label: { Image(systemName: "arrow.up.right") }
                             .help("Show original message")
                         Button { withAnimation(SidekickStyle.motion(reduced)) { conversation.replyReference = nil } } label: { Image(systemName: "xmark") }
                             .help("Remove reply").accessibilityLabel("Remove reply")
                     }
-                    .buttonStyle(.plain).font(.system(size: 11, weight: .semibold))
-                    .padding(12).background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                    .buttonStyle(.plain).font(.subheadline.weight(.semibold))
+                    .padding(12).background(.quinary, in: RoundedRectangle(cornerRadius: 12))
                     .fixedSize(horizontal: false, vertical: true)
                     .transition(SidekickStyle.entrance(reduced))
                 }
                 HStack(alignment: .bottom, spacing: 14) {
                     TextField(answering ? "Add your answer…" : "Ask Sidekick…", text: text, axis: .vertical)
-                        .textFieldStyle(.plain).font(.system(size: 15))
+                        .textFieldStyle(.plain).font(.title3)
                         .foregroundStyle(SidekickStyle.ink).tint(SidekickStyle.accent)
                         .lineLimit(1...5).focused($focused).onSubmit(handleReturn)
                         .padding(.vertical, 10)
@@ -72,10 +72,10 @@ struct SidekickComposer: View {
                         .help("Return to send. Shift-Return for a new line.")
                     if coordinator.run.isRunning && !answering {
                         Button(action: coordinator.stop) {
-                            Image(systemName: "stop.fill").font(.system(size: 12, weight: .semibold))
+                            Image(systemName: "stop.fill").font(.callout.weight(.semibold))
                                 .foregroundStyle(SidekickStyle.ink)
                                 .frame(width: 36, height: 36)
-                                .background(.white.opacity(0.10), in: Circle())
+                                .background(.quaternary, in: Circle())
                                 .overlay(Circle().strokeBorder(.white.opacity(0.18)))
                         }
                         .buttonStyle(SidekickPressStyle())
@@ -85,7 +85,7 @@ struct SidekickComposer: View {
                     } else {
                     Button(action: send) {
                         // Solid accent disc (the composer itself is the glass; no glass-on-glass).
-                        Image(systemName: "arrow.up").font(.system(size: 16, weight: .semibold))
+                        Image(systemName: "arrow.up").font(.title3.weight(.semibold))
                             .foregroundStyle(canSend ? .white : .white.opacity(0.30))
                             .frame(width: 36, height: 36)
                             .background(canSend ? Theme.accent : .white.opacity(0.055), in: Circle())
@@ -113,7 +113,7 @@ struct SidekickComposer: View {
                         Button("Dismiss") { recovery.cancel() }.buttonStyle(.plain)
                     }
                 }
-                .font(.system(size: 10.5)).foregroundStyle(SidekickStyle.secondary)
+                .font(.subheadline).foregroundStyle(SidekickStyle.secondary)
                 }
             }
             .padding(17)
@@ -149,9 +149,9 @@ struct SidekickComposer: View {
                 Image(systemName: content.question == nil ? "arrow.clockwise" : "bubble.left.and.text.bubble.right")
                 Text(content.upgradeOffer != nil ? "ChatGPT needs your attention" : (content.question == nil ? "A little guidance?" : "A quick question"))
                     .fontWeight(.semibold)
-            }.font(.system(size: 11)).foregroundStyle(SidekickStyle.accent)
+            }.font(.subheadline).foregroundStyle(SidekickStyle.accent)
             Text(content.question?.question ?? content.error ?? "")
-                .font(.system(size: 13)).foregroundStyle(SidekickStyle.ink).lineLimit(4)
+                .font(.body).foregroundStyle(SidekickStyle.ink).lineLimit(4)
             if content.upgradeOffer != nil {
                 SidekickUpgradeActions(recovery: recovery, content: content)
             }
@@ -165,15 +165,15 @@ struct SidekickComposer: View {
                                 onAccepted(); focused = true
                             }
                         } label: {
-                            Text(answer).font(.system(size: 12, weight: .medium)).lineLimit(3)
+                            Text(answer).font(.callout.weight(.medium)).lineLimit(3)
                                 .frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.vertical, 10)
-                                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 11))
+                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 11))
                                 .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(.white.opacity(0.13)))
                         }.buttonStyle(SidekickPressStyle())
                     }
                 }
             }
-            Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
+            Rectangle().fill(.quaternary).frame(height: 1)
         }
     }
 

@@ -57,7 +57,7 @@ struct OnboardingDoubleTapView: View {
 
                     OnboardingShortcutInstruction(prefix: "Double tap your ", key: shortcut, suffix: " key", hint: shortcutHint)
                         .font(Self.instructionFont)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .opacity(demo.instructionVisible ? (demo.phase == .waiting ? 1 : 0.42) : 0)
                         .accessibilityHidden(!demo.instructionVisible)
                         .animation(.easeOut(duration: 0.18), value: demo.instructionVisible)
@@ -69,7 +69,7 @@ struct OnboardingDoubleTapView: View {
                             VStack(spacing: 10) {
                                 Text("Your replies, drafted instantly with two taps")
                                     .font(Self.instructionFont)
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(.primary)
                                 personalContextLine
                             }
                             .fixedSize(horizontal: false, vertical: true)
@@ -163,8 +163,8 @@ struct OnboardingDoubleTapView: View {
 
     private var personalContextLine: some View {
         Text("From your entire personal context")
-            .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(.white.opacity(0.95))
+            .font(.title2.weight(.medium))
+            .foregroundStyle(.primary)
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
             .background {
@@ -207,7 +207,7 @@ private struct DoubleTapInferenceInfo: View {
             showingPopover.toggle()
         } label: {
             Image(systemName: "info.circle")
-                .font(.system(size: 16))
+                .font(.title3)
                 .foregroundStyle(.white.opacity(hovering || showingPopover ? 0.8 : 0.5))
                 .frame(width: 32, height: 32)
                 .contentShape(Rectangle())
@@ -229,7 +229,7 @@ private struct DoubleTapInferenceInfo: View {
                         .background(Color(white: 0.075), in: RoundedRectangle(cornerRadius: 12))
                         .overlay {
                             RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                                .strokeBorder(Theme.stroke, lineWidth: 1)
                         }
                         .shadow(color: .black.opacity(0.35), radius: 16, y: 6)
                         .offset(y: -40)
@@ -243,8 +243,8 @@ private struct DoubleTapInferenceInfo: View {
 
     private var explanation: some View {
         Text(Self.text)
-            .font(.system(size: 12.5))
-            .foregroundStyle(.white.opacity(0.8))
+            .font(.body)
+            .foregroundStyle(.primary)
             .lineSpacing(4)
             .fixedSize(horizontal: false, vertical: true)
             .frame(width: 310, alignment: .leading)
@@ -259,8 +259,8 @@ private struct DemoNextSampleButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                Text("Next").font(.system(size: 15, weight: .semibold))
-                Image(systemName: "arrow.right").font(.system(size: 11, weight: .semibold))
+                Text("Next").font(.title3.weight(.semibold))
+                Image(systemName: "arrow.right").font(.subheadline.weight(.semibold))
             }
             .foregroundStyle(.black)
             .padding(.horizontal, 32)

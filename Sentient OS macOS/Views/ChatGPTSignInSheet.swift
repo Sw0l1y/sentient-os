@@ -21,7 +21,7 @@ struct ChatGPTSignInSheet: View {
                 .display(24).foregroundStyle(Theme.Ink.statusInk)
                 .padding(.top, 20)
             Text("Please sign in to ChatGPT to continue using Sentient.")
-                .font(.system(size: 13)).foregroundStyle(Theme.Ink.body)
+                .font(.body).foregroundStyle(Theme.Ink.body)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 14)
@@ -30,7 +30,7 @@ struct ChatGPTSignInSheet: View {
                 HStack(spacing: 9) {
                     ProgressView().controlSize(.small)
                     Text("Finish signing in in your browser.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.Ink.body)
+                        .font(.callout).foregroundStyle(Theme.Ink.body)
                 }
                 .padding(.top, 24)
             }
@@ -43,7 +43,7 @@ struct ChatGPTSignInSheet: View {
                     HStack(spacing: 8) {
                         if busy { ProgressView().controlSize(.small).tint(.black) }
                         Text("Sign in with ChatGPT")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.body.weight(.semibold))
                     }
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity, minHeight: 44)
@@ -57,7 +57,7 @@ struct ChatGPTSignInSheet: View {
 
             if let status = codex.loginStatusLine, status.hasPrefix("✗") {
                 Text(status.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines))
-                    .font(.system(size: 12)).foregroundStyle(Theme.Ink.red)
+                    .font(.callout).foregroundStyle(Theme.Ink.red)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 14)
@@ -65,7 +65,7 @@ struct ChatGPTSignInSheet: View {
 
             Button("Not now") { dismiss() }
                 .buttonStyle(.plain)
-                .font(.system(size: 12)).foregroundStyle(Theme.Ink.deepMuted)
+                .font(.callout).foregroundStyle(Theme.Ink.deepMuted)
                 .padding(.top, 18)
         }
         .padding(.horizontal, 36).padding(.top, 42).padding(.bottom, 26)

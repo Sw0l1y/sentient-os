@@ -40,13 +40,13 @@ struct SidekickMarkdown: View {
             }
             if document.blocks.count > visibleBlocks {
                 Button("Show more") { visibleBlocks += 80 }
-                    .buttonStyle(.plain).foregroundStyle(.tint).font(.system(size: 12, weight: .medium))
+                    .buttonStyle(.plain).foregroundStyle(.tint).font(.callout.weight(.medium))
             } else if let remainder = document.remainder {
                 DisclosureGroup("Show remaining text", isExpanded: $showRemainder) {
                     selectable(remainder, source: document.source, id: "remainder")
                         .padding(.top, 8)
                 }
-                .font(.system(size: 12, weight: .medium))
+                .font(.callout.weight(.medium))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -75,7 +75,7 @@ struct SidekickMarkdown: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         Text(language?.isEmpty == false ? language! : "Code")
-                            .lineLimit(1).font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                            .lineLimit(1).font(.system(.subheadline, design: .monospaced, weight: .medium))
                             .foregroundStyle(.secondary)
                         Spacer(minLength: 16)
                         Button {
@@ -84,7 +84,7 @@ struct SidekickMarkdown: View {
                             copiedBlock = index
                         } label: {
                             Label(copiedBlock == index ? "Copied" : "Copy", systemImage: copiedBlock == index ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 10.5, weight: .medium))
+                                .font(.subheadline.weight(.medium))
                         }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
                         .accessibilityLabel(copiedBlock == index ? "Code copied" : "Copy code")
@@ -587,8 +587,8 @@ nonisolated enum SidekickSelectionReplyPlacement {
         var body: some View {
             Button(action: reply) {
                 Label("Reply", systemImage: "arrowshape.turn.up.left")
-                    .font(.system(size: 11.5, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.94))
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
                     .frame(width: 96, height: 32).contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -600,7 +600,7 @@ nonisolated enum SidekickSelectionReplyPlacement {
                     Capsule().fill(.ultraThinMaterial).overlay(Capsule().fill(.black.opacity(0.20)))
                 }
             }
-            .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 0.75).allowsHitTesting(false))
+            .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 0.75).allowsHitTesting(false))
             .environment(\.colorScheme, .dark)
             .accessibilityLabel("Reply to selected text")
             .accessibilityIdentifier("sidekick.selection.reply")

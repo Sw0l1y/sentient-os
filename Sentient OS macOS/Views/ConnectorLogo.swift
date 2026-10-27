@@ -45,7 +45,7 @@ struct ConnectorLogo: View {
             VStack(spacing: 16) {
                 ConnectorLogo(asset: asset)
                 Text(asset.replacingOccurrences(of: "Mark", with: ""))
-                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.65))
+                    .font(.caption).foregroundStyle(.secondary)
             }
             .frame(width: 72)
         }

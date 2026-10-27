@@ -52,18 +52,18 @@ struct OvernightDevView: View {
 
     private var statusPanel: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text("STATUS").font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.faint)
+            Text("STATUS").font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
             statusRow("Root helper", Self.helperText(helperStatus), Self.helperColor(helperStatus))
             statusRow("Launch at login", loginOn ? "on" : "off", loginOn ? Theme.Ink.green : .secondary)
             statusRow("Scheduler", schedulerOn ? appState.scheduler.statusLine : "off", schedulerOn ? Theme.Ink.green : .secondary)
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func statusRow(_ label: String, _ value: String, _ color: Color) -> some View {
         HStack {
-            Text(label).font(.subheadline).foregroundStyle(.white.opacity(0.7))
+            Text(label).font(.subheadline).foregroundStyle(.secondary)
             Spacer()
             Text(value).font(.subheadline.monospaced()).foregroundStyle(color)
         }
@@ -130,14 +130,14 @@ struct OvernightDevView: View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 10) {
                 Text(n).font(.caption.bold()).foregroundStyle(.black)
-                    .frame(width: 22, height: 22).background(Circle().fill(.white.opacity(0.85)))
+                    .frame(width: 22, height: 22).background(Circle().fill(.tertiary))
                 Text(title).font(.headline)
             }
             Text(help).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             content().padding(.top, 2)
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 12))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.06)))
     }
 

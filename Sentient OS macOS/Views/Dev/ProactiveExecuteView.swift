@@ -56,7 +56,7 @@ struct ProactiveExecuteView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: "paperplane.fill").foregroundStyle(.orange)
-            Text("PROACTIVE · EXECUTE — \(ready.count) ready").font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Theme.faint)
+            Text("PROACTIVE · EXECUTE — \(ready.count) ready").font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
             Spacer()
             Text("PART 3 — fires for real").font(.caption2).foregroundStyle(Theme.faint)
             Button("Refresh") { load() }.controlSize(.small).disabled(model.busy != nil)
@@ -82,10 +82,10 @@ struct ProactiveExecuteView: View {
                 }
             }
 
-            Text(a.title).font(.subheadline.weight(.bold)).foregroundStyle(.white)
+            Text(a.title).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
             if !a.cardSummary.isEmpty {
-                Text(a.cardSummary).font(.caption).foregroundStyle(.white.opacity(0.82))
+                Text(a.cardSummary).font(.caption).foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -153,19 +153,19 @@ struct ProactiveExecuteView: View {
 
     private func detailBlock(_ title: String, _ body: String, tint: Color = Theme.faint) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.system(size: 8, weight: .bold)).tracking(1).foregroundStyle(tint)
+            Text(title).font(.caption2.weight(.bold)).foregroundStyle(tint)
             Text(body.isEmpty ? "—" : body)
-                .font(.system(.caption2, design: .monospaced)).foregroundStyle(.white.opacity(0.75))
+                .font(.system(.caption2, design: .monospaced)).foregroundStyle(.primary)
                 .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func droppedFooter(_ dropped: [DroppedItem]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("DROPPED · \(dropped.count)").font(.system(size: 8, weight: .bold)).tracking(1).foregroundStyle(Theme.faint)
+            Text("DROPPED · \(dropped.count)").font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
             ForEach(dropped) { d in
                 Text("✗ \(d.title) — \(d.reason)").font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(Theme.faint).fixedSize(horizontal: false, vertical: true)
@@ -186,7 +186,7 @@ struct ProactiveExecuteView: View {
             case .research: return ("RESEARCHED", Theme.secondary)
             }
         }()
-        return Text(label).font(.system(size: 8, weight: .bold)).tracking(1)
+        return Text(label).font(.caption2.weight(.bold))
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.18), in: Capsule()).foregroundStyle(color)
     }
@@ -199,7 +199,7 @@ struct ProactiveExecuteView: View {
             case .unverified: return ("UNVERIFIED", Theme.secondary)
             }
         }()
-        return Text(label).font(.system(size: 8, weight: .bold)).tracking(1)
+        return Text(label).font(.caption2.weight(.bold))
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.14), in: Capsule()).foregroundStyle(color)
     }

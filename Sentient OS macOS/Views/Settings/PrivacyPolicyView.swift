@@ -12,16 +12,16 @@ struct PrivacyPolicyView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Privacy Policy")
-                .display(24).foregroundStyle(.white)
+                .display(24).foregroundStyle(.primary)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(PrivacyCopy.headline)
-                        .font(.system(size: 15, weight: .medium)).foregroundStyle(.white)
+                        .font(.title3.weight(.medium)).foregroundStyle(.primary)
                     prose(PrivacyCopy.summary).padding(.top, 8)
                     prose(PrivacyCopy.intro).padding(.top, 12)
                     ForEach(PrivacyCopy.sections) { section in
                         Text(section.title)
-                            .font(.system(size: formStyle ? 17 : 13, weight: .medium)).foregroundStyle(.white)
+                            .font(.system(size: formStyle ? 17 : 13, weight: .medium)).foregroundStyle(.primary)
                             .padding(.top, 22)
                         ForEach(section.paragraphs, id: \.self) { paragraph in
                             prose(paragraph).padding(.top, 9)

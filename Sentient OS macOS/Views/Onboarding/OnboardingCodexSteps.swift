@@ -70,7 +70,7 @@ struct OnboardingCodexLoginPanel: View {
         } else if codex.loggingIn {
             LoginLinkButton(url: codex.loginURL)
             Text("Finish signing in in your browser.")
-                .font(.system(size: 12.5))
+                .font(.body)
                 .foregroundStyle(Theme.Ink.body)
             MonoWaitLine("waiting for the browser sign-in…")
         } else if codex.installGaveUp && !codex.installed {
@@ -131,7 +131,7 @@ private struct CodexInstallFailedPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Sentient couldn't finish downloading Codex.")
-                .font(.system(size: 14, weight: .medium))
+                .font(.body.weight(.medium))
                 .foregroundStyle(Theme.Ink.body)
             SettingsProse("Check your internet connection and available disk space, then try again. Your saved login and tasks are preserved.")
         }
@@ -147,7 +147,7 @@ struct OnboardingWhisper: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .font(.system(.subheadline, design: .monospaced, weight: .medium))
             .kerning(2)
             .foregroundStyle(Theme.faint)
     }
@@ -162,7 +162,7 @@ struct OnboardingDoneLine: View {
         HStack(spacing: 11) {
             HealthDot(color: Theme.Ink.green)
             Text(text)
-                .font(.system(size: 12.5))
+                .font(.body)
                 .foregroundStyle(Theme.Ink.statusInk)
         }
     }
@@ -178,7 +178,7 @@ struct MonoWaitLine: View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.mini)
             Text(text)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .font(.system(.subheadline, design: .monospaced, weight: .medium))
                 .kerning(1.5)
                 .foregroundStyle(Theme.faint)
         }

@@ -51,13 +51,13 @@ struct OnboardingEmailPrompt: View {
     private var emailForm: some View {
         VStack(alignment: .leading, spacing: 22) {
             Image(systemName: "envelope")
-                .font(.system(size: 25, weight: .light))
+                .font(.largeTitle.weight(.light))
                 .foregroundStyle(Theme.Ink.bright)
                 .accessibilityHidden(true)
 
             Text("What’s your email?")
                 .display(27)
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
 
             VStack(alignment: .leading, spacing: 10) {
                 MonoCaps("Email address", size: 9, tracking: 1.5, color: Theme.secondary)
@@ -66,10 +66,10 @@ struct OnboardingEmailPrompt: View {
                     .textFieldStyle(.plain)
                     .textContentType(.emailAddress)
                     .autocorrectionDisabled()
-                    .font(.system(size: 15))
-                    .foregroundStyle(.white)
+                    .font(.title3)
+                    .foregroundStyle(.primary)
                     .padding(14)
-                    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                    .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
                     .overlay {
                         RoundedRectangle(cornerRadius: 10)
                             .strokeBorder(errorMessage == nil ? Color.white.opacity(emailFocused ? 0.35 : 0.12)
@@ -84,14 +84,14 @@ struct OnboardingEmailPrompt: View {
 
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(.system(size: 12))
+                        .font(.callout)
                         .foregroundStyle(Theme.Ink.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
             Text("Your email is saved for occasional feedback invitations.")
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(Theme.secondary)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)

@@ -48,12 +48,12 @@ struct InviteRedemptionView: View {
                     }
                 } label: {
                     HStack(spacing: 8) {
-                        Text("Have an invite code?").font(.system(size: 14, weight: .medium))
-                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .medium))
+                        Text("Have an invite code?").font(.body.weight(.medium))
+                        Image(systemName: "chevron.down").font(.caption.weight(.medium))
                     }
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(.primary)
                     .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(.white.opacity(0.07), in: Capsule())
+                    .background(.quaternary, in: Capsule())
                     .overlay(Capsule().strokeBorder(.white.opacity(0.2)))
                     .contentShape(Capsule())
                 }
@@ -61,12 +61,12 @@ struct InviteRedemptionView: View {
                 .accessibilityHint("Show the invite code field")
             } else {
                 Text("Have an invite code?")
-                    .font(.system(size: formStyle ? 15 : 13, weight: .medium)).foregroundStyle(.white)
+                    .font(.system(size: formStyle ? 15 : 13, weight: .medium)).foregroundStyle(.primary)
                 HStack(spacing: 8) {
                     TextField("Enter invite code", text: $code)
                         .textFieldStyle(.plain)
                         .font(.system(size: formStyle ? 14 : 12, design: .monospaced))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .focused($codeFocused)
                         .onSubmit(redeem)
                         .accessibilityLabel("Invite code")
@@ -129,7 +129,7 @@ struct InviteSettingsSection: View {
                 if let snapshot = program.snapshot, snapshot.canShare, let code = snapshot.code {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("5 invitations, reserved for you")
-                            .font(.system(size: formStyle ? 15 : 13, weight: .medium)).foregroundStyle(.white)
+                            .font(.system(size: formStyle ? 15 : 13, weight: .medium)).foregroundStyle(.primary)
                         Text("Share Sentient OS free\u{00A0}for\u{00A0}life with just 5\u{00A0}people you choose.")
                             .font(.system(size: formStyle ? 14 : 12)).foregroundStyle(Theme.Ink.body)
                     }
@@ -199,7 +199,7 @@ struct InviteCopyButton: View {
             }
             .foregroundStyle(copied ? Theme.Ink.green : .white)
             .padding(.horizontal, 12).frame(height: 36)
-            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.12)))
             .opacity(copying ? 0.5 : 1)
         }
@@ -224,21 +224,21 @@ struct InviteBannerView: View {
         HStack(alignment: .top, spacing: 12) {
             InviteHandIcon()
                 .stroke(style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(.primary)
                 .frame(width: 28, height: 38).padding(.top, 1)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 5) {
                 Text(InviteProgram.offerTitle)
-                    .font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
+                    .font(.body.weight(.medium)).foregroundStyle(.primary)
                 Text(InviteProgram.offerMessage)
-                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.65))
+                    .font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 InviteCopyButton(code: code, showsCode: false).padding(.top, 3)
             }
             Spacer(minLength: 0)
             Button(action: dismiss) {
-                Image(systemName: "xmark").font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5)).frame(width: 20, height: 20)
+                Image(systemName: "xmark").font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary).frame(width: 20, height: 20)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain).help("Dismiss invitation")

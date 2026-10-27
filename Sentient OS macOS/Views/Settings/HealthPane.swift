@@ -183,7 +183,7 @@ struct HealthPane: View {
         HStack(spacing: 10) {
             ProgressView().controlSize(.small)
             Text("Checking your Sentient…")
-                .font(.system(size: 15))
+                .font(.title3)
                 .foregroundStyle(Theme.Ink.body)
         }
         .padding(.top, 10)
@@ -370,11 +370,11 @@ struct HealthPane: View {
             HStack(spacing: 11) {
                 HealthDot(color: Theme.Ink.green)
                 Text(engineSummaryText)
-                    .font(.system(size: 14)).foregroundStyle(Theme.Ink.statusInk)
+                    .font(.body).foregroundStyle(Theme.Ink.statusInk)
                 Spacer(minLength: 12)
-                Text("Details").font(.system(size: 13)).foregroundStyle(SettingsStyle.secondary)
+                Text("Details").font(.body).foregroundStyle(SettingsStyle.secondary)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(Theme.Ink.label)
             }
             .padding(.vertical, 6)

@@ -63,7 +63,7 @@ struct UpdateGateView: View {
                     .multilineTextAlignment(.center)
 
                 Text(gateBody)
-                    .font(.system(size: 13)).foregroundStyle(Theme.Ink.body)
+                    .font(.body).foregroundStyle(Theme.Ink.body)
                     .lineSpacing(3.5)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 400)
@@ -120,7 +120,7 @@ struct UpdateGateView: View {
         case .failed(let message, _):
             VStack(spacing: 16) {
                 Text(message)
-                    .font(.system(size: 12)).foregroundStyle(Theme.Ink.amber)
+                    .font(.callout).foregroundStyle(Theme.Ink.amber)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
                     .fixedSize(horizontal: false, vertical: true)
@@ -149,28 +149,28 @@ struct UpdateGateView: View {
                 case .checking:
                     ProgressView().controlSize(.small).tint(.white.opacity(0.5))
                     Text("Checking for updates…")
-                        .font(.system(size: 17)).foregroundStyle(Theme.Ink.statusInk)
+                        .font(.title2).foregroundStyle(Theme.Ink.statusInk)
                     Button("Cancel") { model.dismissInfo() }
                         .buttonStyle(.plain)
-                        .font(.system(size: 11.5)).foregroundStyle(Theme.Ink.label)
+                        .font(.callout).foregroundStyle(Theme.Ink.label)
                         .padding(.top, 2)
 
                 case .upToDate:
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 26)).foregroundStyle(Theme.Ink.green)
+                        .font(.largeTitle).foregroundStyle(Theme.Ink.green)
                     Text("You're up to date.")
-                        .font(.system(size: 19, weight: .medium)).foregroundStyle(Theme.Ink.statusInk)
+                        .font(.title2.weight(.medium)).foregroundStyle(Theme.Ink.statusInk)
                     Text("Sentient is on version \(UpdateController.currentVersionString).")
-                        .font(.system(size: 12)).foregroundStyle(Theme.Ink.body)
+                        .font(.callout).foregroundStyle(Theme.Ink.body)
                     doneButton
 
                 case .failed(let message, _):
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 22)).foregroundStyle(Theme.Ink.amber)
+                        .font(.title).foregroundStyle(Theme.Ink.amber)
                     Text("Couldn't check for updates.")
-                        .font(.system(size: 18, weight: .medium)).foregroundStyle(Theme.Ink.statusInk)
+                        .font(.title2.weight(.medium)).foregroundStyle(Theme.Ink.statusInk)
                     Text(message)
-                        .font(.system(size: 11.5)).foregroundStyle(Theme.Ink.body)
+                        .font(.callout).foregroundStyle(Theme.Ink.body)
                         .multilineTextAlignment(.center).frame(maxWidth: 280)
                         .fixedSize(horizontal: false, vertical: true)
                     doneButton
@@ -193,9 +193,9 @@ struct UpdateGateView: View {
     private var quitButton: some View {
         Button(action: { model.quit() }) {
             Text("Quit Sentient")
-                .font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white.opacity(0.7))
+                .font(.body.weight(.medium)).foregroundStyle(.secondary)
                 .padding(.horizontal, 22).padding(.vertical, 9)
-                .background(Capsule().fill(.white.opacity(0.06)))
+                .background(Capsule().fill(.quinary))
                 .overlay(Capsule().strokeBorder(.white.opacity(0.14)))
         }
         .buttonStyle(.plain)
@@ -204,7 +204,7 @@ struct UpdateGateView: View {
     private var doneButton: some View {
         Button(action: { model.dismissInfo() }) {
             Text("Done")
-                .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.black)
+                .font(.body.weight(.semibold)).foregroundStyle(.black)
                 .padding(.horizontal, 26).padding(.vertical, 8)
                 .background(Capsule().fill(.white))
         }
@@ -214,13 +214,13 @@ struct UpdateGateView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            Image(systemName: "shield").font(.system(size: 10.5)).foregroundStyle(Theme.Ink.label)
+            Image(systemName: "shield").font(.subheadline).foregroundStyle(Theme.Ink.label)
             Text(PrivacyCopy.trustRibbon)
-                .font(.system(size: 11.5)).foregroundStyle(Theme.Ink.label)
+                .font(.callout).foregroundStyle(Theme.Ink.label)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 13)
-        .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.05)).frame(height: 1) }
+        .overlay(alignment: .top) { Rectangle().fill(.quinary).frame(height: 1) }
     }
 
     // MARK: - Copy & state helpers

@@ -56,13 +56,13 @@ struct UninstallView: View {
     private var farewell: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Before you go.")
-                .display(24).foregroundStyle(.white)
+                .display(24).foregroundStyle(.primary)
             prose("We’re two college students who built Sentient to push the bounds of what private, on-device LLM inference can do: understand your entire life, and proactively offer to help with anything you have going on. That future should be accessible to everyone, so Sentient is 100% open source and free forever.")
                 .padding(.top, 14)
             prose("Something here didn’t land for you, and we would love to hear what. We read every note.")
                 .padding(.top, 10)
 
-            Text("Uninstalling includes").font(.system(size: 16, weight: .medium)).foregroundStyle(.white)
+            Text("Uninstalling includes").font(.title3.weight(.medium)).foregroundStyle(.primary)
                 .padding(.top, 22)
             Grid(alignment: .leading, horizontalSpacing: 22, verticalSpacing: 9) {
                 GridRow {
@@ -114,10 +114,10 @@ struct UninstallView: View {
     private func manifestRow(_ symbol: String, _ text: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: symbol)
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .foregroundStyle(Theme.Ink.label)
                 .frame(width: 15)
-            Text(text).font(.system(size: 14)).foregroundStyle(Theme.Ink.body)
+            Text(text).font(.body).foregroundStyle(Theme.Ink.body)
         }
     }
 
@@ -125,12 +125,12 @@ struct UninstallView: View {
 
     private var working: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(stage.whisper).font(.system(size: 14)).foregroundStyle(SettingsStyle.secondary)
+            Text(stage.whisper).font(.body).foregroundStyle(SettingsStyle.secondary)
                 .id(stage)
                 .transition(.opacity)
                 .animation(.easeInOut(duration: 0.3), value: stage)
             Text("Taking Sentient apart, gently.")
-                .display(24).foregroundStyle(.white)
+                .display(24).foregroundStyle(.primary)
                 .padding(.top, 12)
             prose(stage == .stopping
                   ? "Stopping active work safely before removing Sentient’s data."
@@ -147,9 +147,9 @@ struct UninstallView: View {
 
     private var helperPrompt: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("One more step").font(.system(size: 14)).foregroundStyle(SettingsStyle.secondary)
+            Text("One more step").font(.body).foregroundStyle(SettingsStyle.secondary)
             Text("The wake helper needs attention.")
-                .display(24).foregroundStyle(.white)
+                .display(24).foregroundStyle(.primary)
                 .padding(.top, 12)
             prose("Sentient needs its wake helper to restore normal sleep and remove its system files. If System Settings opens, allow Sentient OS to run in the background, then try again. You can skip this step, but the helper and its system files may remain.")
                 .padding(.top, 14)
@@ -169,7 +169,7 @@ struct UninstallView: View {
     private func quietLink(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 13))
+                .font(.body)
                 .foregroundStyle(Theme.Ink.bright.opacity(0.9))
         }
         .buttonStyle(PressScaleStyle())
@@ -179,9 +179,9 @@ struct UninstallView: View {
 
     private var gone: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(Uninstall.helperWasSkipped ? "App data cleared" : "All clear").font(.system(size: 14)).foregroundStyle(SettingsStyle.secondary)
+            Text(Uninstall.helperWasSkipped ? "App data cleared" : "All clear").font(.body).foregroundStyle(SettingsStyle.secondary)
             Text(Uninstall.helperWasSkipped ? "The wake helper may remain." : "Sentient is gone from this Mac.")
-                .display(24).foregroundStyle(.white)
+                .display(24).foregroundStyle(.primary)
                 .padding(.top, 12)
             prose(Uninstall.helperWasSkipped
                   ? "The wake helper and its system files may remain because you skipped that step. Turn off Sentient OS in System Settings → General → Login Items & Extensions, then drag the app to the Trash."
@@ -228,7 +228,7 @@ struct UninstallView: View {
 
     private func prose(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 14)).foregroundStyle(Theme.Ink.body)
+            .font(.body).foregroundStyle(Theme.Ink.body)
             .lineSpacing(3.5)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -236,9 +236,9 @@ struct UninstallView: View {
     private var feedbackButton: some View {
         Button(action: shareFeedback) {
             HStack(spacing: 6) {
-                Image(systemName: feedbackCopied ? "checkmark" : "envelope").font(.system(size: 10))
+                Image(systemName: feedbackCopied ? "checkmark" : "envelope").font(.caption)
                 Text(feedbackCopied ? "feedback@sentient-os.ai copied" : "Email the founders")
-                    .font(.system(size: 13))
+                    .font(.body)
             }
             .foregroundStyle(Theme.Ink.bright.opacity(0.9))
         }

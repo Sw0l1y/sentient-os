@@ -54,10 +54,10 @@ struct BriefingCard: View {
             if let onDismiss, isHovered {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
+                        .font(.caption2.weight(.semibold)).foregroundStyle(.primary)
                         .frame(width: 22, height: 22)
                         .background(Color(white: 0.13), in: Circle())
-                        .overlay(Circle().strokeBorder(.white.opacity(0.2), lineWidth: 0.75))
+                        .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 0.75))
                         .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
                         .contentShape(Circle())
                 }
@@ -119,11 +119,11 @@ struct BriefingCard: View {
         VStack(alignment: .leading, spacing: 0) {
             MonoCaps(briefing.kicker, size: 9.5, tracking: 2.0, color: briefing.accent.opacity(0.95))
             Text(briefing.title)
-                .font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
+                .font(.title.weight(.semibold)).foregroundStyle(.primary)
                 .lineLimit(previewTitleLines)
                 .padding(.top, 8)
             Text(briefing.body)
-                .font(.system(size: 12)).foregroundStyle(Theme.Ink.body).lineSpacing(3.2)
+                .font(.callout).foregroundStyle(Theme.Ink.body).lineSpacing(3.2)
                 .lineLimit(previewBodyLines)
                 .padding(.top, 6)
             HStack(spacing: 12) {
@@ -137,8 +137,8 @@ struct BriefingCard: View {
                 if let detail = briefing.detailLabel {
                     Button(action: onDetail) {
                         HStack(spacing: 4) {
-                            Text(detail).font(.system(size: 11.5))
-                            Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
+                            Text(detail).font(.callout)
+                            Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
                         }
                         .foregroundStyle(Theme.Ink.bright)
                         .contentShape(Rectangle())
@@ -160,19 +160,19 @@ struct BriefingCard: View {
                 if let onStop {                          // real cards: a per-card STOP
                     Button(action: onStop) {
                         HStack(spacing: 4) {
-                            Image(systemName: "stop.fill").font(.system(size: 7.5))
-                            Text("STOP").font(.system(size: 8.5, weight: .semibold, design: .monospaced)).tracking(1.2)
+                            Image(systemName: "stop.fill").font(.caption2)
+                            Text("STOP").font(.system(.caption2, design: .monospaced, weight: .semibold))
                         }
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(.secondary)
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+                        .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
                         .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
                 }
             }
             Text(briefing.title)
-                .font(.system(size: 20, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
+                .font(.title.weight(.semibold)).foregroundStyle(.primary)
                 .padding(.top, 8)
             workLogBody(visible).padding(.top, 10)
         }
@@ -181,11 +181,11 @@ struct BriefingCard: View {
     private func conversationFace(open: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(briefing.title)
-                .font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
+                .font(.title.weight(.semibold)).foregroundStyle(.primary)
                 .lineLimit(previewTitleLines)
             Button(action: open) {
                 Label("View in chat", systemImage: "arrow.up.right")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(Theme.Ink.bright)
                     .padding(.vertical, 6).contentShape(Rectangle())
             }
@@ -201,7 +201,7 @@ struct BriefingCard: View {
                 ForEach(0..<min(visible, briefing.workLog.count), id: \.self) { i in
                     let line = briefing.workLog[i]
                     Text(line)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(.subheadline, design: .monospaced))
                         .foregroundStyle(line.hasPrefix("✓") ? Theme.Ink.green : .white.opacity(0.72))
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -212,7 +212,7 @@ struct BriefingCard: View {
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(Array(recent.enumerated()), id: \.offset) { i, line in
                     Text(line)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(.subheadline, design: .monospaced))
                         .foregroundStyle(.white.opacity(i == recent.count - 1 ? 0.85 : 0.4))
                         .lineLimit(2).truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -226,12 +226,12 @@ struct BriefingCard: View {
     private var doneFace: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 24)).foregroundStyle(Theme.Ink.green)
+                .font(.largeTitle).foregroundStyle(Theme.Ink.green)
             VStack(alignment: .leading, spacing: 5) {
                 Text(briefing.doneTitle)
-                    .font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
+                    .font(.title.weight(.semibold)).foregroundStyle(.primary)
                 Text(briefing.doneBody)
-                    .font(.system(size: 12)).foregroundStyle(Theme.Ink.body)
+                    .font(.callout).foregroundStyle(Theme.Ink.body)
             }
             Spacer(minLength: 0)
         }
@@ -266,10 +266,10 @@ struct OfferButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                Image(systemName: icon).font(.system(size: 10.5, weight: .semibold))
-                Text(label).font(.system(size: 12.5, weight: .semibold))
+                Image(systemName: icon).font(.subheadline.weight(.semibold))
+                Text(label).font(.body.weight(.semibold))
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             .padding(.horizontal, 15).padding(.vertical, 8)
             .background(Capsule(style: .continuous).fill(.white.opacity(hovering ? 0.12 : 0.07)))
             .overlay(Capsule(style: .continuous).strokeBorder(
@@ -315,7 +315,7 @@ private struct EnvelopeFace: View {
                         if let recipient { return "For \(recipient)" }
                         return HomeView.macFirstName.isEmpty ? "For you" : "For \(HomeView.macFirstName)"
                     }())
-                        .font(.system(size: 22, weight: .semibold).italic())
+                        .font(.title.weight(.semibold).italic())
                         .foregroundStyle(Theme.Ink.statusInk)
                 }
                 .frame(maxWidth: .infinity)
@@ -323,7 +323,7 @@ private struct EnvelopeFace: View {
 
                 EnvelopeFlap()
                     .fill(Color(red: 0.082, green: 0.076, blue: 0.106))
-                    .overlay(EnvelopeFlap().stroke(Color.white.opacity(0.08), lineWidth: 1))
+                    .overlay(EnvelopeFlap().stroke(Theme.stroke, lineWidth: 1))
                     .frame(height: 94)
                     // Round the flap's top corners to the card's own radius — the raw triangle's
                     // square tips poke past the rounded border. Clip BEFORE the rotation so the
@@ -357,7 +357,7 @@ private struct EnvelopeFace: View {
                                      center: .topLeading, startRadius: 2, endRadius: 44))
                 .overlay(Circle().fill(Color.black.opacity(0.22)))   // wax depth
                 .frame(width: 38, height: 38)
-            Circle().strokeBorder(.white.opacity(0.92), lineWidth: 1.5)
+            Circle().strokeBorder(Theme.stroke, lineWidth: 1.5)
                 .frame(width: 19, height: 19)
             Circle().fill(.white).frame(width: 6.5, height: 6.5)
         }
@@ -392,7 +392,7 @@ private struct BlinkingCursor: View {
     let color: Color
     @State private var on = false
     var body: some View {
-        Text("▍").font(.system(size: 11, design: .monospaced)).foregroundStyle(color)
+        Text("▍").font(.system(.subheadline, design: .monospaced)).foregroundStyle(color)
             .opacity(on ? 0.9 : 0.15)
             .onAppear { withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) { on = true } }
     }

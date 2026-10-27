@@ -19,7 +19,7 @@ struct LoginLinkButton: View {
                                  minimumLabelWidth: 146, action: copy)
             if copyFailed {
                 Text("Couldn't copy the link. Please try again.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.Ink.red)
+                    .font(.callout).foregroundStyle(Theme.Ink.red)
             }
         }
         .frame(maxWidth: .infinity)
@@ -54,7 +54,7 @@ struct LoginLinkButton: View {
     VStack(alignment: .leading, spacing: 14) {
         LoginLinkButton(url: URL(string: "https://example.com"))
         Text("Finish signing in in your browser.")
-            .font(.system(size: 12.5)).foregroundStyle(Theme.Ink.body)
+            .font(.body).foregroundStyle(Theme.Ink.body)
         MonoWaitLine("waiting for the browser sign-in…")
     }
     .padding(40).frame(width: 640).background(Theme.bg).preferredColorScheme(.dark)

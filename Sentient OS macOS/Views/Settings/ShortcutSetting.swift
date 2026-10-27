@@ -51,10 +51,10 @@ private struct ShortcutRecorderSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Sidekick shortcut").display(24).foregroundStyle(.white)
+            Text("Sidekick shortcut").display(24).foregroundStyle(.primary)
             SettingsProse("The same key is used for Sidekick and Double Tap. Press and release Command, Option, or Control on either side of your keyboard.")
             Text(candidate?.label ?? "Press a key…")
-                .font(.system(size: 26, weight: .medium))
+                .font(.largeTitle.weight(.medium))
                 .foregroundStyle(candidate == nil ? SettingsStyle.secondary : .white)
                 .frame(maxWidth: .infinity).frame(height: 88)
                 .background(SettingsStyle.control, in: RoundedRectangle(cornerRadius: 12))
@@ -67,7 +67,7 @@ private struct ShortcutRecorderSheet: View {
                 .accessibilityLabel("Recorded key")
                 .accessibilityValue(candidate?.spokenLabel ?? "Waiting for a key")
             Text(error ?? "Press one modifier key by itself, without a key combination.")
-                .font(.system(size: 13)).foregroundStyle(error == nil ? SettingsStyle.secondary : Theme.Ink.red)
+                .font(.body).foregroundStyle(error == nil ? SettingsStyle.secondary : Theme.Ink.red)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(minHeight: 36, alignment: .topLeading)
             HStack {

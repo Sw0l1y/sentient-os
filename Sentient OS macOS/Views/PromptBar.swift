@@ -78,8 +78,8 @@ struct PromptBar: View {
             if trimmed.isEmpty { placeholder }
             TextField("", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .foregroundStyle(.white)
+                .font(.body)
+                .foregroundStyle(.primary)
                 .tint(Theme.accent)
                 .lineLimit(1...4)
                 .focused($focused)
@@ -95,8 +95,8 @@ struct PromptBar: View {
         HStack(spacing: 10) {
             OrbMark(size: 16)
             Text(statusLine.isEmpty ? "Working…" : statusLine)
-                .font(.system(size: 12.5, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.72))
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(.secondary)
                 .lineLimit(2).truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .animation(.easeInOut(duration: 0.2), value: statusLine)
@@ -112,8 +112,8 @@ struct PromptBar: View {
     /// "Tell me what you want me to DO" — the verb glows bright; the rest whispers.
     private var placeholder: some View {
         (Text("Tell me what you want me to ").foregroundColor(Theme.Ink.label)
-         + Text("DO").foregroundColor(.white.opacity(0.92)).fontWeight(.heavy))
-            .font(.system(size: 14))
+         + Text("DO").foregroundStyle(.primary).fontWeight(.heavy))
+            .font(.body)
             .allowsHitTesting(false)
     }
 
@@ -140,8 +140,8 @@ private struct ModeToggle: View {
             ForEach(AgentMode.allCases, id: \.self) { segment($0) }
         }
         .padding(3)
-        .background(Capsule(style: .continuous).fill(.white.opacity(0.04)))
-        .overlay(Capsule(style: .continuous).strokeBorder(.white.opacity(0.08), lineWidth: 1))
+        .background(Capsule(style: .continuous).fill(.quinary))
+        .overlay(Capsule(style: .continuous).strokeBorder(Theme.stroke, lineWidth: 1))
     }
 
     private func segment(_ m: AgentMode) -> some View {
@@ -150,14 +150,14 @@ private struct ModeToggle: View {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { mode = m }
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: m.icon).font(.system(size: 10.5, weight: .semibold))
+                Image(systemName: m.icon).font(.subheadline.weight(.semibold))
                 Text(m.label).font(.system(size: 11.5, weight: on ? .semibold : .medium))
             }
             .foregroundStyle(on ? .white : Theme.Ink.label)
             .padding(.horizontal, 11).padding(.vertical, 6)
             .background {
                 if on {
-                    Capsule(style: .continuous).fill(.white.opacity(0.07))
+                    Capsule(style: .continuous).fill(.quaternary)
                         .overlay(Capsule(style: .continuous).strokeBorder(
                             LinearGradient(colors: [Theme.accent.opacity(0.85), Theme.accent.opacity(0.30)],
                                            startPoint: .topLeading, endPoint: .bottomTrailing),
@@ -179,7 +179,7 @@ private struct SendButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "arrow.up")
-                .font(.system(size: 14, weight: .bold))
+                .font(.body.weight(.bold))
                 .foregroundStyle(active ? .black : .white.opacity(0.40))
                 .frame(width: 32, height: 32)
                 .background(Circle().fill(active ? Color.white : Color.white.opacity(0.08)))
@@ -200,11 +200,11 @@ private struct StopButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "stop.fill")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
+                .font(.callout.weight(.bold))
+                .foregroundStyle(.primary)
                 .frame(width: 32, height: 32)
-                .background(Circle().fill(Color.white.opacity(0.16)))
-                .overlay(Circle().strokeBorder(.white.opacity(0.22), lineWidth: 1))
+                .background(Circle().fill(.tertiary))
+                .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 1))
         }
         .buttonStyle(PressScaleStyle())
         .shadow(color: Theme.accent.opacity(0.40), radius: 9)

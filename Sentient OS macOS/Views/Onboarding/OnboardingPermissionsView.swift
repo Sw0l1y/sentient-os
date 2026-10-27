@@ -25,7 +25,7 @@ struct OvernightSetupRequirements: View {
             }
             if !ready {
                 Text("You can choose Run now to analyze without overnight setup.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.secondary)
+                    .font(.callout).foregroundStyle(Theme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

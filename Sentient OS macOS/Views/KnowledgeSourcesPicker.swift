@@ -64,8 +64,8 @@ struct KnowledgeSourcesPicker: View {
         VStack(alignment: .leading, spacing: context == .settings ? 30 : 20) {
             if context == .settings {
                 Text("Choose at least three sources to set up your personal context.")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(.white.opacity(0.72))
+                    .font(.body)
+                    .foregroundStyle(.secondary)
                     .padding(.top, -16)
             }
             emailAndCalendarGroup
@@ -245,8 +245,8 @@ struct KnowledgeSourcesPicker: View {
             }
         } trailing: {
             Label("Recommended", systemImage: "sparkles")
-                .font(.system(size: 10.5))
-                .foregroundStyle(.white.opacity(0.65))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -337,10 +337,10 @@ struct KnowledgeSourcesPicker: View {
 
     private func sourceNote(_ text: String, symbol: String? = nil) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 5) {
-            if let symbol { Image(systemName: symbol).font(.system(size: 9)) }
+            if let symbol { Image(systemName: symbol).font(.caption2) }
             Text(text).fixedSize(horizontal: false, vertical: true)
         }
-        .font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.58))
+        .font(.subheadline).foregroundStyle(.secondary)
     }
 
     private func updateConnectors() {
@@ -385,13 +385,13 @@ private struct SourceAccessSheet: View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Connect \(source.title)").display(22)
             Text("macOS protects \(source.title)’s local data with Full Disk Access. Allow Sentient in System Settings to choose what it can read from this source.")
-                .font(.system(size: 13)).foregroundStyle(Theme.Ink.body)
+                .font(.body).foregroundStyle(Theme.Ink.body)
                 .fixedSize(horizontal: false, vertical: true)
             Text("Your selection stays optional. Granting access does not select any other app or folder.")
-                .font(.system(size: 12)).foregroundStyle(Theme.Ink.body)
+                .font(.callout).foregroundStyle(Theme.Ink.body)
             if checked {
                 Text("Access is not ready yet. If you already allowed Sentient, finish any active tasks and relaunch the app. Also make sure \(source.title) has data synced to this Mac.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.Ink.amber)
+                    .font(.callout).foregroundStyle(Theme.Ink.amber)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let onStopReading {
@@ -401,7 +401,7 @@ private struct SourceAccessSheet: View {
             Button("Relaunch Sentient") { _ = SafeAppRelaunch.shared.relaunchForPersonalSetup() }
                 .disabled(!SafeAppRelaunch.shared.canRelaunch)
             if let reason = SafeAppRelaunch.shared.statusReason {
-                Text(reason).font(.system(size: 11)).foregroundStyle(Theme.Ink.body)
+                Text(reason).font(.subheadline).foregroundStyle(Theme.Ink.body)
             }
             HStack {
                 Button("Later") { dismiss() }.keyboardShortcut(.cancelAction)

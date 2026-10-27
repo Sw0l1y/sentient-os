@@ -23,16 +23,16 @@ struct OnboardingSidekickInvitation: View {
                 HStack(spacing: 12) {
                     if showsKeyboard {
                         Text(String(key.label.suffix(1)))
-                            .font(.system(size: 19, weight: .medium))
+                            .font(.title2.weight(.medium))
                             .frame(width: 30, height: 28)
                             .background(.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
                             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.black.opacity(0.14)))
                     }
                     if showsKeyboard {
                         OnboardingShortcutInstruction(prefix: "Press ", key: key, hint: shortcutHint, onLight: true)
-                            .font(.system(size: 20, weight: .semibold))
+                            .font(.title.weight(.semibold))
                     } else {
-                        Text("Click your notch").font(.system(size: 20, weight: .semibold))
+                        Text("Click your notch").font(.title.weight(.semibold))
                     }
                 }
                 .foregroundStyle(Color(white: 0.08))
