@@ -709,6 +709,7 @@ actor CodexCLI {
         let nativeOverrides = try nativeConnection?.codexOverrides ?? (nativeConfiguration ?? .resolve()).codexOverrides
         for override in nativeOverrides { args += ["-c", override] }
         for override in DirectMCPRuntime.codexOverrides(DirectMCPRuntime.current) { args += ["-c", override] }
+        for override in ExternalMCPRuntime.codexOverrides(ExternalMCPRuntime.current) { args += ["-c", override] }
         if ModelBackend.current == .chatgpt {
             // Research and app actions share one task; do not depend on CLI search defaults.
             args += ["-c", "web_search=\"live\""]
@@ -780,7 +781,8 @@ actor CodexCLI {
                 // tool activity needed by Sidekick recovery.
                 onLine("codex")
                 let namespaces = Set(["mcp__sentient_native"] + DirectMCPRuntime.current.map { "mcp__" + $0.connection.serverName }
-                    + (SidekickToolServer.connection == nil ? [] : ["mcp__sentient_recovery"]))
+                    + (SidekickToolServer.connection == nil ? [] : ["mcp__sentient_recovery"])
+                    + ExternalMCPRuntime.current.map(\.namespace))
                 let relay = ClaudeSubscriptionBridge(binary: claude, model: modelID, effort: effortArg,
                     timeout: timeout, namespaces: namespaces, onProgress: onLine)
                 bridge = relay

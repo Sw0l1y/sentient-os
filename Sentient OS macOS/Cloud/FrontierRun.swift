@@ -204,6 +204,7 @@ enum FrontierRun {
                         + CustomProvider.computerUsePromptRules + "\n" + researchInstructions
                     let fullPrompt = computerPrompt + (services.isEmpty ? "" : "\n\nDIRECT CONNECTED ACCOUNTS (use these exact accounts):\n\(services)\nPrefer these tools when they fit the requested task. Never repeat an uncertain write without checking whether it already succeeded.")
                         + (guidance.isEmpty ? "" : "\n\n" + guidance)
+                        + ExternalMCPRuntime.promptGuidance(ExternalMCPRuntime.current)
                     return try await DirectMCPRuntime.execute(attachments) {
                         return try await SidekickToolServer.withConnection {
                             let interactive = fullPrompt + (SidekickToolServer.connection == nil ? "" :
