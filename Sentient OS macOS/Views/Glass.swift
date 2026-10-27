@@ -2,64 +2,34 @@
 //  Glass.swift
 //  Sentient OS macOS
 //
-//  The one control language: Liquid Glass capsules on macOS 26+, a quiet material capsule on
-//  older systems. Every app-wide button style routes through GlassButtonStyle so navigation,
-//  toolbar, Settings and CTA buttons share one shape, height ladder, press feedback and accent.
-//  Keep glass on controls (the navigation layer), not on content cards or long chip lists —
-//  each glass element costs GPU time, and the on-device model shares that GPU overnight.
+//  The one control language: the system's own push buttons. GlassButtonStyle is a thin wrapper
+//  over `.bordered` / `.borderedProminent` so every app-wide button is a standard macOS control
+//  (macOS 26 draws those in Liquid Glass itself). `glassSurface` stays for the few floating
+//  surfaces that sit over content — never on content cards or long chip lists.
 //
 
 import SwiftUI
 
-/// Capsule glass button. `prominent` tints the glass with the accent (the one primary action per
-/// surface); `tint` colors a regular button's label (e.g. a destructive red) without filling it.
-struct GlassButtonStyle: ButtonStyle {
+/// A standard macOS push button. `prominent` is the one primary action per surface (filled with the
+/// accent); `tint` recolors the button (a green "connected", a red "remove").
+struct GlassButtonStyle: PrimitiveButtonStyle {
     var prominent = false
     var tint: Color? = nil
 
+    @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
-        GlassButtonBody(configuration: configuration, prominent: prominent, tint: tint)
-    }
-}
-
-extension ButtonStyle where Self == GlassButtonStyle {
-    static var sentientGlass: GlassButtonStyle { GlassButtonStyle() }
-    static var sentientGlassProminent: GlassButtonStyle { GlassButtonStyle(prominent: true) }
-}
-
-/// Heights follow the system control-size ladder so a `.controlSize(.small)` caller still works.
-private struct GlassMetrics {
-    let font: CGFloat, hPad: CGFloat, height: CGFloat
-    init(_ size: ControlSize) {
-        switch size {
-        case .mini, .small: (font, hPad, height) = (12, 11, 28)
-        case .large, .extraLarge: (font, hPad, height) = (15, 22, 44)
-        default: (font, hPad, height) = (13.5, 14, 34)
+        let button = Button(role: configuration.role, action: configuration.trigger) { configuration.label }
+        if prominent {
+            button.buttonStyle(.borderedProminent).tint(tint)
+        } else {
+            button.buttonStyle(.bordered).tint(tint)
         }
     }
 }
 
-private struct GlassButtonBody: View {
-    let configuration: ButtonStyleConfiguration
-    let prominent: Bool
-    let tint: Color?
-    @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.controlSize) private var controlSize
-
-    var body: some View {
-        let m = GlassMetrics(controlSize)
-        configuration.label
-            .font(.system(size: m.font, weight: .medium))
-            .foregroundStyle(prominent ? Color.white : (tint ?? Color.white.opacity(0.92)))
-            .lineLimit(1)
-            .padding(.horizontal, m.hPad)
-            .frame(minHeight: m.height)
-            .contentShape(Capsule())
-            .glassSurface(Capsule(), tint: prominent ? (tint ?? Theme.accent) : nil)
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .opacity(isEnabled ? 1 : 0.4)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
-    }
+extension PrimitiveButtonStyle where Self == GlassButtonStyle {
+    static var sentientGlass: GlassButtonStyle { GlassButtonStyle() }
+    static var sentientGlassProminent: GlassButtonStyle { GlassButtonStyle(prominent: true) }
 }
 
 extension View {

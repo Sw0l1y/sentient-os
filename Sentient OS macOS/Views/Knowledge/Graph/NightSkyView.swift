@@ -172,7 +172,7 @@ private struct SkyHoverCard: View {
         VStack(alignment: .leading, spacing: 6) {
             MonoCaps(info.domainName, size: 8.5, tracking: 2, color: Theme.Ink.label)
             Text(info.title)
-                .font(.system(size: 14, design: .serif))
+                .font(.system(size: 14))
                 .foregroundStyle(Theme.Ink.statusInk)
                 .lineLimit(2)
             if !info.preview.isEmpty {

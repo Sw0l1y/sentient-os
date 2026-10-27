@@ -123,17 +123,17 @@ struct MarkdownView: View {
                 .padding(.vertical, 12)
         } else if s.hasPrefix("### ") {
             Text(inline(String(s.dropFirst(4))))
-                .font(.system(size: 15.5, weight: .semibold, design: .serif))
+                .font(.system(size: 15.5, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.96))
                 .padding(.top, 14).padding(.bottom, 2)
         } else if s.hasPrefix("## ") {
             Text(inline(String(s.dropFirst(3))))
-                .font(.system(size: 20, design: .serif))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.white)
                 .padding(.top, 20).padding(.bottom, 4)
         } else if s.hasPrefix("# ") {
             Text(inline(String(s.dropFirst(2))))
-                .font(.system(size: 25, design: .serif))
+                .font(.system(size: 25, weight: .semibold))
                 .foregroundStyle(.white)
                 .padding(.top, 10).padding(.bottom, 4)
         } else if let bullet = bulletText(s) {

@@ -494,7 +494,7 @@ struct NotchContent: View {
             ZStack(alignment: .leading) {
                 if draftText.isEmpty {
                     Text("What can I take over for you?")
-                        .font(.system(size: 13, design: .serif)).italic()
+                        .font(.system(size: 13)).italic()
                         .foregroundStyle(.white.opacity(0.4))
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -558,7 +558,7 @@ struct NotchContent: View {
                         .opacity(0.55)
                 }
             }
-            .font(.system(size: 13, design: .serif)).italic()
+            .font(.system(size: 13)).italic()
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, alignment: .leading)
             .allowsHitTesting(false)
@@ -592,7 +592,7 @@ struct NotchContent: View {
                     rememberingCaption(remembering)                 // gradient, blooming "Remembering" + the note
                 } else if let readBack {
                     Text(NotchMetrics.quoted(readBack))              // the heard instruction, in quotes — wraps in full
-                        .font(.system(size: 13, design: .serif)).italic()
+                        .font(.system(size: 13)).italic()
                         .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(metrics.maxReadBackLines)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -633,7 +633,7 @@ struct NotchContent: View {
                 .allowsHitTesting(false)
         case .notice(let message):
             Text(message)
-                .font(.system(size: 13, design: .serif)).italic()
+                .font(.system(size: 13)).italic()
                 .foregroundStyle(.white.opacity(0.85))
                 .lineLimit(1)
                 .allowsHitTesting(false)

@@ -27,7 +27,7 @@ struct OnboardingDoubleTapView: View {
               let provider = CGDataProvider(url: url as CFURL),
               let font = CGFont(provider) else {
             Log("Onboarding: could not load bundled Instrument Serif")
-            return .system(size: 30, weight: .regular, design: .serif)
+            return .system(size: 30, weight: .regular)
         }
         return Font(CTFontCreateWithGraphicsFont(font, 30, nil, nil))
     }()

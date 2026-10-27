@@ -235,9 +235,9 @@ struct SettingsPillButton: View {
     }
 }
 
-/// Settings and toolbar actions: the shared glass capsule. A non-default `tint` colors the label
-/// (green "connected", red "remove") without filling the glass; compact layouts step down a size.
-struct SettingsActionStyle: ButtonStyle {
+/// Settings actions: a standard push button. A non-default `tint` recolors it (green "connected",
+/// red "remove"); compact layouts step down a size.
+struct SettingsActionStyle: PrimitiveButtonStyle {
     var tint: Color = Theme.Ink.bright
 
     func makeBody(configuration: Configuration) -> some View {
@@ -246,7 +246,7 @@ struct SettingsActionStyle: ButtonStyle {
 }
 
 private struct SettingsActionBody: View {
-    let configuration: ButtonStyleConfiguration
+    let configuration: PrimitiveButtonStyleConfiguration
     let tint: Color
     @Environment(\.settingsCompactLayout) private var compactLayout
     @Environment(\.controlSize) private var controlSize
@@ -438,18 +438,15 @@ struct LockedChipTip: View {
 /// A lit status LED: bright core + double soft glow (tight halo, wide bloom). Shared by
 /// StatusLine and the collapsed codex summary.
 struct HealthDot: View {
-    /// The punchy warn amber every status LED shares — brighter than the ink amber on purpose.
-    static let warnAmber = Color(red: 1.0, green: 0.72, blue: 0.30)
+    /// The warning orange every status dot shares.
+    static let warnAmber = Color(nsColor: .systemOrange)
 
     let color: Color
 
     var body: some View {
         Circle()
             .fill(color)
-            .overlay(Circle().fill(.white.opacity(0.35)).frame(width: 2.5, height: 2.5))
-            .frame(width: 6.5, height: 6.5)
-            .shadow(color: color.opacity(0.85), radius: 3)
-            .shadow(color: color.opacity(0.45), radius: 8)
+            .frame(width: 8, height: 8)
     }
 }
 

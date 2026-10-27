@@ -42,7 +42,7 @@ struct HomeProactiveShowcase: View {
                     Label("Prepared overnight", systemImage: "sunrise")
                         .font(.system(size: 13, weight: .medium)).foregroundStyle(SidekickStyle.ink)
                     Spacer()
-                    MonoCaps("2 READY", size: 8.5, tracking: 1.5, color: Theme.faint)
+                    MonoCaps("2 ready", size: 8.5, tracking: 1.5, color: Theme.faint)
                 }
                 let columns = width >= 494 ? 2 : 1
                 let cardWidth = (width - CGFloat(columns - 1) * 14) / CGFloat(columns)
@@ -68,7 +68,7 @@ struct HomeProactiveShowcase: View {
             MonoCaps(example == .followup ? "DRAFT FOLLOW-UP" : "CANCELLATION PLAN",
                      size: 9, tracking: 1.8, color: accent)
             Text(example == .followup ? "Northstar: next steps" : "Before Pulse renews")
-                .font(.system(size: 25, design: .serif)).foregroundStyle(SidekickStyle.ink)
+                .font(.system(size: 25, weight: .semibold)).foregroundStyle(SidekickStyle.ink)
             if example == .followup {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("To Alex Chen", systemImage: "envelope")
@@ -138,7 +138,7 @@ struct HomeDoubleTapShowcase: View {
             }
             VStack(alignment: .leading, spacing: 10) {
                 if !compact {
-                    Text("Northstar rollout").font(.system(size: 22, design: .serif)).foregroundStyle(SidekickStyle.ink)
+                    Text("Northstar rollout").font(.system(size: 22, weight: .semibold)).foregroundStyle(SidekickStyle.ink)
                 }
                 Text("Can we expand the pilot? What do you need from us before the rollout?")
                     .font(.system(size: 13)).lineSpacing(4).foregroundStyle(SidekickStyle.secondary)
@@ -242,7 +242,7 @@ struct HomeKnowledgeShowcase: View {
                 VStack(alignment: .leading, spacing: compact ? 12 : 16) {
                     MonoCaps(selected.domain >= 0 ? graph.domains[selected.domain].uppercased() : "OVERVIEW",
                              size: 8.5, tracking: 1.8, color: SkyRenderer.domainColor(selected.domain))
-                    Text(selected.title).font(.system(size: compact ? 22 : 25, design: .serif))
+                    Text(selected.title).font(.system(size: compact ? 22 : 25, weight: .semibold))
                         .foregroundStyle(SidekickStyle.ink)
                     Text(selected.preview).font(.system(size: 13.5)).lineSpacing(5)
                         .foregroundStyle(SidekickStyle.secondary).fixedSize(horizontal: false, vertical: true)
@@ -254,7 +254,7 @@ struct HomeKnowledgeShowcase: View {
                         }.prefix(3)
                         if !related.isEmpty {
                             Rectangle().fill(.white.opacity(0.07)).frame(height: 1)
-                            MonoCaps("CONNECTED NOTES", size: 8, tracking: 1.4, color: Theme.faint)
+                            MonoCaps("Connected notes", size: 8, tracking: 1.4, color: Theme.faint)
                             ForEach(Array(related), id: \.self) { index in
                                 Button { navigate(to: graph.nodes[index].url) } label: {
                                     Label(graph.nodes[index].title, systemImage: "link")
@@ -288,7 +288,7 @@ struct HomeKnowledgeShowcase: View {
                     .accessibilityIdentifier("personalSetup.knowledge.sky")
                 if !compact, let graph = sky.graph {
                     HStack {
-                        MonoCaps("\(graph.nodes.count) NOTES · \(graph.domains.count) CONSTELLATIONS",
+                        MonoCaps("\(graph.nodes.count) notes · \(graph.domains.count) constellations",
                                  size: 8, tracking: 1.3, color: Theme.faint)
                         Spacer()
                         Text("Hover, drag, or zoom").font(.system(size: 10.5)).foregroundStyle(SidekickStyle.secondary)
@@ -336,8 +336,8 @@ struct HomeSidekickShowcase: View {
                     change { briefOpen = false }
                 }
                 VStack(alignment: .leading, spacing: 17) {
-                    MonoCaps("CALL BRIEF", size: 9, tracking: 1.8, color: Theme.faint)
-                    Text("Northstar, in three points").font(.system(size: 25, design: .serif)).foregroundStyle(SidekickStyle.ink)
+                    MonoCaps("Call brief", size: 9, tracking: 1.8, color: Theme.faint)
+                    Text("Northstar, in three points").font(.system(size: 25, weight: .semibold)).foregroundStyle(SidekickStyle.ink)
                     ShowcaseStep(number: "1", title: "The team wants to expand", detail: "Alex is ready to grow the pilot from 20 to 80 seats.")
                     ShowcaseStep(number: "2", title: "SSO is the open question", detail: "Confirm the identity provider and who owns the security review.")
                     ShowcaseStep(number: "3", title: "Keep Friday on track", detail: "Send the checklist before Thursday’s review, then confirm the rollout.")
@@ -368,7 +368,7 @@ struct HomeSidekickShowcase: View {
                             Image(systemName: "doc.text").font(.system(size: 21, weight: .light))
                                 .foregroundStyle(SidekickStyle.secondary)
                             VStack(alignment: .leading, spacing: 5) {
-                                Text("Northstar call brief").font(.system(size: 17, design: .serif)).foregroundStyle(SidekickStyle.ink)
+                                Text("Northstar call brief").font(.system(size: 17)).foregroundStyle(SidekickStyle.ink)
                                 Text("3 talking points · Open brief").font(.system(size: 11)).foregroundStyle(SidekickStyle.secondary)
                             }
                             Spacer(minLength: 4)

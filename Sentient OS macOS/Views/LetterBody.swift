@@ -35,7 +35,7 @@ struct LetterBody: View {
             Color.clear.frame(height: 2)                              // a paragraph break
         } else if line.hasPrefix("### ") {
             Text(Self.inline(String(line.dropFirst(4))))             // soulful subhead (serif italic)
-                .font(.system(size: 16, design: .serif).italic())
+                .font(.system(size: 16).italic())
                 .foregroundStyle(.white.opacity(0.92))
                 .padding(.top, 6)
         } else if line.hasPrefix("## ") {
@@ -44,7 +44,7 @@ struct LetterBody: View {
                 .padding(.top, 12)
         } else if line.hasPrefix("# ") {
             Text(Self.inline(String(line.dropFirst(2))))             // a stray title, defensive
-                .font(.system(size: 22, design: .serif)).foregroundStyle(.white)
+                .font(.system(size: 22, weight: .semibold)).foregroundStyle(.white)
                 .padding(.top, 4)
         } else if Self.isRule(line) {
             Rectangle().fill(Color.white.opacity(0.1))               // a `---` rule → hairline divider
@@ -69,7 +69,7 @@ struct LetterBody: View {
             }
         } else if Self.isSignoff(line) {
             Text(Self.inline(line))                                  // "-- Your Sentient"
-                .font(.system(size: 13, design: .serif).italic())
+                .font(.system(size: 13).italic())
                 .foregroundStyle(.white.opacity(0.55))
                 .padding(.top, 10)
         } else {

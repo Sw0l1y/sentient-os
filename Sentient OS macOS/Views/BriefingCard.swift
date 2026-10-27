@@ -119,7 +119,7 @@ struct BriefingCard: View {
         VStack(alignment: .leading, spacing: 0) {
             MonoCaps(briefing.kicker, size: 9.5, tracking: 2.0, color: briefing.accent.opacity(0.95))
             Text(briefing.title)
-                .font(.system(size: 20, design: .serif)).foregroundStyle(.white)
+                .font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
                 .lineLimit(previewTitleLines)
                 .padding(.top, 8)
             Text(briefing.body)
@@ -172,7 +172,7 @@ struct BriefingCard: View {
                 }
             }
             Text(briefing.title)
-                .font(.system(size: 20, design: .serif)).foregroundStyle(.white.opacity(0.85))
+                .font(.system(size: 20, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
                 .padding(.top, 8)
             workLogBody(visible).padding(.top, 10)
         }
@@ -181,7 +181,7 @@ struct BriefingCard: View {
     private func conversationFace(open: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(briefing.title)
-                .font(.system(size: 20, design: .serif)).foregroundStyle(.white)
+                .font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
                 .lineLimit(previewTitleLines)
             Button(action: open) {
                 Label("View in chat", systemImage: "arrow.up.right")
@@ -229,7 +229,7 @@ struct BriefingCard: View {
                 .font(.system(size: 24)).foregroundStyle(Theme.Ink.green)
             VStack(alignment: .leading, spacing: 5) {
                 Text(briefing.doneTitle)
-                    .font(.system(size: 20, design: .serif)).foregroundStyle(.white)
+                    .font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
                 Text(briefing.doneBody)
                     .font(.system(size: 12)).foregroundStyle(Theme.Ink.body)
             }
@@ -315,7 +315,7 @@ private struct EnvelopeFace: View {
                         if let recipient { return "For \(recipient)" }
                         return HomeView.macFirstName.isEmpty ? "For you" : "For \(HomeView.macFirstName)"
                     }())
-                        .font(.system(size: 22, design: .serif).italic())
+                        .font(.system(size: 22, weight: .semibold).italic())
                         .foregroundStyle(Theme.Ink.statusInk)
                 }
                 .frame(maxWidth: .infinity)

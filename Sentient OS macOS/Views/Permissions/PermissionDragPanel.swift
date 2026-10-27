@@ -491,7 +491,7 @@ private struct AppDragCardContent: View {
             VStack(spacing: 1) {
                 Image(systemName: "hand.draw")
                     .font(.system(size: 13))
-                MonoCaps("DRAG", size: 7, tracking: 1.6, color: Theme.Ink.label)
+                MonoCaps("Drag", size: 7, tracking: 1.6, color: Theme.Ink.label)
             }
             .foregroundStyle(Theme.Ink.label)
             .padding(.trailing, 4)

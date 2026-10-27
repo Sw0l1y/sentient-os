@@ -116,9 +116,6 @@ struct HomeView: View {
             let layout = overviewLayout(in: geo.size)
             let workspaceWidth = needsPersonalSetup ? geo.size.width - (HomePersonalSetupPanel.width + 46) : geo.size.width
             ZStack {
-                SidekickAtmosphere(focused: presentation.composerFocused,
-                                   sendPulse: presentation.sendPulse,
-                                   active: isPresented && presentation.windowActive && !presentation.textSelected && !presentation.isScrolling && overviewPull == 0)
 
                 SidekickGlassGroup {
                     ZStack {
@@ -1640,7 +1637,7 @@ private struct LetterView: View {
                 .padding(.trailing, isResearchNote ? 24 : 0)   // clear of the paper's folded corner
             }
             Text(briefing.title)
-                .font(.system(size: 30, design: .serif)).foregroundStyle(.white)
+                .font(.system(size: 30, weight: .semibold)).foregroundStyle(.white)
                 .padding(.top, 8)
             if isResearchNote {   // the letterhead rule: a hairline of the card's accent, fading out
                 LinearGradient(colors: [briefing.accent.opacity(0.5), .clear],

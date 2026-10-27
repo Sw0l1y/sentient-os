@@ -19,7 +19,7 @@ struct PersonalSetupView: View {
                     } label: { Label("Back to Home", systemImage: "arrow.left") }
                         .buttonStyle(BackButtonStyle())
                     Spacer()
-                    MonoCaps("PERSONAL SETUP", size: 9, tracking: 1.8, color: Theme.faint)
+                    MonoCaps("Personal setup", size: 9, tracking: 1.8, color: Theme.faint)
                 }
                 .padding(.horizontal, 25).padding(.top, 18).padding(.bottom, 10)
                 if let problem {

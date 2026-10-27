@@ -18,7 +18,7 @@ struct AnalysisTimingSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
                         VStack(alignment: .leading, spacing: 10) {
-                            MonoCaps("YOUR FIRST ANALYSIS", size: 9, tracking: 2, color: Theme.faint)
+                            MonoCaps("Your first analysis", size: 9, tracking: 2, color: Theme.faint)
                             Text("When should analysis run?").display(27).foregroundStyle(.white)
                             Text("Your first analysis can take over an hour to understand your sources and build your knowledge base.")
                                 .font(.system(size: 14)).foregroundStyle(Theme.secondary).lineSpacing(3)

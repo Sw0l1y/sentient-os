@@ -2,24 +2,24 @@
 //  Theme.swift
 //  Sentient OS macOS
 //
-//  The Sentient OS visual language — one place so "fancy everywhere" stays consistent.
-//  Pure OLED black, a bold tight-tracked display voice, glassy elevated surfaces, a soft violet
-//  glow, and verdict color-coding. Serif survives only as the face of a note's name (Knowledge
-//  reader headings, star labels) and inside the gift letter. The app is dark-only (no light mode).
+//  The Sentient OS visual language — one place so the app stays consistent. It is macOS's own:
+//  system window and control backgrounds, semantic label colors, SF type, the user's accent color,
+//  standard controls. The app runs in dark appearance; every token below is a dynamic system color,
+//  so nothing here hard-codes a black or a gray.
 //
 
 import SwiftUI
 
 enum Theme {
-    static let bg = Color.black
+    static let bg = Color(nsColor: .windowBackgroundColor)
     /// The Knowledge sidebar surface — moonlit slate: near-neutral graphite with a whisper of cool
     /// blue (b > g > r), so the folder panel reads as night-sky chrome and recedes behind the
     /// reading pane. (The old warm-orange panel read as a Claude-ism.)
-    static let panel = Color(red: 0.053, green: 0.058, blue: 0.072)
-    static let elevated = Color.white.opacity(0.05)
-    static let stroke = Color.white.opacity(0.09)
-    static let secondary = Color.white.opacity(0.55)
-    static let faint = Color.white.opacity(0.32)
+    static let panel = Color(nsColor: .underPageBackgroundColor)
+    static let elevated = Color(nsColor: .quaternarySystemFill)
+    static let stroke = Color(nsColor: .separatorColor)
+    static let secondary = Color(nsColor: .secondaryLabelColor)
+    static let faint = Color(nsColor: .tertiaryLabelColor)
     /// The ONE accent: the Mac's own accent color (System Settings › Appearance), so the app reads
     /// as part of macOS. Every glow, tint, selection and prominent control derives from it.
     static let accent = Color.accentColor
@@ -41,19 +41,19 @@ enum Theme {
     /// The wikilink color — a plain, minimalist sky blue (#6fb6ff). Deliberately a solid, honest
     /// web-link blue: gradient text reads as AI-generated, single claimed hues read as other
     /// brands; sky blue on a night-sky surface reads as ours.
-    static let knowledgeLink = Color(red: 0.435, green: 0.714, blue: 1.0)
+    static let knowledgeLink = Color(nsColor: .linkColor)
 
     /// The sky's "changed last night" shimmer — dawn cyan.
-    static let dawnCyan = Color(red: 0.333, green: 0.757, blue: 0.941)
+    static let dawnCyan = Color(nsColor: .systemTeal)
 
     /// The vault CTA glow — formerly a teal→purple rainbow, now the single accent's shades.
     static var magicGlow: [Color] { Array(accentRamp.prefix(7)) }
 
     static func verdictColor(_ v: Verdict) -> Color {
         switch v {
-        case .survivor:  return Ink.green                                    // the one app green
-        case .junk:      return Color.white.opacity(0.45)                    // dim
-        case .sensitive: return Color(red: 1.0, green: 0.45, blue: 0.45)    // red
+        case .survivor:  return Ink.green
+        case .junk:      return Color(nsColor: .tertiaryLabelColor)
+        case .sensitive: return Color(nsColor: .systemRed)
         }
     }
 
@@ -65,44 +65,41 @@ enum Theme {
         }
     }
 
-    /// The editorial ink palette (from the Constellation mockup) — shared by the Constellation
-    /// home and the For You / briefings window.
+    /// Text and status inks, mapped onto the system's semantic colors (names kept for callers).
     enum Ink {
-        static let cardBG = Color(red: 0.047, green: 0.047, blue: 0.059)       // #0c0c0f
-        static let statusInk = Color(red: 0.914, green: 0.906, blue: 0.933)    // #e9e7ee
-        static let body = Color(red: 0.608, green: 0.604, blue: 0.627)         // #9b9aa0
-        static let label = Color(red: 0.431, green: 0.427, blue: 0.459)        // #6e6d75
-        static let deepMuted = Color(red: 0.337, green: 0.333, blue: 0.369)    // #56555e
-        static let bright = Color(red: 0.812, green: 0.804, blue: 0.839)       // #cfcdd6
-        static let green = Color(red: 0.290, green: 0.871, blue: 0.502)        // #4ade80 (was mint #47d7ac — too seafoam)
-        static let amber = Color(red: 1.0, green: 0.765, blue: 0.443)          // #ffc371
-        static let gold = Color(red: 0.851, green: 0.702, blue: 0.294)         // #d9b34b — the open-source pride mark (Settings footer); NOT the caution amber
-        static let red = Color(red: 1.0, green: 0.36, blue: 0.36)              // status-LED red (StatusLine .bad · the home's live caution)
-        static let chipInk = Color(red: 0.541, green: 0.537, blue: 0.565)      // #8a8990
-        static let chipBorder = Color(red: 0.114, green: 0.114, blue: 0.133)   // #1d1d22
+        static let cardBG = Color(nsColor: .controlBackgroundColor)
+        static let statusInk = Color(nsColor: .labelColor)
+        static let body = Color(nsColor: .secondaryLabelColor)
+        static let label = Color(nsColor: .tertiaryLabelColor)
+        static let deepMuted = Color(nsColor: .quaternaryLabelColor)
+        static let bright = Color(nsColor: .labelColor)
+        static let green = Color(nsColor: .systemGreen)
+        static let amber = Color(nsColor: .systemOrange)
+        static let gold = Color(nsColor: .systemYellow)
+        static let red = Color(nsColor: .systemRed)
+        static let chipInk = Color(nsColor: .secondaryLabelColor)
+        static let chipBorder = Color(nsColor: .separatorColor)
     }
 }
 
-/// Monospace ALL-CAPS with wide tracking — the design language's whisper voice.
+/// A small section label — SF semibold in the given color, written as the string is cased.
+/// (Formerly a monospaced all-caps "whisper"; the name stays for its many callers.)
 struct MonoCaps: View {
     let text: String
     let size: CGFloat
-    let tracking: CGFloat
     let color: Color
     let weight: Font.Weight
 
-    init(_ text: String, size: CGFloat, tracking: CGFloat, color: Color, weight: Font.Weight = .medium) {
+    init(_ text: String, size: CGFloat, tracking: CGFloat = 0, color: Color, weight: Font.Weight = .semibold) {
         self.text = text
         self.size = size
-        self.tracking = tracking
         self.color = color
-        self.weight = weight
+        self.weight = weight == .medium || weight == .regular ? .semibold : weight
     }
 
     var body: some View {
-        Text(text.uppercased())
-            .font(.system(size: size, weight: weight, design: .monospaced))
-            .tracking(tracking)
+        Text(text)
+            .font(.system(size: max(size + 1.5, 11), weight: weight))
             .foregroundStyle(color)
     }
 }
@@ -120,35 +117,28 @@ extension Date {
     }
 }
 
-/// Subtle scale-on-press for custom (non-bordered) buttons across the app.
+/// Press feedback for custom (non-bordered) buttons: the system's dim-on-press, not a bounce.
 struct PressScaleStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.easeOut(duration: 0.18), value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.7 : 1)
     }
 }
 
 extension View {
-    /// The display voice — SF Pro at medium weight. Hierarchy comes from weight + ink + size, not
-    /// a genre switch. Medium, not bold: light-on-black reads about a weight heavier than the same
-    /// face on white. NO manual tracking — SF's optical sizing already tightens display sizes, and
-    /// extra negative tracking makes big lines render blotchy (crowded pairs look bolder).
-    func display(_ size: CGFloat, weight: Font.Weight = .medium) -> some View {
-        font(.system(size: size, weight: weight))
+    /// Titles — SF Pro bold, the way macOS sets a window or pane title. No manual tracking: SF's
+    /// optical sizing already tightens display sizes.
+    func display(_ size: CGFloat, weight: Font.Weight = .bold) -> some View {
+        font(.system(size: size, weight: weight == .medium ? .bold : weight))
     }
 }
 
-/// Glassy elevated surface used by cards across the app.
+/// The grouped-content surface (System Settings' rounded row group) used by cards across the app.
 struct GlassCard: ViewModifier {
     var radius: CGFloat = 14
     func body(content: Content) -> some View {
         content
-            .background(Theme.elevated, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(Theme.stroke, lineWidth: 1)
-            )
+            .background(.quinary, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
     }
 }
 

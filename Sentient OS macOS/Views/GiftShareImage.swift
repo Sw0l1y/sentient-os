@@ -30,7 +30,7 @@ struct GiftShareView: View {
             VStack(alignment: .leading, spacing: 0) {
                 MonoCaps(briefing.kicker, size: 10, tracking: 2.2, color: briefing.accent)
                 Text(briefing.title)
-                    .font(.system(size: 30, design: .serif)).foregroundStyle(.white)
+                    .font(.system(size: 30, weight: .semibold)).foregroundStyle(.white)
                     .padding(.top, 8)
                 LetterBody(text: briefing.letter ?? briefing.body, accent: briefing.accent)
                     .padding(.top, 18)

@@ -392,7 +392,7 @@ struct SkyRenderer {
         var placed: [CGRect] = []
         if let card = model.hoverCardRect(in: size) { placed.append(card) }
         for c in candidates {
-            var txt = ctx.resolve(Text(graph.nodes[c.i].title).font(.system(size: 10.5, design: .serif)))
+            var txt = ctx.resolve(Text(graph.nodes[c.i].title).font(.system(size: 10.5)))
             txt.shading = .color(.white.opacity(0.62 * c.alpha * reveal))
             let sz = txt.measure(in: CGSize(width: 360, height: 60))
             let rect = CGRect(x: c.anchor.x - sz.width / 2, y: c.anchor.y - sz.height / 2,

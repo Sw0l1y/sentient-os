@@ -1,10 +1,9 @@
-// Home and Back navigation buttons: the shared glass capsule (GlassButtonStyle) with the title
-// always shown, so navigation reads exactly like every other control.
+// Back buttons: a standard push button (GlassButtonStyle) with the title always shown.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
 
 import SwiftUI
 
-struct BackButtonStyle: ButtonStyle {
+struct BackButtonStyle: PrimitiveButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         GlassButtonStyle().makeBody(configuration: configuration)
             .labelStyle(.titleAndIcon)

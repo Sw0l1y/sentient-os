@@ -730,7 +730,7 @@ struct KnowledgeView: View {
                             .lineLimit(1).truncationMode(.middle)
                             .padding(.bottom, 11)
                         Text(note.title)
-                            .font(.system(size: 30, design: .serif)).foregroundStyle(.white)
+                            .font(.system(size: 30, weight: .semibold)).foregroundStyle(.white)
                             .textSelection(.enabled)
                             .padding(.bottom, 22)
                         MarkdownView(markdown: note.markdown,
