@@ -1,6 +1,6 @@
 #!/bin/bash
 # Weekly refresh of ~/Sentient Sources/Claude from the last week of git activity, via `claude -p`.
-# Installed to ~/.sentient by install.sh and run Sundays at 3 AM by a LaunchAgent.
+# Installed to ~/.sentient by install.sh and run Sundays at 2 AM by a LaunchAgent.
 #
 # This script gathers the activity itself, so the claude run needs no shell: it gets read-only
 # access to the repo folders and may write only inside the notes folder.
@@ -59,6 +59,7 @@ $github
 EOF
 
 cd "$NOTES" || exit 1
+MARK=$(mktemp "$HOME/.sentient/.notes-run.XXXXXX")
 "$CLAUDE" -p "$PROMPT" \
   --restricted \
   --tools "Read,Glob,Grep,Write,Edit" \
@@ -69,5 +70,12 @@ cd "$NOTES" || exit 1
   --no-session-persistence \
   --max-budget-usd 3
 rc=$?
+
+# Sentient's nightly analysis re-reads a file only when its "date added" moves, which an in-place
+# edit doesn't do. Replace each note changed during the run with a copy of itself.
+find . -maxdepth 1 -name '*.md' -newer "$MARK" | while read -r f; do
+  cp -p "$f" ".${f#./}.tmp" && mv -f ".${f#./}.tmp" "$f" && echo "restamped ${f#./}"
+done
+rm -f "$MARK"
 echo "== $(date) refresh finished (exit $rc)"
 exit $rc

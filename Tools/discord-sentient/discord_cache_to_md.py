@@ -261,8 +261,9 @@ SYSTEM_TEXT = {1: "(added someone to the chat)", 2: "(removed someone from the c
 def render(cid, info, msgs, me_id, kind):
     title = title_for(cid, info, msgs, me_id)
     lines = [f"# Discord {kind}: {title}", "",
-             f"Source: Discord desktop cache. {len(msgs)} messages. \"Me\" = the Mac's owner.", ""]
-    day = None
+             f"Source: Discord desktop cache. {len(msgs)} messages, newest day first. \"Me\" = the Mac's owner.", ""]
+    # Newest day first: Sentient's analysis reads only the first 8,000 characters of a note.
+    days = {}
     for m in msgs:
         stamp = fmt_time(m["ts"])
         who = "Me" if me_id and m["author_id"] == me_id else m["author"]
@@ -279,10 +280,9 @@ def render(cid, info, msgs, me_id, kind):
         body = " ".join(x for x in [text] + extras if x)
         if not body:
             continue
-        if stamp[:10] != day:
-            day = stamp[:10]
-            lines += ["", f"## {day}", ""]
-        lines.append(f"- **{stamp[11:]} {who}:** {body}")
+        days.setdefault(stamp[:10], []).append(f"- **{stamp[11:]} {who}:** {body}")
+    for day in reversed(days):
+        lines += ["", f"## {day}", ""] + days[day]
     return title, "\n".join(lines) + "\n"
 
 
@@ -314,7 +314,11 @@ def write_notes(state, out_dir, include_all, days):
         title, md = render(cid, info, msgs, me_id, kind)
         path = out_dir / f"{safe_name(title)} ({cid[-4:]}).md"
         if not path.exists() or path.read_text() != md:
-            path.write_text(md)
+            # Replace rather than rewrite in place: Sentient re-analyzes a file only when its
+            # "date added" moves, and only a new directory entry moves it.
+            tmp = path.with_name(f".{path.name}.tmp")
+            tmp.write_text(md)
+            os.replace(tmp, path)
             written += 1
     return written, skipped
 

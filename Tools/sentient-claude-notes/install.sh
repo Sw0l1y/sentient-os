@@ -1,5 +1,6 @@
 #!/bin/bash
-# Installs the weekly refresh of ~/Sentient Sources/Claude (Sundays at 3 AM; runs on next wake if asleep).
+# Installs the weekly refresh of ~/Sentient Sources/Claude (Sundays at 2 AM, ahead of Sentient's 3 AM
+# analysis; runs on next wake if asleep).
 # Usage: bash install.sh        Run now: bash install.sh --run        Uninstall: bash install.sh --uninstall
 set -e
 DIR="$HOME/.sentient"
@@ -26,7 +27,7 @@ cat > "$PLIST" <<EOF
     <string>/bin/bash</string><string>$DIR/refresh_claude_notes.sh</string>
   </array>
   <key>StartCalendarInterval</key><dict>
-    <key>Weekday</key><integer>0</integer><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer>
+    <key>Weekday</key><integer>0</integer><key>Hour</key><integer>2</integer><key>Minute</key><integer>0</integer>
   </dict>
   <key>StandardOutPath</key><string>$DIR/claude-notes.log</string>
   <key>StandardErrorPath</key><string>$DIR/claude-notes.log</string>
@@ -35,7 +36,7 @@ EOF
 
 launchctl bootout "gui/$(id -u)" "$PLIST" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
-echo "Installed: runs Sundays at 3 AM. Log: $DIR/claude-notes.log"
+echo "Installed: runs Sundays at 2 AM. Log: $DIR/claude-notes.log"
 
 if [ "$1" = "--run" ]; then
   launchctl kickstart "gui/$(id -u)/$LABEL"
