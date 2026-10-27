@@ -229,42 +229,32 @@ struct SettingsPillButton: View {
     let action: () -> Void
 
     var body: some View {
-        if formStyle {
-            Button(title, action: action)
-                .buttonStyle(SettingsActionStyle(tint: tint))
-        } else {
-            Button(action: action) {
-                Text(title)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(tint)
-                    .padding(.horizontal, 11).padding(.vertical, 5)
-                    .overlay(Capsule().strokeBorder(
-                        tint == Theme.Ink.bright ? Color.white.opacity(0.16) : tint.opacity(0.4), lineWidth: 1))
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(PressScaleStyle())
-        }
+        Button(title, action: action)
+            .buttonStyle(SettingsActionStyle(tint: tint))
+            .controlSize(formStyle ? .regular : .small)
     }
 }
 
+/// Settings and toolbar actions: the shared glass capsule. A non-default `tint` colors the label
+/// (green "connected", red "remove") without filling the glass; compact layouts step down a size.
 struct SettingsActionStyle: ButtonStyle {
-    @State private var hovered = false
     var tint: Color = Theme.Ink.bright
-    @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.settingsCompactLayout) private var compactLayout
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: compactLayout ? 13 : 14, weight: .medium))
-            .foregroundStyle(tint)
-            .padding(.horizontal, compactLayout ? 12 : 14)
-            .frame(minHeight: compactLayout ? 30 : 36)
-            .background(hovered && isEnabled ? Color(white: 0.12) : SettingsStyle.control, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.16), lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-            .brightness(configuration.isPressed ? 0.08 : 0)
-            .opacity(isEnabled ? 1 : 0.4)
-            .onHover { hovered = $0 }
+        SettingsActionBody(configuration: configuration, tint: tint)
+    }
+}
+
+private struct SettingsActionBody: View {
+    let configuration: ButtonStyleConfiguration
+    let tint: Color
+    @Environment(\.settingsCompactLayout) private var compactLayout
+    @Environment(\.controlSize) private var controlSize
+
+    var body: some View {
+        GlassButtonStyle(tint: tint == Theme.Ink.bright ? nil : tint)
+            .makeBody(configuration: configuration)
+            .controlSize(compactLayout ? .small : controlSize)
     }
 }
 
@@ -290,10 +280,9 @@ struct SettingsMenu<Selection: Hashable, Options: View>: View {
                     .accessibilityHidden(true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(SettingsStyle.control, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.16), lineWidth: 1))
+            .padding(.horizontal, 14)
+            .frame(height: 34)
+            .glassSurface(Capsule())
             // Padding, blank space and chevron belong to the native menu's label, so
             // the entire visible control opens it instead of just the selected text.
             .contentShape(Rectangle())

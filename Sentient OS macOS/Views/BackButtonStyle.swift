@@ -1,22 +1,13 @@
-// Shared white-pill appearance for Home and Back navigation buttons.
-// makeBody keeps the label, hit area, and pressed/disabled feedback consistent.
+// Home and Back navigation buttons: the shared glass capsule (GlassButtonStyle) with the title
+// always shown, so navigation reads exactly like every other control.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
 
 import SwiftUI
 
 struct BackButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        GlassButtonStyle().makeBody(configuration: configuration)
             .labelStyle(.titleAndIcon)
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 14)
-            .frame(minHeight: 36)
-            .background(.white, in: Capsule())
-            .contentShape(Capsule())
-            .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.4)
     }
 }
 

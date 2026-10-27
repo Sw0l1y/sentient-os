@@ -9,7 +9,7 @@ extension EnvironmentValues {
     @Entry var sidekickHoveredCardID: String? = nil
 }
 
-/// Sentient's existing identity: black, neutral glass, precise white ink. The spectrum is
+/// Sentient's existing identity: black, neutral glass, precise white ink. The accent is
 /// a localized light source at an edge or mark, never a colored reading surface.
 enum SidekickStyle {
     static let ink = Color(white: 0.93)
@@ -83,7 +83,7 @@ struct SidekickMark: View {
     var body: some View {
         ZStack {
             if illuminated {
-                Circle().fill(AngularGradient(colors: GlowHalo.stops, center: .center))
+                Circle().fill(Theme.accent)
                     .frame(width: size * 1.25, height: size * 1.25)
                     .blur(radius: size * 0.45).opacity(0.48)
                     .padding(size).drawingGroup().allowsHitTesting(false)
@@ -301,7 +301,6 @@ struct SidekickToolbarIconButton: View {
     let symbol: String
     var busy = false
     var action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
@@ -310,13 +309,12 @@ struct SidekickToolbarIconButton: View {
                 else { Image(systemName: symbol) }
             }
             .font(.system(size: 15, weight: .semibold))
-            .frame(width: 40, height: 40)
-            .foregroundStyle(hovering ? .white : Theme.Ink.bright)
-            .background(Capsule().fill(.white.opacity(hovering ? 0.07 : 0.035)))
-            .contentShape(Capsule())
+            .frame(width: 36, height: 36)
+            .foregroundStyle(Theme.Ink.bright)
+            .contentShape(Circle())
+            .glassSurface(Circle())
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
+        .buttonStyle(PressScaleStyle())
     }
 }
 

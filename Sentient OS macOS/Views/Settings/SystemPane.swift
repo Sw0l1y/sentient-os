@@ -24,7 +24,7 @@ struct SystemPane: View {
     @AppStorage(OvernightScheduler.minutesKey) private var wakeMinutes = OvernightScheduler.defaultMinutes
 
 
-    @State private var launchAtLogin = LoginItem.isEnabled
+    @State private var launchAtLogin = LoginItem.cachedIsEnabled
     @State private var confirmLoginOff = false
     @State private var confirmReset = false
     @State private var resetting = false
@@ -52,7 +52,7 @@ struct SystemPane: View {
 
             }
         }
-        .task { launchAtLogin = LoginItem.isEnabled }   // live status — revocable in System Settings
+        .task { launchAtLogin = await LoginItem.refreshedIsEnabled() }   // live status — revocable in System Settings
     }
 
     // MARK: - General

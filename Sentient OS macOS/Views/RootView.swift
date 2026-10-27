@@ -31,9 +31,21 @@ struct RootView: View {
     /// Observed for the bottom-left model-download whisper (same overlay slot).
     @State private var download = ModelDownload.shared
 
-    /// The sources Analyze Now will process — the shared selection (folders + DB sources).
-    private var selectedSources: [RunSource] {
-        SourceSelection.current()
+    /// Which sources Home shows as selected. SourceSelection.current() checks each folder's and
+    /// database's readability (privacy round-trips), so it runs when its inputs change — appear,
+    /// app activation, returning Home, a source-selection or custom-folder change — not on every
+    /// body pass (sampled blocking the main thread on each Knowledge / Settings switch).
+    @State private var homeSources = HomeSources()
+
+    private func refreshHomeSources() {
+        let sources = SourceSelection.current()
+        let next = HomeSources(
+            files: sources.contains { if case .files = $0 { return true } else { return false } },
+            whatsapp: sources.contains { if case .whatsapp = $0 { return true } else { return false } },
+            imessage: sources.contains { if case .imessage = $0 { return true } else { return false } },
+            notes: sources.contains(.notes),
+            whatsappAvailable: WhatsAppSource.isInstalled)
+        if next != homeSources { homeSources = next }
     }
 
     var body: some View {
@@ -127,8 +139,11 @@ struct RootView: View {
         .overlay { UpdateGateView() }
         .background(MainWindowCloseGuard())
         .onChange(of: navigation.page) { _, page in
-            if page != .home { showDevTools = false }
+            if page != .home { showDevTools = false } else { refreshHomeSources() }
         }
+        .onAppear { refreshHomeSources() }
+        .onChange(of: writingStyleSelection) { _, _ in refreshHomeSources() }
+        .onChange(of: customRootsRaw) { _, _ in refreshHomeSources() }
         .onChange(of: appState.hasCompletedOnboarding) { _, completed in
             if !completed {
                 showDevTools = false
@@ -140,12 +155,17 @@ struct RootView: View {
         }
         // Source opt-ins and account generations may change in another window. Compare the
         // complete consent identity before retrying; unrelated defaults changes do no work.
+        // Debounced: any defaults write posts this, and the identity probes database readability.
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
-            .receive(on: RunLoop.main)) { _ in
-                writingStyleSelection = WritingStyle.selectionIdentity
+            .debounce(for: .milliseconds(400), scheduler: RunLoop.main)) { _ in
+                let next = WritingStyle.selectionIdentity
+                if next != writingStyleSelection { writingStyleSelection = next }
+                // Folder and Notes opt-ins are not part of that identity.
+                refreshHomeSources()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             writingStyleSelection = WritingStyle.selectionIdentity
+            refreshHomeSources()
         }
         .onReceive(NotificationCenter.default.publisher(for: DirectMCPStore.changed).receive(on: RunLoop.main)) { _ in
             writingStyleSelection = WritingStyle.selectionIdentity
@@ -179,16 +199,10 @@ struct RootView: View {
     }
 
     private var home: some View {
-        let sources = selectedSources
-        return HomeView(
+        HomeView(
             isPresented: navigation.page == .home,
             thingsUnderstood: LifetimeStats.analyzed,
-            sources: .init(
-                files: sources.contains { if case .files = $0 { return true } else { return false } },
-                whatsapp: sources.contains { if case .whatsapp = $0 { return true } else { return false } },
-                imessage: sources.contains { if case .imessage = $0 { return true } else { return false } },
-                notes: sources.contains(.notes),
-                whatsappAvailable: WhatsAppSource.isInstalled),
+            sources: homeSources,
             customRoots: customRoots,
             deck: deck,
             onAnalyze: {

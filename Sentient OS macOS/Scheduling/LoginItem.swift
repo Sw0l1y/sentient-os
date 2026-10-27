@@ -23,7 +23,24 @@ enum LoginItem {
     static var status: SMAppService.Status { service.status }
 
     /// True when the app is registered to launch at login.
-    static var isEnabled: Bool { service.status == .enabled }
+    static var isEnabled: Bool {
+        let enabled = service.status == .enabled
+        cachedIsEnabled = enabled
+        return enabled
+    }
+
+    /// The last known `isEnabled`, for seeding view state. `status` is a synchronous XPC
+    /// round-trip to smd (sampled at ~290 ms on the main thread while opening Knowledge), and
+    /// `@State` initializers re-run on every view init — so views seed from this and then
+    /// `await refreshedIsEnabled()`. Read live once, lazily, on first access.
+    private(set) static var cachedIsEnabled: Bool = service.status == .enabled
+
+    /// Reads the live status off the main thread and updates `cachedIsEnabled`.
+    static func refreshedIsEnabled() async -> Bool {
+        let enabled = await Task.detached(priority: .userInitiated) { SMAppService.mainApp.status == .enabled }.value
+        cachedIsEnabled = enabled
+        return enabled
+    }
 
     /// True when macOS registered the item but demands the user's OK in System Settings — the
     /// answer it gives once the user has manually disabled the item there; the app can never

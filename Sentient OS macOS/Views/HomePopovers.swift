@@ -16,7 +16,7 @@ import SwiftUI
 import AppKit
 
 /// Which sources are armed to run — drives the Analysis popover's chips.
-struct HomeSources {
+struct HomeSources: Equatable {
     var files = true
     var whatsapp = false
     var imessage = false

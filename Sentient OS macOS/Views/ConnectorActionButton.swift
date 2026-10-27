@@ -1,5 +1,5 @@
 // ConnectorActionButton.swift
-// Matching white Connect and green checkmarked Done pills for connector popups.
+// Matching accent-glass Connect and green-glass checkmarked Done pills for connector popups.
 // The connect variant also displays progress during browser sign-in.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
 
@@ -30,10 +30,10 @@ struct ConnectorActionButton: View {
                 Text(title)
                     .font(.system(size: 14, weight: .medium))
             }
-            .foregroundStyle(.black)
+            .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 44)
-            .background(Capsule().fill(kind == .done ? Theme.Ink.green : .white))
             .contentShape(Capsule())
+            .glassSurface(Capsule(), tint: kind == .done ? Theme.Ink.green : Theme.accent)
         }
         .buttonStyle(PressScaleStyle())
     }

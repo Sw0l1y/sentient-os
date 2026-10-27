@@ -409,10 +409,8 @@ struct HomeView: View {
             }
             NavItem(title: compact ? nil : (appState.processing.isBusy ? "Analyzing" : "Analysis"), icon: "waveform.path",
                     dot: appState.processing.needsAttention ? Theme.Ink.amber
-                        : (appState.processing.initialComplete ? Theme.Ink.green : GlowHalo.stops[4]),
-                    emphasized: !needsPersonalSetup && !appState.processing.initialComplete,
-                    animateEmphasis: isPresented && presentation.windowActive && !inConversation
-                        && !showAnalysis && !showDoubleTap && !letterShown && !reducedMotion) { showAnalysis = true }
+                        : (appState.processing.initialComplete ? Theme.Ink.green : Theme.accent),
+                    emphasized: !needsPersonalSetup && !appState.processing.initialComplete) { showAnalysis = true }
                 .accessibilityIdentifier("navigation.analysis")
                 .accessibilityLabel(appState.processing.isBusy ? "Analyzing" : "Analysis")
                 .help("Check analysis status")
@@ -1147,52 +1145,33 @@ private struct NavItem: View {
     var title: String? = nil
     var icon: String? = nil
     var dot: Color? = nil
-    var emphasized = false
-    var animateEmphasis = false
+    var emphasized = false          // first-run Analysis: the accent-tinted glass, no halo
     var action: () -> Void
-    @State private var hover = false
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: title == nil ? 22 : 14.5, weight: .semibold))
+                        .font(.system(size: title == nil ? 16 : 14, weight: .semibold))
                         .overlay(alignment: .bottomTrailing) {
                             if let dot {
-                                Circle().fill(dot).frame(width: 4, height: 4)
+                                Circle().fill(dot).frame(width: 5, height: 5)
                                     .overlay(Circle().stroke(Color.black, lineWidth: 1))
-                                    .offset(x: 2, y: 2)
+                                    .offset(x: 3, y: 2)
                             }
                         }
                 }
                 if let title { Text(title).font(.system(size: 13.5, weight: .medium)) }
             }
-            .foregroundStyle(hover || emphasized ? .white : Theme.Ink.bright)
-            .padding(.horizontal, 11).frame(minHeight: 40)
-            .background {
-                if emphasized { Capsule().fill(GlowHalo.stops[4].opacity(0.16)) }
-            }
-            .background(Capsule().fill(.white.opacity(hover ? 0.07 : (title == nil ? 0.035 : 0))))
-            .overlay {
-                if emphasized {
-                    Capsule().strokeBorder(LinearGradient(
-                        colors: [GlowHalo.stops[4].opacity(0.55), GlowHalo.stops[5].opacity(0.3)],
-                        startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
-                }
-            }
+            .foregroundStyle(emphasized ? .white : Theme.Ink.bright)
+            .padding(.horizontal, title == nil ? 0 : 14)
+            .frame(minWidth: 36, minHeight: 36)
             .contentShape(Capsule())
+            .glassSurface(Capsule(), tint: emphasized ? Theme.accent : nil)
         }
-        .buttonStyle(.plain)
-        .background {
-            if emphasized {
-                GlowHalo(active: true, colors: [GlowHalo.stops[4], GlowHalo.stops[5], GlowHalo.stops[4]],
-                         intensity: 0.28, period: 12, animating: animateEmphasis)
-            }
-        }
-        // The decorative halo extends beyond the pill; assistive hit bounds must not.
+        .buttonStyle(PressScaleStyle())
         .contentShape(.accessibility, Capsule())
-        .onHover { hover = $0 }
     }
 }
 

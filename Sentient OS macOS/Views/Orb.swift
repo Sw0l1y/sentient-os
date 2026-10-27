@@ -321,14 +321,17 @@ struct Orb: View {
 
     /// The color geography is anchored to ring angle, so the colors stay put while the matter
     /// flows through them — like light catching different bands of ice.
-    private static let ringStops: [(loc: Double, r: Double, g: Double, b: Double)] = [
-        (0.00, 0.76, 0.30, 0.36),   // ember
-        (0.18, 0.80, 0.56, 0.27),   // burnished amber
-        (0.40, 0.18, 0.58, 0.51),   // viridian
-        (0.62, 0.30, 0.45, 0.85),   // cobalt
-        (0.82, 0.56, 0.34, 0.67),   // orchid
-        (1.00, 0.76, 0.30, 0.36),   // wrap → ember (smooth seam)
-    ]
+    private static let ringStops: [(loc: Double, r: Double, g: Double, b: Double)] = {
+        // The accent's shades (light → base → deep → back), anchored around the ring.
+        let base = NSColor.controlAccentColor.usingColorSpace(.sRGB) ?? .systemBlue
+        func stop(_ loc: Double, _ f: CGFloat) -> (loc: Double, r: Double, g: Double, b: Double) {
+            let mixed = (f >= 0 ? base.blended(withFraction: f, of: .white)
+                                : base.blended(withFraction: -f, of: .black)) ?? base
+            let c = mixed.usingColorSpace(.sRGB) ?? base
+            return (loc, Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent))
+        }
+        return [stop(0.00, 0.25), stop(0.18, 0.45), stop(0.40, 0), stop(0.62, -0.25), stop(0.82, 0.1), stop(1.00, 0.25)]
+    }()
 
     private static func ringColor(at frac: Double, brightness: Double,
                                   amber: Double, whiteMix: Double) -> Color {

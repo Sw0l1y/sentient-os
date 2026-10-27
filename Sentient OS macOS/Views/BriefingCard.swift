@@ -349,22 +349,19 @@ private struct EnvelopeFace: View {
         }
     }
 
-    /// The wax: an angular-gradient disc stamped with the logo's ring + dot.
+    /// The wax: an accent disc stamped with the logo's ring + dot.
     private var seal: some View {
         ZStack {
             Circle()
-                .fill(AngularGradient(colors: [
-                    Color(red: 0.76, green: 0.30, blue: 0.36), Color(red: 0.80, green: 0.56, blue: 0.27),
-                    Color(red: 0.18, green: 0.58, blue: 0.51), Color(red: 0.30, green: 0.45, blue: 0.85),
-                    Color(red: 0.56, green: 0.34, blue: 0.67), Color(red: 0.76, green: 0.30, blue: 0.36),
-                ], center: .center))
+                .fill(RadialGradient(colors: [Theme.accentRamp[1], Theme.accentRamp[4]],
+                                     center: .topLeading, startRadius: 2, endRadius: 44))
                 .overlay(Circle().fill(Color.black.opacity(0.22)))   // wax depth
                 .frame(width: 38, height: 38)
             Circle().strokeBorder(.white.opacity(0.92), lineWidth: 1.5)
                 .frame(width: 19, height: 19)
             Circle().fill(.white).frame(width: 6.5, height: 6.5)
         }
-        .shadow(color: Color(red: 0.56, green: 0.34, blue: 0.67).opacity(0.5), radius: 8)
+        .shadow(color: Theme.accent.opacity(0.5), radius: 8)
     }
 }
 

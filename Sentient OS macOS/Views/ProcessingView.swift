@@ -500,24 +500,24 @@ struct ProcessingView: View {
                 .buttonStyle(BackButtonStyle())
                 if kind == .loggedOut {
                     Button("Retry") { session.retry() }
-                        .buttonStyle(.bordered).tint(.white)
+                        .buttonStyle(.sentientGlass)
                     if ModelBackend.current == .claude {
                         Button("Sign in to Claude") { loginStarted = true; claude.startLogin(force: true) }
-                            .buttonStyle(.borderedProminent).tint(.white)
+                            .buttonStyle(.sentientGlassProminent)
                             .disabled(claude.loggingIn)
                     } else {
                         Button("Log in to Codex") { loginStarted = true; Task { await codex.startLogin(force: true) } }
-                            .buttonStyle(.borderedProminent).tint(.white)
+                            .buttonStyle(.sentientGlassProminent)
                             .disabled(codex.loggingIn)
                     }
                 } else if kind == .diskFull {
                     Button("Retry") { session.retry() }
-                        .buttonStyle(.bordered).tint(.white)
+                        .buttonStyle(.sentientGlass)
                     Button("Manage Storage") { DiskSpace.openStorageSettings() }
-                        .buttonStyle(.borderedProminent).tint(.white)
+                        .buttonStyle(.sentientGlassProminent)
                 } else {
                     Button("Retry") { session.retry() }
-                        .buttonStyle(.borderedProminent).tint(.white)
+                        .buttonStyle(.sentientGlassProminent)
                 }
             }
             if loginStarted, (ModelBackend.current == .claude ? claude.loggingIn : codex.loggingIn) {

@@ -84,7 +84,7 @@ struct ComputerUseDoctorView: View {
                 Spacer()
                 Button("Save a copy…") { doctor.saveReport() }
                 Button(doctor.uploading ? "Sending…" : "Send report") { doctor.sendReport() }
-                    .buttonStyle(.borderedProminent).tint(.blue).disabled(doctor.uploading || doctor.report == nil)
+                    .buttonStyle(.sentientGlassProminent).disabled(doctor.uploading || doctor.report == nil)
             }
         }.padding(26).frame(width: 580, height: 580).preferredColorScheme(.dark)
     }

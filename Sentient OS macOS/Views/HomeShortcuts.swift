@@ -44,14 +44,12 @@ struct HomeDoubleTapButton: View {
                 Text("Double Tap").font(.system(size: 13.5, weight: .medium))
             }
             .foregroundStyle(hovered || noticeVisible || presented ? .white : Theme.Ink.bright)
-            .padding(.horizontal, 11).frame(height: 40)
-            .background(Capsule().fill(.white.opacity(hovered || presented ? 0.07 : 0)))
-            .background(Capsule().fill(Theme.Ink.gold.opacity(0.10 * highlight)))
-            .overlay(Capsule().strokeBorder(Theme.Ink.gold.opacity(0.55 * highlight), lineWidth: 1))
-            .shadow(color: Theme.Ink.gold.opacity(0.20 * highlight), radius: 10)
+            .padding(.horizontal, 14).frame(height: 36)
+            .overlay(Capsule().strokeBorder(Theme.accent.opacity(0.7 * highlight), lineWidth: 1.5))
             .contentShape(Capsule())
+            .glassSurface(Capsule(), tint: presented ? Theme.accent.opacity(0.35) : nil)
         }
-        .buttonStyle(.plain).fixedSize()
+        .buttonStyle(PressScaleStyle()).fixedSize()
         .onHover { hovered = $0 }
         .accessibilityIdentifier("navigation.doubleTap")
         .accessibilityLabel("Double Tap")

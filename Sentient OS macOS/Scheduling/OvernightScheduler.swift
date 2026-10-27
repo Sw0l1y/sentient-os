@@ -121,8 +121,10 @@ final class OvernightScheduler {
                 continue
             }
             let health = await WakeHelperClient.shared.healthProbe()
+            var loginEnabled = false
+            if health == .ready { loginEnabled = await LoginItem.refreshedIsEnabled() }
             guard !Task.isCancelled, generation == id else { return }
-            guard health == .ready && LoginItem.isEnabled else {
+            guard health == .ready && loginEnabled else {
                 needsSchedulerSetup = true
                 statusLine = health == .ready ? "enable launch at login" : "overnight wake needs setup"
                 nextWakeAt = nil

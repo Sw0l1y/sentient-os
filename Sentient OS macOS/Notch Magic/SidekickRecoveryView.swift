@@ -237,7 +237,7 @@ struct SidekickUpgradeActions: View {
                 }
                 .frame(height: 28)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.sentientGlass)
             .font(.system(size: 11, weight: .medium))
             .controlSize(.small)
         }

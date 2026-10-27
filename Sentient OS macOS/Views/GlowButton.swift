@@ -2,10 +2,10 @@
 //  GlowButton.swift
 //  Sentient OS macOS
 //
-//  The rotating conic-gradient glow CTA — ported from the iOS onboarding's "Start Analysis"
-//  button (itself a port of the website's GlowButton). A white capsule sits on a slowly
-//  rotating angular-gradient halo (warm-yellow → orange → red → pink → purple → indigo → blue,
-//  3.5s loop, blurred). Inactive = dim, no halo.
+//  The primary CTA ("Start Analysis", "Update Now", …) — an accent-tinted Liquid Glass capsule
+//  (GlassButtonStyle, prominent). It used to sit on a rotating rainbow conic halo; the halo is now
+//  a still, soft accent bloom (GlowHalo) so the app speaks one design language and the CTA costs
+//  no per-frame rendering. Inactive = plain glass, dimmed, no bloom.
 //
 
 import SwiftUI
@@ -14,36 +14,31 @@ struct GlowButton: View {
     let title: String
     var systemImage: String = "sparkles"
     var active: Bool = true
-    var reversed: Bool = false       // spin the halo the other direction
-    var colors: [Color]? = nil       // custom halo palette (nil = default warm stops)
-    var glowIntensity: Double = 0.85 // halo opacity when active (lower = subtler glow)
+    var reversed: Bool = false       // kept for call-site compatibility (the halo no longer spins)
+    var colors: [Color]? = nil       // custom bloom color (first entry); nil = the accent
+    var glowIntensity: Double = 0.85 // bloom opacity when active (lower = subtler)
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: systemImage).font(.system(size: 16, weight: .semibold))
-                Text(title).font(.system(size: 17, weight: .semibold))
+                Image(systemName: systemImage).font(.system(size: 15, weight: .semibold))
+                Text(title).font(.system(size: 16, weight: .semibold))
             }
-            .foregroundStyle(active ? .black : .white.opacity(0.35))
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Capsule(style: .continuous).fill(active ? Color.white : Color.white.opacity(0.08)))
-            .overlay(Capsule(style: .continuous).stroke(active ? .clear : Color.white.opacity(0.1), lineWidth: 1))
         }
-        .buttonStyle(GlowPressStyle())
-        .background(GlowHalo(active: active, reversed: reversed, colors: colors, intensity: glowIntensity))
+        .buttonStyle(GlassButtonStyle(prominent: active, tint: colors?.first))
+        .controlSize(.large)
+        .background(GlowHalo(active: active, colors: colors, intensity: glowIntensity * 0.5))
         .disabled(!active)
         .animation(.easeInOut(duration: 0.4), value: active)
     }
 }
 
-/// The glow CTA's quiet sibling — a grey outlined capsule for the visible-but-subordinate
-/// choice beside it (the crossroads' "continue with just the knowledge base", the free home's
-/// "Reset Sentient…"). Present enough to read as a real button, never competing with the glow.
-/// `large` matches the glow button's height and fills its container — for the one case where the
-/// two sit SIDE BY SIDE as a row (the crossroads' "I've upgraded to ChatGPT Plus") rather than
-/// stacked; still no halo, so the glow stays the only jewelry on the screen.
+/// The glow CTA's quiet sibling — a plain glass capsule for the visible-but-subordinate choice
+/// beside it (the crossroads' "continue with just the knowledge base", the free home's
+/// "Reset Sentient…"). `large` matches the CTA's height and fills its container, for the one case
+/// where the two sit side by side as a row rather than stacked.
 struct QuietPillButton: View {
     let title: String
     var large: Bool = false
@@ -52,72 +47,38 @@ struct QuietPillButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: large ? 14.5 : 13.5, weight: .medium))
-                .foregroundStyle(Theme.Ink.bright)
-                .lineLimit(1)
                 .frame(maxWidth: large ? .infinity : nil)
-                .padding(.horizontal, 22).padding(.vertical, large ? 17 : 12)
-                .background(Capsule().fill(.white.opacity(0.07)))
-                .overlay(Capsule().strokeBorder(.white.opacity(0.16), lineWidth: 1))
-                .contentShape(Capsule())
         }
-        .buttonStyle(PressScaleStyle())
+        .buttonStyle(.sentientGlass)
+        .controlSize(large ? .large : .regular)
     }
 }
 
-/// Subtle scale-on-press, mirroring the website's hover/active scale.
-private struct GlowPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-            .animation(.easeOut(duration: 0.18), value: configuration.isPressed)
-    }
-}
-
-/// Conic-gradient halo. Defaults match the website; navigation cues can turn more slowly.
+/// A still, soft accent bloom behind a capsule. Formerly a 30fps rotating rainbow; `period`,
+/// `reversed` and `animating` are accepted for call-site compatibility and ignored.
 struct GlowHalo: View {
     let active: Bool
     var reversed: Bool = false
     var colors: [Color]? = nil
-    var intensity: Double = 0.85     // halo opacity when active
+    var intensity: Double = 0.85     // bloom opacity when active
     var period: Double = 3.5
     var animating = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.appearsActive) private var appearsActive
-    @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
 
-    /// The canonical warm→cool AI-gradient stops (shared: the Analyze Now CTA + the For You
-    /// command bar's glow both use these).
-    static let stops: [Color] = [
-        Color(red: 0.992, green: 0.886, blue: 0.639),  // #fde2a3 warm yellow
-        Color(red: 1.000, green: 0.557, blue: 0.235),  // #ff8e3c orange
-        Color(red: 1.000, green: 0.275, blue: 0.275),  // #ff4646 red
-        Color(red: 0.910, green: 0.220, blue: 0.561),  // #e8388f pink
-        Color(red: 0.608, green: 0.282, blue: 0.831),  // #9b48d4 purple
-        Color(red: 0.424, green: 0.361, blue: 0.898),  // #6c5ce5 indigo
-        Color(red: 0.290, green: 0.565, blue: 0.886),  // #4a90e2 blue
-        Color(red: 0.992, green: 0.886, blue: 0.639)   // wrap → smooth seam
-    ]
+    /// The old warm→cool "AI gradient" stops, now the accent's shades (same count and indices, so
+    /// every caller that picked `stops[n]` gets a matching accent tone instead of a rainbow hue).
+    static var stops: [Color] { Theme.accentRamp }
+
     var body: some View {
         GeometryReader { geo in
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0,
-                                    paused: !active || !animating || reduceMotion || !appearsActive || lowPower)) { ctx in
-                let t = reduceMotion ? 0 : ctx.date.timeIntervalSinceReferenceDate
-                let base = (t.truncatingRemainder(dividingBy: period) / period) * 360.0
-                let angle = reversed ? -base : base
-                Capsule(style: .continuous)
-                    .fill(AngularGradient(colors: colors ?? GlowHalo.stops, center: .center, angle: .degrees(angle)))
-                    .frame(width: geo.size.width + 32, height: geo.size.height + 32)
-                    .blur(radius: 24)
-                    .offset(x: -16, y: -16)
-            }
-            .opacity(active ? intensity : 0)
-            .animation(.easeInOut(duration: 0.6), value: active)
+            Capsule(style: .continuous)
+                .fill(colors?.first ?? Theme.accent)
+                .frame(width: geo.size.width + 24, height: geo.size.height + 24)
+                .blur(radius: 22)
+                .offset(x: -12, y: -12)
+                .opacity(active ? intensity : 0)
+                .animation(.easeInOut(duration: 0.6), value: active)
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
-            lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
-        }
     }
 }

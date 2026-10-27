@@ -20,11 +20,23 @@ enum Theme {
     static let stroke = Color.white.opacity(0.09)
     static let secondary = Color.white.opacity(0.55)
     static let faint = Color.white.opacity(0.32)
-    static let accent = Color(red: 0.62, green: 0.55, blue: 1.0)   // soft violet glow
-    /// The Knowledge window's interactive accent — starlight periwinkle (#8ea6ff), the middle note
-    /// of the wikilink gradient. Selected rows, tints, carets. Color means "alive/tappable" here;
-    /// everything else stays neutral ink.
-    static let knowledgeAccent = Color(red: 0.557, green: 0.651, blue: 1.0)
+    /// The ONE accent: the Mac's own accent color (System Settings › Appearance), so the app reads
+    /// as part of macOS. Every glow, tint, selection and prominent control derives from it.
+    static let accent = Color.accentColor
+    /// The Knowledge window's interactive accent — the same single accent (selected rows, tints,
+    /// carets). Color means "alive/tappable" here; everything else stays neutral ink.
+    static let knowledgeAccent = accent
+
+    /// Shades of the accent, light → base → deep → back, for anything that used to cycle through a
+    /// rainbow. Index-compatible with the old 7–8 stop palettes so callers keep working.
+    static let accentRamp: [Color] = {
+        let base = NSColor.controlAccentColor.usingColorSpace(.sRGB) ?? .systemBlue
+        func shade(_ f: CGFloat) -> Color {
+            Color(nsColor: (f >= 0 ? base.blended(withFraction: f, of: .white)
+                                   : base.blended(withFraction: -f, of: .black)) ?? base)
+        }
+        return [shade(0.45), shade(0.25), shade(0), shade(-0.12), shade(-0.25), shade(-0.12), shade(0.12), shade(0.45)]
+    }()
 
     /// The wikilink color — a plain, minimalist sky blue (#6fb6ff). Deliberately a solid, honest
     /// web-link blue: gradient text reads as AI-generated, single claimed hues read as other
@@ -34,16 +46,8 @@ enum Theme {
     /// The sky's "changed last night" shimmer — dawn cyan.
     static let dawnCyan = Color(red: 0.333, green: 0.757, blue: 0.941)
 
-    /// "Magic" cool palette for the Stage-2 vault CTA glow — teal · cyan · blue · indigo · purple.
-    static let magicGlow: [Color] = [
-        Color(red: 0.16, green: 0.83, blue: 0.74),  // teal
-        Color(red: 0.13, green: 0.83, blue: 0.93),  // cyan
-        Color(red: 0.23, green: 0.51, blue: 0.96),  // blue
-        Color(red: 0.39, green: 0.40, blue: 0.95),  // indigo
-        Color(red: 0.55, green: 0.36, blue: 0.96),  // violet
-        Color(red: 0.66, green: 0.33, blue: 0.97),  // purple
-        Color(red: 0.16, green: 0.83, blue: 0.74),  // wrap → teal (smooth seam)
-    ]
+    /// The vault CTA glow — formerly a teal→purple rainbow, now the single accent's shades.
+    static var magicGlow: [Color] { Array(accentRamp.prefix(7)) }
 
     static func verdictColor(_ v: Verdict) -> Color {
         switch v {

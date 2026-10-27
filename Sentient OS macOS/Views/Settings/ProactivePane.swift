@@ -132,7 +132,7 @@ struct ProactivePane: View {
 // MARK: - The speed-vs-intelligence slider
 
 /// A compact three-detent slider in the reference's proportions: a THICK pill permanently
-/// wearing its own three-stop spectrum (green → cyan → purple) at full strength, the detent
+/// wearing the accent ramp at full strength, the detent
 /// dots living inside, and only the white circle moving. Drag or click; the readout underneath
 /// names the tier AND the honest spec (GPT-6 Sol · how hard it thinks) — live during a drag.
 private struct SpeedIntelligenceSlider: View {
@@ -144,10 +144,8 @@ private struct SpeedIntelligenceSlider: View {
     private static let width: CGFloat = 300
     private static let trackHeight: CGFloat = 24
     private static let thumb: CGFloat = 28          // slightly proud of the track, like the reference
-    /// The slider's own three-stop spectrum: the app green → cyan → purple.
-    private static let spectrum = [Theme.Ink.green,
-                                   Color(red: 0.13, green: 0.83, blue: 0.93),
-                                   Color(red: 0.66, green: 0.33, blue: 0.97)]
+    /// The slider's ramp: the accent from light to deep (formerly green → cyan → purple).
+    private static var spectrum: [Color] { [Theme.accentRamp[1], Theme.accentRamp[2], Theme.accentRamp[4]] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

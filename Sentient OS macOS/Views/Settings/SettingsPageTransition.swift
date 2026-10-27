@@ -100,7 +100,8 @@ private struct HomePageReveal: AnimatableModifier {
         // One modifier tree preserves the retained page's state through animated/direct routes.
         content
             .scaleEffect(geometry?.contentScale ?? 1, anchor: anchor)
-            .blur(radius: geometry?.contentBlur ?? 0)
+            // No content blur: a full-page Gaussian over a live page (the sky's canvas, Settings'
+            // glass) every frame of the spring was the costliest part of opening a page.
             .opacity(geometry?.contentOpacity ?? Double(min(1, max(0, progress))))
             .background(Color(white: 0.04).opacity(geometry == nil ? Double(min(1, max(0, progress))) : 1))
             .mask {

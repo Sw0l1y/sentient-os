@@ -84,24 +84,13 @@ struct SidekickComposer: View {
                         .help("Stop")
                     } else {
                     Button(action: send) {
+                        // Solid accent disc (the composer itself is the glass; no glass-on-glass).
                         Image(systemName: "arrow.up").font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(canSend ? SidekickStyle.base : .white.opacity(0.30))
+                            .foregroundStyle(canSend ? .white : .white.opacity(0.30))
                             .frame(width: 36, height: 36)
-                            .background(canSend ? SidekickStyle.ink : .white.opacity(0.055), in: Circle())
-                            .overlay(Circle().strokeBorder(.white.opacity(canSend ? 0.6 : 0.09)))
-                            .background {
-                                if canSend {
-                                    ZStack {
-                                        Circle().fill(AngularGradient(colors: GlowHalo.stops, center: .center))
-                                            .frame(width: 48, height: 48).blur(radius: 11)
-                                            .opacity(focused ? 0.75 : 0.52)
-                                        Circle().stroke(AngularGradient(colors: GlowHalo.stops, center: .center), lineWidth: 3)
-                                            .frame(width: 39, height: 39).blur(radius: 1.5)
-                                            .opacity(0.95)
-                                    }
-                                    .saturation(1.25).allowsHitTesting(false)
-                                }
-                            }
+                            .background(canSend ? Theme.accent : .white.opacity(0.055), in: Circle())
+                            .overlay(Circle().strokeBorder(.white.opacity(canSend ? 0.18 : 0.09)))
+                            .animation(.easeOut(duration: 0.18), value: canSend)
                     }
                     .buttonStyle(SidekickPressStyle()).disabled(!canSend)
                     .accessibilityLabel(answering ? "Send answer" : "Send message")

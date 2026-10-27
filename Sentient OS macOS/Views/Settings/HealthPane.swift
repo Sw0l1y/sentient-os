@@ -30,7 +30,7 @@ struct HealthPane: View {
     @State private var selectedProtectedSources: [ProtectedLocalSource] = []
     @State private var unreadableProtectedSources: [ProtectedLocalSource] = []
     @State private var wakeSetup = OvernightWakeSetup()
-    @State private var loginOn = LoginItem.isEnabled
+    @State private var loginOn = LoginItem.cachedIsEnabled
     @State private var micSpeech: MicSpeechState = .notAsked
     @State private var screenRec = Permissions.hasScreenRecording()   // Sentient's own grant — the driver's eyes
     @State private var notifStatus: UNAuthorizationStatus = .notDetermined
@@ -531,7 +531,7 @@ struct HealthPane: View {
         computerGate.refresh()
         selectedProtectedSources = SourceSelection.selectedProtectedSources
         unreadableProtectedSources = selectedProtectedSources.filter { !$0.isReadable }
-        loginOn = LoginItem.isEnabled
+        loginOn = await LoginItem.refreshedIsEnabled()
         if requiresOvernightSetup { await wakeSetup.refresh() }
         refreshMicSpeech()
         // Match the effective permission used by capture and the setup gates.

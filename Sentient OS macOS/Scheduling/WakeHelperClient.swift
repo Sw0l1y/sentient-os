@@ -46,6 +46,13 @@ final class WakeHelperClient {
     /// Registration is consent, not liveness. Call healthProbe before scheduling any work.
     var status: SMAppService.Status { SMAppService.daemon(plistName: WakeHelperConfig.daemonPlistName).status }
     var isReady: Bool { !removing && status == .enabled }
+
+    /// `status`, read off the main thread — it is a synchronous XPC round-trip to smd, and the
+    /// health probes below run on every Home foreground and scheduler restart.
+    func currentStatus() async -> SMAppService.Status {
+        let name = WakeHelperConfig.daemonPlistName
+        return await Task.detached(priority: .userInitiated) { SMAppService.daemon(plistName: name).status }.value
+    }
     func openLoginItemsSettings() {
         PermissionGuide.shared.guide(.overnightWake, dragging: nil)
     }
@@ -54,27 +61,40 @@ final class WakeHelperClient {
 
     func healthProbe() async -> DaemonHealth {
         guard !removing else { return .unavailable }
-        switch status {
+        switch await currentStatus() {
         case .requiresApproval: return .requiresApproval
         case .notRegistered: return .notSetUp
         case .notFound: return .unavailable
         case .enabled:
             let reachable = await isReachable()
             // Approval can be revoked while the probe is in flight.
-            if status == .requiresApproval { return .requiresApproval }
-            return reachable && status == .enabled ? .ready : .unavailable
+            let after = await currentStatus()
+            if after == .requiresApproval { return .requiresApproval }
+            return reachable && after == .enabled ? .ready : .unavailable
         @unknown default: return .unavailable
         }
     }
 
     /// Quiet, side-effect-free once migration completes; does not feed the awake deadman.
     func isReachable() async -> Bool {
-        guard !removing, status == .enabled else { return false }
+        guard !removing, await currentStatus() == .enabled, !removing else { return false }
         return await call(quiet: true) { $0.prepare(withReply: $1) }
     }
 
     func setUp() async -> DaemonHealth {
         guard !removing else { return .unavailable }
+        let health = await registerAndProbe()
+        // A helper registered by a differently-signed copy of this app (the official release,
+        // before a self-build replaced it) stays enabled but refuses every message: its client
+        // requirement is its own signature. Re-register once so launchd relaunches the helper
+        // from this binary. macOS may ask for approval again.
+        guard health == .unavailable, await currentStatus() == .enabled else { return health }
+        Log("WakeHelper: registered helper is unreachable; re-registering from this build")
+        guard await unregister() else { return .unavailable }
+        return await registerAndProbe()
+    }
+
+    private func registerAndProbe() async -> DaemonHealth {
         let registered = register()
         if registered == .requiresApproval {
             openLoginItemsSettings()

@@ -117,15 +117,14 @@ struct PromptBar: View {
             .allowsHitTesting(false)
     }
 
-    /// The glassy field with a faint AI-gradient hairline that brightens on focus.
+    /// The glassy field with a faint accent hairline that brightens on focus.
     private var field: some View {
         RoundedRectangle(cornerRadius: 16, style: .continuous)
             .fill(Theme.Ink.cardBG)
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(
-                        LinearGradient(colors: GlowHalo.stops.map { $0.opacity(focused ? 0.6 : 0.32) },
-                                       startPoint: .leading, endPoint: .trailing),
+                        Theme.accent.opacity(focused ? 0.6 : 0.32),
                         lineWidth: 1)
             )
     }
@@ -213,27 +212,20 @@ private struct StopButton: View {
     }
 }
 
-// MARK: - The rounded-rect AI-gradient glow (twin of GlowButton's GlowHalo)
+// MARK: - The accent glow (twin of GlowButton's GlowHalo)
 
-/// A slow, ambient rotation of the GlowButton (Analyze Now) palette, blurred to a soft glow
-/// hugging the bar. Slower than the 3.5s CTA halo (7s) so it reads as a calm, magical presence,
-/// not a spinner. Kept tight (small bleed + blur) so it's a quiet rim-glow, not a big halo.
+/// A still, soft accent bloom hugging the bar (formerly a 60fps rotating rainbow).
 private struct PromptGlow: View {
     var intensity: Double
-    private static let period: Double = 7.0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { ctx in
-            let t = ctx.date.timeIntervalSinceReferenceDate
-            let angle = (t.truncatingRemainder(dividingBy: Self.period) / Self.period) * 360.0
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(AngularGradient(colors: GlowHalo.stops, center: .center, angle: .degrees(angle)))
-                .blur(radius: 16)
-                .padding(-2)
-        }
-        .opacity(intensity)
-        .animation(.easeInOut(duration: 0.5), value: intensity)
-        .allowsHitTesting(false)
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Theme.accent)
+            .blur(radius: 16)
+            .padding(-2)
+            .opacity(intensity * 0.6)
+            .animation(.easeInOut(duration: 0.5), value: intensity)
+            .allowsHitTesting(false)
     }
 }
 

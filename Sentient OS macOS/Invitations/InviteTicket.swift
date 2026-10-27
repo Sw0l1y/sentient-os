@@ -8,7 +8,7 @@ enum InvitePaper {
     static let light = Color(red: 0.96, green: 0.94, blue: 0.88)
     static let shade = Color(red: 0.84, green: 0.81, blue: 0.72)
     static let ink = Color(red: 0.16, green: 0.17, blue: 0.16)
-    static let spectrum: [Color] = [.cyan, .blue, .purple, .pink, .orange, .yellow, .mint, .cyan]
+    static var spectrum: [Color] { Theme.accentRamp }
 }
 
 struct InviteTicketFace: View {

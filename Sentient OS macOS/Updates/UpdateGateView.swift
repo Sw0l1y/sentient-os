@@ -271,7 +271,7 @@ struct UpdateGateView: View {
     }
 }
 
-/// A slim OLED progress bar in the AI spectrum. `value` nil = indeterminate (a segment sliding on a
+/// A slim OLED progress bar in the accent. `value` nil = indeterminate (a segment sliding on a
 /// loop); otherwise a determinate gradient fill with a soft tip glow.
 private struct UpdateProgressBar: View {
     var value: Double?
@@ -286,10 +286,10 @@ private struct UpdateProgressBar: View {
                     Capsule()
                         .fill(LinearGradient(colors: GlowHalo.stops, startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(6, w * max(0, min(1, value))))
-                        .shadow(color: Color(red: 0.61, green: 0.28, blue: 0.83).opacity(0.6), radius: 8)
+                        .shadow(color: Theme.accent.opacity(0.6), radius: 8)
                         .animation(.easeInOut(duration: 0.25), value: value)
                 } else {
-                    TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { ctx in
+                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { ctx in
                         let seg = w * 0.34
                         let period = 1.25
                         let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
@@ -298,7 +298,7 @@ private struct UpdateProgressBar: View {
                             .fill(LinearGradient(colors: GlowHalo.stops, startPoint: .leading, endPoint: .trailing))
                             .frame(width: seg)
                             .offset(x: x)
-                            .shadow(color: Color(red: 0.61, green: 0.28, blue: 0.83).opacity(0.5), radius: 8)
+                            .shadow(color: Theme.accent.opacity(0.5), radius: 8)
                     }
                     .mask(Capsule())
                 }

@@ -56,7 +56,7 @@ struct CodexSetupView: View {
                 buttonLabel("arrow.down.circle.fill", codex.installed ? "Repair Codex CLI" : "Install Codex CLI",
                             busy: codex.installing)
             }
-            .buttonStyle(.bordered).tint(Theme.Ink.green)
+            .buttonStyle(GlassButtonStyle(tint: Theme.Ink.green))
             .disabled(codex.installing)
 
             statusLine(codex.installStatus)
@@ -73,18 +73,18 @@ struct CodexSetupView: View {
                 Button { Task { await codex.startLogin(force: true) } } label: {
                     buttonLabel("arrow.triangle.2.circlepath", "Log in again", busy: false)
                 }
-                .buttonStyle(.bordered).tint(Theme.secondary).controlSize(.small)
+                .buttonStyle(.sentientGlass).controlSize(.small)
             } else if codex.loggingIn {
                 hint("A browser window opened for you to sign in. Finish there, then tap below.")
                 Button { Task { await codex.confirmLogin() } } label: {
                     buttonLabel("checkmark.circle.fill", "Finished logging into codex", busy: false)
                 }
-                .buttonStyle(.borderedProminent).tint(Theme.Ink.green)
+                .buttonStyle(.sentientGlassProminent)
             } else {
                 Button { Task { await codex.startLogin() } } label: {
                     buttonLabel("person.crop.circle.badge.checkmark", "Log in to Codex", busy: false)
                 }
-                .buttonStyle(.bordered).tint(Theme.Ink.green)
+                .buttonStyle(GlassButtonStyle(tint: Theme.Ink.green))
                 .disabled(!codex.installed)
             }
             statusLine(codex.loginStatusLine)
@@ -100,13 +100,13 @@ struct CodexSetupView: View {
                 Button { Task { await ComputerUseSetup.current.install(force: true) } } label: {
                     buttonLabel("arrow.triangle.2.circlepath", "Re-install the driver", busy: ComputerUseSetup.current.isInstalling)
                 }
-                .buttonStyle(.bordered).tint(Theme.secondary).controlSize(.small)
+                .buttonStyle(.sentientGlass).controlSize(.small)
                 .disabled(ComputerUseSetup.current.isInstalling)
             } else {
                 Button { Task { await ComputerUseSetup.current.install() } } label: {
                     buttonLabel("cpu.fill", "Install the driver", busy: ComputerUseSetup.current.isInstalling)
                 }
-                .buttonStyle(.bordered).tint(Theme.Ink.green)
+                .buttonStyle(GlassButtonStyle(tint: Theme.Ink.green))
                 .disabled(ComputerUseSetup.current.isInstalling)
             }
             statusLine(ComputerUseSetup.current.status)

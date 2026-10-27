@@ -6,7 +6,7 @@ import AppKit
 struct OvernightSetupRequirements: View {
     let onReadinessChange: (Bool) -> Void
     @State private var wakeSetup = OvernightWakeSetup()
-    @State private var loginOn = LoginItem.isEnabled
+    @State private var loginOn = LoginItem.cachedIsEnabled
     @State private var loginNeedsApproval = LoginItem.needsApproval
     private var ready: Bool { wakeSetup.ready && loginOn }
 

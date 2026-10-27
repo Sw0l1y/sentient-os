@@ -38,7 +38,6 @@ struct KnowledgeView: View {
     @State private var expanded: Set<URL> = []
     @State private var search = ""
     @State private var sidebarVisible = true
-    @State private var showAIConnections = false
 
     // Navigation history (back / forward), so a wikilink jump can be undone.
     @State private var history: [URL] = []
@@ -181,7 +180,7 @@ struct KnowledgeView: View {
     /// The retained page cannot rely on disappearance for cleanup. Keep its draft/camera,
     /// but release transient focus, sheets, hover, and the app-wide editing/navigation gates.
     private func deactivate() {
-        showAIConnections = false; showCreatePrompt = false; showDiscardPrompt = false
+        showCreatePrompt = false; showDiscardPrompt = false
         editorFocused = false; searchFocused = false; createFieldFocused = false
         cancelPendingNavigation()
         MainNavigation.shared.leaveKnowledge = nil
@@ -532,11 +531,11 @@ struct KnowledgeView: View {
             Button { promptCreate(folder: true, in: nil) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.secondary)
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(.white.opacity(0.06)))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.Ink.bright)
+                .frame(width: 28, height: 28)
                 .contentShape(Circle())
+                .glassSurface(Circle())
         }
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
@@ -663,13 +662,6 @@ struct KnowledgeView: View {
                     .help(canGoBack ? "Previous note" : "Back to the constellation")
             }
             Spacer(minLength: 20)
-            Button { showAIConnections = true } label: {
-                Label("Use with your AIs", systemImage: "link")
-            }
-            .labelStyle(.titleAndIcon)
-            .help("Optionally connect this knowledge base to ChatGPT, Claude, or another AI.")
-            .accessibilityIdentifier("knowledge.connectAIs")
-            .popover(isPresented: $showAIConnections, arrowEdge: .bottom) { ShareKnowledgePopover() }
             SkyDoor(icon: mode == .sky ? "doc.plaintext" : "sparkles",
                     label: mode == .sky ? "Reader View" : "Constellation View") {
                 requestMode(mode == .sky ? .reader : .sky)
@@ -680,11 +672,9 @@ struct KnowledgeView: View {
                 revealToolbarButton
             }
         }
-        .buttonStyle(SettingsActionStyle())
+        .buttonStyle(.sentientGlass)
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        .background(Color(white: 0.035))
-        .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.08)).frame(height: 1) }
     }
 
     /// Move the open note to the macOS Trash (icon-only, between Edit and Reveal — reading mode only).

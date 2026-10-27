@@ -128,9 +128,10 @@ struct NightSkyView: View {
 
 // MARK: - The door (shared by both sides: "Constellation View" in the reader, "Reader" in the sky)
 
-/// The mode switch in the titlebar (both KnowledgeView toolbars mount one via SkyDoorToolbarItem).
-/// A native toolbar button — same font and glass as its Edit / Reveal in Finder neighbours —
-/// wearing the SkyDoorRim so the other mode is discoverable. ⌘⇧G fires whichever door is mounted.
+/// The mode switch in the Knowledge header (and SkyDoorToolbarItem for the preview toolbar).
+/// The one accent-tinted glass capsule in the header, so the other mode stays discoverable without
+/// the old animated rainbow rim (which cost a 30fps redraw for as long as the window was open).
+/// ⌘⇧G fires whichever door is mounted.
 struct SkyDoor: View {
     let icon: String
     let label: String
@@ -141,35 +142,8 @@ struct SkyDoor: View {
             Label(label, systemImage: icon)
         }
         .labelStyle(.titleAndIcon)
+        .buttonStyle(.sentientGlassProminent)
         .keyboardShortcut("g", modifiers: [.command, .shift])
-        .overlay { SkyDoorRim() }
-    }
-}
-
-/// The slow-moving gradient rim both mode doors wear — field-tested: behind plain glass, users
-/// never found the reader at all. Theme.magicGlow (teal → cyan → blue → indigo → purple), muted
-/// to a whisper, circles the capsule once every 8s: a soft bloom under a crisp 1pt edge.
-/// Cosmetic only — it never intercepts the cursor.
-private struct SkyDoorRim: View {
-    private static let period: Double = 8.0
-    @Environment(\.isEnabled) private var enabled
-    @Environment(\.accessibilityReduceMotion) private var systemReducedMotion
-    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
-    private var paused: Bool { !enabled || (motionOverride ?? systemReducedMotion) }
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: paused)) { ctx in
-            let t = ctx.date.timeIntervalSinceReferenceDate
-            let angle = (t.truncatingRemainder(dividingBy: Self.period) / Self.period) * 360.0
-            let rim = AngularGradient(colors: Theme.magicGlow, center: .center, angle: .degrees(angle))
-            ZStack {
-                Capsule(style: .continuous).strokeBorder(rim, lineWidth: 2.5)
-                    .blur(radius: 3).opacity(0.45)
-                Capsule(style: .continuous).strokeBorder(rim, lineWidth: 1).opacity(0.8)
-            }
-            .saturation(0.65)
-        }
-        .allowsHitTesting(false)
     }
 }
 

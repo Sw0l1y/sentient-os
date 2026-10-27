@@ -2,8 +2,8 @@
 //  SpinningLogo.swift
 //  Sentient OS macOS
 //
-//  The 2D Sentient mark for the notch (matches the app icon): a THICK, vibrant ring of the AI spectrum
-//  (GlowHalo.stops — the real website-spinner stops) rendered SHARP so the colour reads boldly, over a
+//  The 2D Sentient mark for the notch (matches the app icon): a THICK ring of the accent's shades
+//  (Theme.accentRamp) rendered SHARP so the colour reads boldly, over a
 //  soft additive bloom, with a thin white ring for shape and a white planet-dot. The spectrum slowly
 //  spins, FASTER when Sentient is acting (`fast`); the spin is anchored on every speed change so the
 //  colours never jump. Tiny + cheap — the heavy 3D Orb is too much at this size.
@@ -22,34 +22,18 @@ struct SpinningLogo: View {
 
     private static func period(fast: Bool) -> Double { fast ? 2 : 13 }   // seconds / revolution (2s = the fast "processing" spin)
 
-    /// The ring's palette: the brand spectrum (GlowHalo.stops) with ONE change — the pale warm-yellow
-    /// (#fde2a3) is deepened to a saturated gold. That stop is a very light cream AND it spans the wrap
-    /// seam (it's both the first stop and the duplicated last one), so it paints a wide pale arc that, at
-    /// this tight ring scale on OLED black, reads as a near-WHITE spot breaking the rainbow. Deepening just
-    /// that stop keeps the wheel fully colorful and truer to the app icon. The shared GlowHalo.stops is
-    /// untouched, so the edge glow / CTA / website spinner are unchanged. (Tune `gold` if it wants to be
-    /// lighter/deeper.)
-    private static let bandStops: [Color] = {
-        let gold = Color(red: 0.97, green: 0.70, blue: 0.24)   // deeper & more saturated than #fde2a3 → reads gold, not white
-        var s = GlowHalo.stops
-        s[0] = gold
-        s[s.count - 1] = gold                                  // the wrap seam shares the warm stop
-        return s
-    }()
+    /// The ring's palette: the accent's shades (Theme.accentRamp), so the mark matches the rest of
+    /// the app's single-accent language instead of the old rainbow spectrum.
+    private static var bandStops: [Color] { Theme.accentRamp }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: fast ? 1.0 / 60.0 : 1.0 / 30.0, paused: paused)) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate
             let angle = anchorAngle + (paused ? 0 : (t - anchorTime) / Self.period(fast: fast) * 360)
-            let spectrum = AngularGradient(colors: Self.bandStops, center: .center, angle: .degrees(angle))
             ZStack {
-                // Big, bright colored neon glow — several ADDITIVE passes (wide → tight) so it really reads.
-                // 1. Soft colored bloom (additive) — the neon bleed around the ring.
-                Circle().stroke(spectrum, lineWidth: size * 0.22).blur(radius: size * 0.14).blendMode(.plusLighter)
-                // 2. The THICK, vibrant color band — the spectrum rendered SHARP + saturated. This is the
-                //    logo's real colour, bold and fully visible like the app icon (the old heavy blur was
-                //    washing it out).
-                Circle().stroke(spectrum, lineWidth: size * 0.17).blur(radius: size * 0.008)
+                // The colored ring is rasterized ONCE (drawingGroup) and spun as a compositor
+                // transform — re-shading a conic gradient every frame ran on the CPU.
+                colorRing.rotationEffect(.degrees(angle))
                 // 3. A thin white ring — just for the shape (kept extra-fine; floor governs at notch size).
                 Circle().stroke(.white, lineWidth: max(0.75, size * 0.028)).blur(radius: size * 0.005)
                 // 4. The white planet — with a tiny additive glow so it reads as lit, not flat.
@@ -73,6 +57,20 @@ struct SpinningLogo: View {
             anchorTime = t
         }
         .allowsHitTesting(false)
+    }
+
+    /// 1. Soft colored bloom (the neon bleed) + 2. the thick band, both from one fixed-angle
+    /// gradient. Padded so the bloom's tail fits inside the raster bounds.
+    private var colorRing: some View {
+        let spectrum = AngularGradient(colors: Self.bandStops, center: .center)
+        return ZStack {
+            Circle().stroke(spectrum, lineWidth: size * 0.22).blur(radius: size * 0.14).blendMode(.plusLighter)
+            Circle().stroke(spectrum, lineWidth: size * 0.17).blur(radius: size * 0.008)
+        }
+        .frame(width: size, height: size)
+        .padding(size * 0.4)
+        .drawingGroup()
+        .padding(-size * 0.4)
     }
 }
 
