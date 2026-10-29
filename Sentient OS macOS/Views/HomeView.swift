@@ -2,25 +2,30 @@
 //  HomeView.swift
 //  Sentient OS macOS
 //
-//  THE HOME — the app's main surface, and the product itself: Proactive Intelligence. You
-//  open Sentient straight into this. The morning run (1 min after wake) leaves a spread of
-//  SUGGESTION CARDS here — each one the AI already did the work for ("Should I send it for
-//  you?"); clicking is the user's fire (Privacy Constitution: we offer, they fire). A command
-//  bar at the foot lets you ask it to DO anything (computer use).
+//  HOME — the app's main surface, and the product itself: Proactive Intelligence. It is a
+//  conversation with Sentient, laid out the way Messages lays out a conversation (SPEC-D1 S1):
+//    · a notice row docked at the top (HomeNotices: one notice, most severe first)
+//    · the page itself, one reading column on the text background:
+//        Today (HomeToday) — the opening of the conversation: the greeting, the day's status
+//          and the suggestion list the morning run prepared (each one the AI already did the
+//          work for; clicking is the user's fire — Privacy Constitution: we offer, they fire),
+//          then quick replies;
+//        or the conversation (SidekickTranscript);
+//        or a Finish Setting Up example opened from the inspector (a drill-in with Back).
+//    · the Ask field floating at the bottom (HomeAskBar)
+//    · an inspector on the right: "Finish Setting Up" while personal setup is pending,
+//      otherwise the day's suggestions beside the conversation.
+//  `SidekickPresentation.surface` is the only switch between Today and the conversation, so the
+//  notch, "View in Chat", the attention policy and the labs keep driving it.
 //
-//  The chrome is the window's own: the sidebar navigates, and the toolbar carries Double Tap,
-//  the Analysis glance, and conversation search / clear. Status lives inside Analysis.
+//  The chrome is the window's own: the sidebar navigates, the root titles the window, and Home's
+//  toolbar carries Analysis, Double Tap, Search and the More menu — only while Home is showing.
 //
-//  BEFORE PERSONAL SETUP, Sidekick is the main workspace. A small reward panel offers optional
-//  setup beside it; its examples never execute tasks or alter conversation state. The existing
-//  composer/transcript stay mounted as personal context becomes ready. Completed users retain
-//  the real proactive spread and its empty state.
+//  LEGACY KNOWLEDGE-BASE-ONLY DIAGNOSTIC (previewKBOnly): cards never come and the Ask field is
+//  disabled; Today shows the preview group (upgrade CTA + Reset jump), with the gift row above it
+//  when there is one. Once the plan claim reads Plus it becomes the reset-and-rebuild note.
 //
-//  LEGACY KNOWLEDGE-BASE-ONLY DIAGNOSTIC (previewKBOnly): cards never come and
-//  the command bar hides — the preview note under the orb (upgrade CTA + Reset jump) is ALWAYS
-//  on this home. The gift envelope (the only card the free home can hold) perches top-center
-//  above the compact note; flinging the letter blooms the note into the full center. Once the
-//  plan claim reads Plus it becomes the reset-and-rebuild celebration.
+//  The model half (ForYouModel: deal · run · dismiss) is below the view, unchanged.
 //
 //  Doc: Views/Documentation - Views - Home, Processing & Shared UI.md · cards + the CodexCLI seam:
 //  Briefing.swift.
@@ -39,7 +44,7 @@ struct HomeView: View {
     var deck: BriefingDeck = .jesai    // .real → real proactive cards from latest(); .jesai/.launch → a demo deck
     var previewKBOnly = false          // preview-only: force the knowledge-base-only state
     var onAnalyze: () -> Void = {}
-    var onShowDevTools: () -> Void = {}
+    var onShowDevTools: () -> Void = {}   // kept for callers; Developer Tools now opens from the sidebar and Debug menu
     var onFinishSetup: () -> Void = {}
 
     /// Retained diagnostic/legacy mode. Normal Free/Go users receive full Home; account labels
@@ -48,7 +53,7 @@ struct HomeView: View {
     var previewUpgraded: Bool? = nil   // preview-only: force the upgraded/not-upgraded note
     /// A kbOnly user whose claim now reads full — they upgraded (codex's own 8-day refresh, the
     /// Health pane's Re-check, or the crossroads all re-mint it). Re-read every appearance, so
-    /// the preview note flips to the "reset & rebuild" celebration without any push machinery.
+    /// the preview note flips to the "reset & rebuild" note without any push machinery.
     @State private var planUpgraded = false
 
     @Environment(AppState.self) private var appState
@@ -56,6 +61,7 @@ struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var systemReducedMotion
     @Environment(\.sidekickReduceMotionOverride) private var motionOverride
     private var reducedMotion: Bool { motionOverride ?? systemReducedMotion }
+    private var standardMotion: Animation? { Motion.gated(Motion.standard, reduceMotion: reducedMotion) }
     private var presentation: SidekickPresentation { appState.sidekickPresentation }
     private var model: ForYouModel { presentation.cards }
     private var conversation: SidekickConversation { appState.commandCoordinator.run.conversation }
@@ -67,15 +73,12 @@ struct HomeView: View {
         !kbOnly && deck == .real && personalSetupPending
     }
     @State private var selectedPersonalFeature: HomePersonalFeature?
-    @State private var personalPreviewHeight: CGFloat = 380
+    @State private var previewAreaHeight: CGFloat = 520
     @State private var composerFocusRequest = 0
-    @State private var overviewPage = 0
-    @State private var overviewPull: Double = 0
-    @State private var gatheringFromScroll = false
-    @State private var chromeHeight: CGFloat = 140
-    @State private var overviewDockTop: CGFloat = 0
-    @State private var cardSizes: [String: CGSize] = [:]
-    @State private var proactiveDockFrame = CGRect(x: 160, y: 18, width: 126, height: 34)
+    @State private var searchFocus = 0
+    /// The inspector's two wishes: Finish Setting Up opens by default; Suggestions on request.
+    @State private var inspectorWanted = true
+    @State private var suggestionsWanted = false
     // The opened card's sheet.
     @State private var letter: Briefing?
     @State private var letterShown = false
@@ -89,13 +92,13 @@ struct HomeView: View {
     @State private var codex = CodexSetup.shared
     @State private var showCodexSignIn = false
     @State private var dismissedCodexSignInReminder = false
-    /// The morning-after caution (last night's scheduled run hit a known snag) — nil = no banner.
+    /// The morning-after caution (last night's scheduled run hit a known snag) — nil = no notice.
     @State private var caution: OvernightCaution.Record?
     /// Kept separately from whole-cycle failures: successfully processing the other sources
     /// must not erase a skipped connector. AppStorage also updates a visible home after 3 AM.
     @AppStorage(ConnectorCaution.key) private var connectorCautionData = Data()
     /// The LIVE health issue (essential perms · codex · computer use) — HealthCaution's ladder;
-    /// nil = healthy or muted. Outranks the morning-after caution in the banner slot.
+    /// nil = healthy or muted. Outranks the morning-after caution in the notice slot.
     @State private var liveIssue: HealthCaution.Issue?
     @AppStorage(ModelBackend.key) private var backendRaw = ModelBackend.chatgpt.rawValue
     private var computerSetup: ComputerUseSetup {
@@ -108,109 +111,51 @@ struct HomeView: View {
     @AppStorage("dbg.imessage.chats") private var imessageCSV = ""
     @AppStorage("dbg.run.imessage")   private var runIMessage = false
 
-    private var homeCanvas: some View {
-        GeometryReader { geo in
-            let layout = overviewLayout(in: geo.size)
-            let workspaceWidth = needsPersonalSetup ? geo.size.width - (HomePersonalSetupPanel.width + 46) : geo.size.width
-            ZStack {
+    // MARK: The page
 
-                SidekickGlassGroup {
-                    ZStack {
-                        scatter(geo, layout: layout)
-                            .opacity(needsPersonalSetup ? 0 : 1)
-                            .allowsHitTesting(!needsPersonalSetup)
-                            .accessibilityHidden(needsPersonalSetup)
-                        if kbOnly {
-                            // The preview note is ALWAYS on the free home — the gift envelope (the
-                            // only card this home can ever hold) perches above it, never in front:
-                            // the pitch must not hide behind a fling.
-                            previewState
-                        } else if model.entries.isEmpty && !needsPersonalSetup {
-                            emptyState.opacity(inConversation ? 0 : 1)
-                                .blur(radius: inConversation && !reducedMotion ? 9 : 0)
-                                .scaleEffect(inConversation && !reducedMotion ? 0.94 : 1)
-                                .allowsHitTesting(!inConversation)
-                                .accessibilityHidden(inConversation)
-                        }
-                        VStack(spacing: 0) {
-                            Color.clear.frame(height: kbOnly ? 130 : (inConversation && hasCriticalCaution ? max(128, chromeHeight + 8) : 86))
-                            if !kbOnly {
-                                SidekickTranscript(conversation: conversation, coordinator: appState.commandCoordinator,
-                                                   presentation: presentation,
-                                                   active: isPresented && presentation.windowActive && inConversation && selectedPersonalFeature == nil)
-                                    .opacity(inConversation && selectedPersonalFeature == nil ? 1 : 0)
-                                    .blur(radius: !inConversation && !reducedMotion ? 10 : 0)
-                                    .offset(y: !inConversation && !reducedMotion ? 30 : 0)
-                                    .animation(reducedMotion ? .easeOut(duration: 0.14)
-                                        : .smooth(duration: 0.35).delay(inConversation ? 0.16 : 0), value: inConversation)
-                                    .allowsHitTesting(inConversation && selectedPersonalFeature == nil)
-                                    .disabled(!inConversation || selectedPersonalFeature != nil)
-                                    .accessibilityElement(children: inConversation && selectedPersonalFeature == nil ? .contain : .ignore)
-                                    .accessibilityHidden(!inConversation || selectedPersonalFeature != nil)
-                            } else { Spacer() }
-                            VStack(spacing: 0) {
-                                if !kbOnly && !inConversation && selectedPersonalFeature == nil
-                                    && (!needsPersonalSetup || !conversation.messages.isEmpty) {
-                                    conversationPeek.padding(.horizontal, 38).padding(.bottom, 13)
-                                        .transition(SidekickStyle.entrance(reducedMotion))
-                                }
-                                bottomDock
-                            }
-                            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("sidekick-home")).minY } action: { value in
-                                if !inConversation || needsPersonalSetup { overviewDockTop = value }
-                            }
-                        }
-                        .frame(width: workspaceWidth)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        if needsPersonalSetup {
-                            personalWorkspace(in: geo.size, width: workspaceWidth)
-                            HomePersonalSetupPanel(selectedFeature: selectedPersonalFeature,
-                                                   emphasizeSetup: appState.hasCompletedFirstSidekickTask && !inConversation
-                                                       && !appState.commandCoordinator.run.isRunning,
-                                                   active: isPresented && presentation.windowActive && !reducedMotion,
-                                                   previewEnabled: !appState.commandCoordinator.run.isRunning && !appState.commandCoordinator.run.recovery.isPending,
-                                                   onSelectFeature: selectPersonalFeature,
-                                                   onFinishSetup: finishPersonalSetup)
-                                .frame(width: HomePersonalSetupPanel.width)
-                                .padding(.trailing, 38).padding(.top, chromeHeight + 20).padding(.bottom, 28)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                        }
-                        chrome(in: geo.size)       // on top → the nav stays clickable
-                        #if DEBUG
-                        devToolsOverlay
-                        #endif
-                    }
-                }
+    /// The middle of the page (Today, the conversation, or an example), with the notice row
+    /// docked above it and the Ask field floating below it.
+    private var homePage: some View {
+        Group {
+            if let feature = selectedPersonalFeature {
+                featurePreview(feature)
+            } else if inConversation {
+                transcript
+            } else {
+                today
             }
-            .background {
-                SidekickOverviewScroll(
-                    enabled: isPresented && !kbOnly && !inConversation && !needsPersonalSetup
-                        && !letterShown && !showAnalysis && !showDoubleTap,
-                    activeRect: layout.region, onProgress: followOverviewScroll,
-                    onSettle: settleOverviewScroll, onCollapse: dockOverviewFromScroll)
-            }
-            .onChange(of: layout.pageCount) { _, count in overviewPage = min(overviewPage, count - 1) }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { previewAreaHeight = $0 }
+        .safeAreaInset(edge: .top, spacing: 0) { notices }
+        .floatingBar(edge: .bottom) { askBar }
+        .softScrollEdge(.bottom)
+        .background(Color(nsColor: .textBackgroundColor))
+        .pageSubtitle(subtitle, page: .home)
+        .animation(standardMotion, value: presentation.surface)
+        .animation(standardMotion, value: selectedPersonalFeature)
+    }
+
+    /// The window subtitle: what this page is and its state, never an action.
+    private var subtitle: String {
+        if let feature = selectedPersonalFeature { return "\(feature.title) Example" }
+        if inConversation { return appState.commandCoordinator.run.isRunning ? "Working…" : "Conversation" }
+        return Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())
     }
 
     private var observedHome: some View {
-        homeCanvas
-        .frame(minWidth: 840, minHeight: 680)
-        .coordinateSpace(name: "sidekick-home")
-        .background(SidekickStyle.base)
-        .preferredColorScheme(.dark)
-        .tint(SidekickStyle.accent)
+        homePage
         .background(SidekickWindowPresence { active in
             presentation.windowActive = active
             updateConversationVisibility()
         })
-        .animation(SidekickStyle.motion(reducedMotion), value: inConversation)
         .onAppear {                        // every appearance starts fresh: sealed envelope, full deal
             letter = nil
             letterShown = false
             model.coordinator = appState.commandCoordinator
-            appState.commandCoordinator.run.proactiveCards = { [weak model] in
-                model?.sidekickActions ?? []
+            let cards = model
+            appState.commandCoordinator.run.proactiveCards = { [weak cards] in
+                cards?.sidekickActions ?? []
             }
             if !appState.isUninstalling { model.ensureVisit(deck: deck) }
             presentation.visit(conversation: conversation, running: appState.commandCoordinator.run.isRunning,
@@ -222,15 +167,13 @@ struct HomeView: View {
         }
         .onDisappear { conversation.isVisible = false }
         .onChange(of: presentation.surface) { _, surface in
-            if surface == .suggestions { overviewPull = 0; gatheringFromScroll = false }
+            // Leaving the conversation closes its search (the field only searches the transcript).
+            if surface == .suggestions && presentation.searchShown { endSearch() }
             updateConversationVisibility()
         }
         .onChange(of: selectedPersonalFeature) { _, _ in updateConversationVisibility() }
         .onChange(of: needsPersonalSetup) { _, needed in
             if !needed { selectedPersonalFeature = nil }
-        }
-        .onChange(of: model.entries.map(\.id)) { _, ids in
-            cardSizes = cardSizes.filter { ids.contains($0.key) }
         }
         .onChange(of: conversation.navigationRequest) { _, id in
             if id != nil { showConversation() }
@@ -244,7 +187,7 @@ struct HomeView: View {
         }
         .onChange(of: isPresented) { _, visible in
             updateConversationVisibility()
-            if !visible { overviewPull = 0; presentation.clearChatConfirmationShown = false }
+            if !visible { presentation.clearChatConfirmationShown = false }
             if visible {
                 model.ensureVisit(deck: deck)
                 presentation.visit(conversation: conversation, running: appState.commandCoordinator.run.isRunning,
@@ -268,8 +211,8 @@ struct HomeView: View {
                 Task { await MailAccountCloud.shared.retryPendingSync() }
             }
             // The user may just have fixed something in System Settings (or a cycle cleared last
-            // night's caution) — re-probe so the banner melts away the moment they return.
-            withAnimation(.easeInOut(duration: 0.25)) { caution = OvernightCaution.latest() }
+            // night's caution) — re-probe so the notice melts away the moment they return.
+            withAnimation(standardMotion) { caution = OvernightCaution.latest() }
             probeHealth()
             Task { await refreshCodexSignIn() }
         }
@@ -299,19 +242,26 @@ struct HomeView: View {
             probeHealth()
         }
         .onChange(of: appState.isUninstalling) { _, tearing in
-            // Uninstall began → take every card off the table; a cancel deals them back in.
+            // Uninstall began → take every suggestion off the page; a cancel deals them back in.
             if tearing {
                 showCodexSignIn = false
-                withAnimation(.easeInOut(duration: 0.3)) { model.clear() }
+                withAnimation(standardMotion) { model.clear() }
             }
             else { model.beginVisit(deck: deck) }
         }
-        .animation(.spring(response: 0.5, dampingFraction: 0.82), value: model.entries.isEmpty)
+        .animation(standardMotion, value: model.entries.isEmpty)
     }
 
     var body: some View {
         lifecycleHome
         .toolbar { toolbarActions }
+        .inspector(isPresented: inspectorBinding) {
+            inspectorContent
+                .inspectorColumnWidth(min: 240, ideal: 260, max: 320)
+        }
+        // "Clear Chat?" is hosted once, here, because the More menu item that raises it is torn
+        // down with the menu.
+        .sidekickClearChatConfirmation(coordinator: appState.commandCoordinator, presentation: presentation)
         .sheet(isPresented: $showWhatsAppPicker) {
             ChatPicker(sourceName: "WhatsApp", loadChats: { try WhatsAppSource().listChats() },
                        initialSelection: Set(whatsappCSV.split(separator: ",").map(String.init))) { sel in
@@ -338,34 +288,302 @@ struct HomeView: View {
         }) { ChatGPTSignInSheet() }
     }
 
-    // MARK: Chrome — the top-bar nav + the editorial greeting
+    // MARK: Today
 
-    private func chrome(in size: CGSize) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            topBar(compact: inConversation && size.width < 980).zIndex(1)
-            if !needsPersonalSetup || hasCriticalCaution {
-                HStack(alignment: .top, spacing: 24) {
-                    if !needsPersonalSetup {
-                        header
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            // Clear the cards' path as a direct pull approaches the greeting.
-                            // Opacity follows the same gesture and restores on a partial reversal.
-                            .opacity(inConversation ? 0 : (reducedMotion ? 1 : max(0, 1 - overviewPull / 60)))
-                            .blur(radius: inConversation && !reducedMotion ? 6 : 0)
-                            .offset(y: reducedMotion ? 0 : (inConversation ? -8 : -min(8, overviewPull * 0.15)))
-                            .allowsHitTesting(false).accessibilityHidden(inConversation)
-                    } else { Spacer(minLength: 0) }
-                    if !inConversation || hasCriticalCaution {
-                        cautionBanner.frame(maxWidth: min(480, size.width * 0.48))
-                    }
-                }.padding(.horizontal, 30).padding(.top, 25)
-            }
-        }
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { value in
-            chromeHeight = value
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    private var today: some View {
+        HomeToday(greeting: greeting,
+                  kbOnly: kbOnly,
+                  needsPersonalSetup: needsPersonalSetup,
+                  initialComplete: appState.processing.initialComplete,
+                  conversation: conversation,
+                  entries: visibleEntries,
+                  row: { suggestionRow($0, inInspector: false) },
+                  analysisBlock: showsAnalysisBlock ? AnyView(analysisBlock) : nil,
+                  kbOnlyBlock: kbOnly ? AnyView(kbOnlyBlock) : nil,
+                  reduceMotion: reducedMotion,
+                  onShowConversation: showConversation,
+                  onStarter: fillStarter)
     }
+
+    /// The suggestions on the page: dealt (the deal stagger drives insertion) and not dismissed.
+    private var visibleEntries: [ForYouModel.Entry] {
+        model.entries.filter { $0.dealt && $0.flight == nil }
+    }
+
+    /// One suggestion row, wired to the model exactly as the old card was. In the inspector the
+    /// conversation is already on screen, so "View in Chat" returns the transcript to its latest
+    /// messages, where the task's live work is.
+    private func suggestionRow(_ entry: ForYouModel.Entry, inInspector: Bool) -> HomeSuggestionRow {
+        let openConversation: (() -> Void)?
+        if entry.action == nil {
+            openConversation = nil
+        } else if inInspector {
+            let presentation = presentation, conversation = conversation
+            openConversation = { Task { await presentation.load(.latest, conversation: conversation) } }
+        } else {
+            openConversation = showConversation
+        }
+        return HomeSuggestionRow(
+            briefing: entry.b, action: entry.action, phase: entry.phase, liveLines: entry.liveLines,
+            fireDimmed: appState.commandCoordinator.run.isRunning
+                && entry.action.map { ProactiveExecutor.isFireable($0) } == true,
+            onOpen: { openLetter(entry.b) },
+            onOffer: { model.run(entry.id) },
+            onOpenEnvelope: {
+                // A dismissal in flight must not reopen the removed card's letter.
+                guard let current = model.entry(entry.id), current.flight == nil else { return }
+                model.unsealWelcome()
+                openLetter(current.b)
+            },
+            onStop: entry.action != nil ? { model.stopRun(entry.id) } : nil,
+            onOpenConversation: openConversation,
+            onDismiss: { model.dismiss(entry.id, toward: CGSize(width: 0, height: -1)) })
+    }
+
+    /// A starter fills the Ask field and focuses it; it never sends.
+    private func fillStarter(_ prompt: String) {
+        guard !appState.commandCoordinator.run.isRunning, !appState.commandCoordinator.run.recovery.isPending else { return }
+        conversation.draft = prompt
+        composerFocusRequest &+= 1
+    }
+
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let part = hour < 5 ? "Up late" : hour < 12 ? "Good morning"
+                 : hour < 18 ? "Good afternoon" : "Good evening"
+        let name = Self.macFirstName
+        return name.isEmpty ? "\(part)." : "\(part), \(name)."
+    }
+
+    /// The user's first name from their macOS account — full name's first word (e.g. "Jesai
+    /// Tarun" → "Jesai"), falling back to the (capitalized) short login name, then to nothing
+    /// (the greeting just drops the name). Resolved once per launch; no account, no network.
+    static let macFirstName: String = {
+        let full = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        if let first = full.split(separator: " ").first, !first.isEmpty { return String(first) }
+        let login = NSUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        return login.isEmpty ? "" : login.capitalized
+    }()
+
+    /// Today's analysis status group: while the first analysis is not done, or one is running
+    /// or needs attention.
+    private var showsAnalysisBlock: Bool {
+        !kbOnly && !needsPersonalSetup
+            && (!appState.processing.initialComplete || appState.processing.isBusy || appState.processing.needsAttention)
+    }
+
+    private var analysisBlock: some View {
+        HomeInsetGroup {
+            VStack(alignment: .leading, spacing: Space.s) {
+                Button { MainNavigation.shared.show(.analysis) } label: {
+                    LabeledContent {
+                        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                    } label: {
+                        Label(appState.processing.statusLine,
+                              systemImage: appState.processing.needsAttention ? "exclamationmark.triangle.fill" : "waveform.path")
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("analysis.home.status")
+                .accessibilityHint("Opens Analysis")
+                if !appState.processing.initialComplete && model.entries.isEmpty {
+                    Text(personalContextStatus)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HomeAnalysisSummary(thingsUnderstood: thingsUnderstood, sources: sources, lastRun: lastRunLabel,
+                                    nextWakeAt: appState.scheduler.nextWakeAt,
+                                    schedulerEnabled: appState.scheduler.isEnabled,
+                                    schedulerNeedsSetup: appState.scheduler.needsSchedulerSetup,
+                                    customRoots: customRoots)
+                if !appState.processing.initialComplete {
+                    Button("Check Analysis Status") { showAnalysis = true }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityIdentifier("analysis.home.checkStatus")
+                        .accessibilityHint("Opens the Analysis popover")
+                }
+            }
+            .padding(Space.l)
+        }
+    }
+
+    private var personalContextStatus: String {
+        if appState.processing.paused {
+            return "Your personal setup is saved. Analysis is paused. Sidekick is ready; personal context and Double Tap follow your first analysis."
+        }
+        if appState.processing.needsAttention {
+            return "Your personal setup is saved. Analysis needs attention. Sidekick is ready; check analysis to finish building your context."
+        }
+        return "Your personal setup is saved. Personal context and Double Tap will be ready after your first analysis."
+    }
+
+    // MARK: The knowledge-base-only preview (free/go plans)
+
+    /// The free-plan Home: an honest note where the suggestions would be — the knowledge base is
+    /// real and theirs; the LIVING Sentient needs Plus. Once the claim reads Plus, it becomes the
+    /// reset-and-rebuild note. The gift row, when there is one, sits above it.
+    private var kbOnlyBlock: some View {
+        HomeInsetGroup(footer: planUpgraded ? nil
+                       : "Upgraded? Reset rebuilds your knowledge with Gmail, Calendar, and the full engine.") {
+            VStack(alignment: .leading, spacing: Space.s) {
+                Text(planUpgraded ? "You’re on Plus. Time to go live." : "This is a preview of Sentient.")
+                    .font(.headline)
+                Text(planUpgraded
+                     ? "Reset Sentient and it rebuilds your knowledge with Gmail and Calendar, then keeps it alive: proactive mornings, Sidekick, learning night after night."
+                     : appState.processing.initialComplete
+                        ? "Your knowledge base is built, private, and yours to explore. The living Sentient uses your ChatGPT Plus."
+                        : "Your first analysis will build your private knowledge base. The living Sentient uses your ChatGPT Plus.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !planUpgraded {
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Label("Mornings where things worth doing arrive already done", systemImage: "sun.horizon")
+                        Label("Sidekick anywhere: tap right \u{2318} and tell it what to do", systemImage: "command")
+                        Label("A knowledge base that keeps learning, night after night", systemImage: "moon.stars")
+                    }
+                    .padding(.vertical, Space.xs)
+                }
+                HStack(spacing: Space.s) {
+                    if planUpgraded {
+                        Button("Reset & Rebuild…", action: openSystemPane)
+                            .buttonStyle(.borderedProminent)
+                    } else {
+                        Button("Get ChatGPT Plus") { NSWorkspace.shared.open(CodexAuth.upgradeURL) }
+                            .buttonStyle(.borderedProminent)
+                        Button("Reset Sentient…", action: openSystemPane)
+                            .buttonStyle(.bordered)
+                    }
+                    Spacer(minLength: Space.s)
+                    if personalSetupPending {
+                        Button("Finish Personal Setup", action: finishPersonalSetup)
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("personalSetup.knowledgeOnly.finish")
+                    } else if !appState.processing.initialComplete {
+                        Button("Check Analysis Status") { showAnalysis = true }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("analysis.home.checkStatus")
+                            .accessibilityHint("Opens the Analysis popover")
+                    }
+                }
+                .padding(.top, Space.xs)
+            }
+            .padding(Space.l)
+        }
+    }
+
+    private func openSystemPane() {
+        HomeWindowOpening.open(.settings, settingsPane: .system)
+    }
+
+    // MARK: The conversation
+
+    private var transcript: some View {
+        SidekickTranscript(conversation: conversation, coordinator: appState.commandCoordinator,
+                           presentation: presentation,
+                           active: isPresented && presentation.windowActive && inConversation && selectedPersonalFeature == nil)
+    }
+
+    private func showConversation() {
+        withAnimation(standardMotion) {
+            selectedPersonalFeature = nil
+            presentation.surface = .conversation
+        }
+    }
+
+    /// The toolbar's Back "Today": ends an open search, then closes an example if one is open,
+    /// else returns from the conversation to Today.
+    private func goBack() {
+        if presentation.searchShown { endSearch() }
+        if selectedPersonalFeature != nil {
+            closePersonalFeature()
+        } else {
+            withAnimation(standardMotion) { presentation.surface = .suggestions }
+        }
+    }
+
+    /// More › Show Suggestions / Show Conversation.
+    private func toggleSurface() {
+        if inConversation { goBack() } else { showConversation() }
+    }
+
+    private func beginSearch() {
+        withAnimation(standardMotion) {
+            selectedPersonalFeature = nil
+            presentation.surface = .conversation
+            presentation.searchShown = true
+        }
+        searchFocus &+= 1
+    }
+
+    private func endSearch() {
+        presentation.search = ""
+        withAnimation(standardMotion) { presentation.searchShown = false }
+    }
+
+    private func updateConversationVisibility() {
+        let visible = isPresented && presentation.windowActive && inConversation && selectedPersonalFeature == nil
+        if conversation.isVisible != visible { conversation.isVisible = visible }
+        if visible && appState.commandCoordinator.run.recovery.isVisible { appState.commandCoordinator.run.recovery.dismiss() }
+    }
+
+    // MARK: Finish Setting Up (inspector) and its examples (drill-in)
+
+    private var inspectorBinding: Binding<Bool> {
+        Binding(get: { isPresented && (needsPersonalSetup ? inspectorWanted : (inConversation && suggestionsWanted)) },
+                set: { if needsPersonalSetup { inspectorWanted = $0 } else { suggestionsWanted = $0 } })
+    }
+
+    @ViewBuilder private var inspectorContent: some View {
+        if needsPersonalSetup {
+            HomePersonalSetupPanel(selectedFeature: selectedPersonalFeature,
+                                   emphasizeSetup: appState.hasCompletedFirstSidekickTask && !inConversation
+                                       && !appState.commandCoordinator.run.isRunning,
+                                   active: isPresented && presentation.windowActive,
+                                   previewEnabled: !appState.commandCoordinator.run.isRunning
+                                       && !appState.commandCoordinator.run.recovery.isPending,
+                                   onSelectFeature: selectPersonalFeature,
+                                   onFinishSetup: finishPersonalSetup)
+        } else {
+            HomeSuggestionsInspector(entries: visibleEntries, row: { suggestionRow($0, inInspector: true) })
+        }
+    }
+
+    private func featurePreview(_ feature: HomePersonalFeature) -> some View {
+        HomePersonalFeaturePreview(feature: feature, onClose: closePersonalFeature,
+                                   isActive: isPresented && presentation.windowActive,
+                                   availableHeight: previewAreaHeight)
+            .id(feature)                   // a different feature starts from its first page
+    }
+
+    private func selectPersonalFeature(_ feature: HomePersonalFeature) {
+        guard !appState.commandCoordinator.run.isRunning, !appState.commandCoordinator.run.recovery.isPending else { return }
+        withAnimation(standardMotion) {
+            selectedPersonalFeature = selectedPersonalFeature == feature ? nil : feature
+        }
+    }
+
+    private func closePersonalFeature() {
+        withAnimation(Motion.gated(Motion.quick, reduceMotion: reducedMotion)) { selectedPersonalFeature = nil }
+    }
+
+    private func finishPersonalSetup() {
+        selectedPersonalFeature = nil
+        onFinishSetup()
+    }
+
+    // MARK: Ask bar
+
+    private var askBar: some View {
+        HomeAskBar(coordinator: appState.commandCoordinator, presentation: presentation,
+                   isPresented: isPresented, kbOnly: kbOnly, inConversation: inConversation,
+                   focusRequest: composerFocusRequest, onAccepted: showConversation)
+    }
+
+    // MARK: Toolbar
 
     private var discoveryActive: Bool {
         isPresented && presentation.windowActive && !letterShown && !showAnalysis
@@ -374,120 +592,140 @@ struct HomeView: View {
             && !presentation.clearChatConfirmationShown && !appState.commandCoordinator.run.recovery.isPending
     }
 
-    /// The row above the greeting: the Proactive dock (or the notch hint). Navigation lives in
-    /// the window's sidebar and Home's actions in its toolbar (`toolbarActions`).
-    private func topBar(compact: Bool) -> some View {
-        HStack(spacing: 10) {
-            if !kbOnly { proactiveDock }
-            Spacer()
-        }
-        .padding(.horizontal, 30).padding(.top, 18)
-    }
-
-    /// Home's window-toolbar actions. Empty while another page is showing: Home stays mounted
+    /// Home's window-toolbar items. Empty while another page is showing: Home stays mounted
     /// behind the other pages, and its items must not leak into their toolbars.
     @ToolbarContentBuilder private var toolbarActions: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            if isPresented {
+        if isPresented && (inConversation || selectedPersonalFeature != nil) {
+            ToolbarItem(placement: .navigation) {
+                Button(action: goBack) { Label("Today", systemImage: "chevron.left") }
+                    .help("Back to Today")
+            }
+        }
+        if isPresented {
+            ToolbarItemGroup(placement: .primaryAction) {
+                analysisButton
                 if !kbOnly {
                     HomeDoubleTapButton(active: discoveryActive, presented: $showDoubleTap,
                                         needsPersonalSetup: needsPersonalSetup,
                                         onFinishSetup: finishPersonalSetup) {
                         MainNavigation.shared.show(.analysis)
                     }
+                    searchItem
                 }
-                Button { showAnalysis = true } label: {
-                    Label(appState.processing.isBusy ? "Analyzing" : "Analysis",
-                          systemImage: appState.processing.needsAttention ? "exclamationmark.triangle" : "waveform.path")
-                }
-                .help("Analysis status")
-                .accessibilityIdentifier("analysis.toolbar")
-                .popover(isPresented: $showAnalysis, arrowEdge: .bottom) { analysisPopover }
-                if !kbOnly && inConversation {
-                    SidekickToolbarIconButton(symbol: "magnifyingglass") {
-                        withAnimation(SidekickStyle.motion(reducedMotion)) {
-                            presentation.searchShown.toggle()
-                        }
+                if inConversation && !needsPersonalSetup {
+                    Button { suggestionsWanted.toggle() } label: {
+                        Label(model.entries.isEmpty ? "Suggestions" : "Suggestions \(model.entries.count)",
+                              systemImage: "sparkles.rectangle.stack")
                     }
-                    .help("Search conversation").accessibilityLabel("Search conversation")
-                    .accessibilityIdentifier("sidekick.search")
-                    .keyboardShortcut("f", modifiers: .command)
-                    SidekickClearChatButton(coordinator: appState.commandCoordinator, presentation: presentation)
+                    .help("Show or hide suggestions")
+                    .accessibilityIdentifier("sidekick.proactive")
                 }
+                if needsPersonalSetup {
+                    Button { inspectorWanted.toggle() } label: {
+                        Label("Finish Setting Up", systemImage: "checklist")
+                    }
+                    .help("Show or hide Finish Setting Up")
+                }
+                if !kbOnly { moreMenu }
             }
         }
     }
 
-    private var proactiveDock: some View {
-        ZStack {
-            // Keep the destination stable while the cards are out, without rendering glass.
-            Color.clear
-            if inConversation {
-                Button {
-                    withAnimation(SidekickStyle.motion(reducedMotion)) { presentation.surface = .suggestions }
-                } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: "square.stack.3d.up")
-                        Text("Proactive")
-                        if !model.entries.isEmpty {
-                            Text("\(model.entries.count)").font(.caption2.weight(.semibold))
-                                .padding(.horizontal, 5).padding(.vertical, 2)
-                                .background(.quaternary, in: Capsule())
-                        }
-                    }
-                    .font(.subheadline.weight(.medium))
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .sidekickGlass(radius: 15, prominent: true)
-                }
-                .buttonStyle(SidekickPressStyle())
-                .accessibilityIdentifier("sidekick.proactive")
-                .transition(reducedMotion ? .opacity : .asymmetric(
-                    insertion: .scale(scale: 0.85).combined(with: .opacity)
-                        .animation(.smooth(duration: 0.22).delay(0.28)),
-                    removal: .opacity.animation(.easeOut(duration: 0.12))))
-            } else {
-                HomeNotchHint(coordinator: appState.commandCoordinator)
-                    .transition(.opacity)
-            }
+    private var analysisButton: some View {
+        Button { showAnalysis = true } label: {
+            Label(appState.processing.isBusy ? "Analyzing" : "Analysis",
+                  systemImage: appState.processing.needsAttention ? "exclamationmark.triangle" : "waveform.path")
         }
-        .frame(width: 126, height: 34)
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("sidekick-home")) } action: { proactiveDockFrame = $0 }
+        .help("Analysis Status")
+        .accessibilityIdentifier("analysis.toolbar")
+        .popover(isPresented: $showAnalysis, arrowEdge: .bottom) { analysisPopover }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text(greeting)
-                .display(27)
-                .foregroundStyle(Theme.Ink.statusInk)
-            if !appState.processing.initialComplete || appState.processing.isBusy || appState.processing.needsAttention {
-                Button { MainNavigation.shared.show(.analysis) } label: {
-                    HStack(spacing: 6) {
-                        Text(appState.processing.statusLine)
-                        Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
-                    }
-                    .font(.body).foregroundStyle(SidekickStyle.secondary)
-                }
-                .buttonStyle(.plain).accessibilityIdentifier("analysis.home.status")
-            } else {
-                Text(model.entries.isEmpty ? "A little help, whenever you need it." : "A few things to make your day easier.")
-                    .font(.body).foregroundStyle(SidekickStyle.secondary)
-            }
+    /// Search: a button that becomes the search field (Mail's toolbar search), on either surface.
+    @ViewBuilder private var searchItem: some View {
+        if presentation.searchShown {
+            ToolbarSearchField(text: Bindable(presentation).search, prompt: "Search Conversation",
+                               identifier: "sidekick.history.search", width: 200,
+                               focusRequest: searchFocus, onCancel: endSearch)
+        } else {
+            Button(action: beginSearch) { Label("Search", systemImage: "magnifyingglass") }
+                .help("Search Conversation")
+                .accessibilityLabel("Search conversation")
+                .accessibilityIdentifier("sidekick.search")
+                .keyboardShortcut("f", modifiers: .command)
         }
     }
 
-    // MARK: The caution banner (one slot, most severe first)
+    private var moreMenu: some View {
+        Menu {
+            SidekickClearChatMenuItem(coordinator: appState.commandCoordinator, presentation: presentation)
+            Divider()
+            Button(inConversation ? "Show Suggestions" : "Show Conversation", action: toggleSurface)
+            Button("Open Notch") { appState.commandCoordinator.openNotchFromHome() }
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
+        }
+        .menuIndicator(.hidden)
+        .help("More")
+    }
+
+    @ViewBuilder private var analysisPopover: some View {
+        if personalSetupPending && deck == .real {
+            VStack(alignment: .leading, spacing: Space.m) {
+                Text("Your personal context starts here.")
+                    .font(.headline)
+                Text(kbOnly
+                     ? "Connect three sources, then choose when Sentient builds your knowledge."
+                     : "Connect three sources, then choose when Sentient builds your knowledge. Sidekick is ready to use now.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Spacer()
+                    Button("Finish Setup…") { showAnalysis = false; finishPersonalSetup() }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                        .accessibilityIdentifier("analysis.home.finishSetup")
+                }
+            }
+            .padding(Space.l)
+            .frame(width: PageMetrics.popover)
+        } else {
+            AnalysisPopover(thingsUnderstood: thingsUnderstood, sources: sources,
+                            lastRun: lastRunLabel,
+                            nextWakeAt: appState.scheduler.nextWakeAt,
+                            schedulerEnabled: appState.scheduler.isEnabled,
+                            schedulerNeedsSetup: appState.scheduler.needsSchedulerSetup,
+                            onAnalyze: { showAnalysis = false; onAnalyze() },
+                            onPickWhatsApp: { showAnalysis = false; showWhatsAppPicker = true },
+                            onPickIMessage: { showAnalysis = false; showIMessagePicker = true },
+                            onPickGmail: { showAnalysis = false; showGmailConnect = true },
+                            onPickAppleMail: { showAnalysis = false; showAppleMailPicker = true },
+                            onPickCalendar: { showAnalysis = false; showCalendarConnect = true },
+                            customRoots: customRoots)
+        }
+    }
+
+    /// The Analysis "Last run" value — the real last-cycle stamp (day spelled out once it's no
+    /// longer today's); demo mode: the showcase string.
+    private var lastRunLabel: String {
+        guard deck == .real else { return Demo.lastRun }
+        guard let d = UserDefaults.standard.object(forKey: ProactiveCycle.lastCycleKey) as? Date else {
+            return "not yet"
+        }
+        return d.glanceStamp
+    }
+
+    // MARK: Notices (one slot, most severe first)
     //
-    // The blank space beside the greeting holds AT MOST ONE capsule. A LIVE issue outranks
-    // history: HealthCaution's ladder (an essential permission off · codex gone/signed out ·
-    // computer use regressed) renders red, because the product is broken RIGHT NOW; otherwise
-    // the morning-after caution renders amber (last night's UNATTENDED run hit a knowable snag —
+    // A LIVE issue outranks history: HealthCaution's ladder (an essential permission off · codex
+    // gone/signed out · computer use regressed) shows first, because the product is broken RIGHT
+    // NOW; otherwise the morning-after caution (last night's UNATTENDED run hit a knowable snag —
     // OvernightCaution recorded it at ProactiveCycle's choke point; the next fully successful
-    // cycle clears it on its own). Both roads lead to Settings → Permissions & Health. Live
-    // issues re-probe on foreground and melt away when fixed; ✕ mutes a live issue's kind for
-    // the session (a lower rung may then surface), while the amber ✕ clears the record. Below
-    // both: skipped-connector warnings from the last completed KB pass, then the green
-    // just-updated notice (UpdateNotice) with its changelog link. Good news
-    // never outranks something broken.
+    // cycle clears it on its own). Live issues re-probe on foreground and melt away when fixed;
+    // ✕ mutes a live issue's kind for the session (a lower rung may then surface), while the
+    // overnight ✕ clears the record. Below both: skipped-connector warnings from the last
+    // completed KB pass, then the just-updated notice and the invite. Good news never outranks
+    // something broken, and stays out of the conversation and the setup flow.
 
     private var hasCriticalCaution: Bool {
         (needsCodexSignIn && !dismissedCodexSignInReminder) || liveIssue != nil
@@ -495,90 +733,63 @@ struct HomeView: View {
             || !ConnectorCaution.items(from: connectorCautionData).isEmpty
     }
 
-    private var cautionBanner: some View {
-        Group {
-            if needsCodexSignIn && !dismissedCodexSignInReminder {
-                CautionCapsule(message: "Sign in to ChatGPT to keep Sentient working for you.",
-                               accent: Theme.Ink.amber, actionTitle: "Sign in",
-                               onAction: presentCodexSignIn,
-                               onDismiss: {
-                                   dismissedCodexSignInReminder = true
-                                   HealthCaution.dismiss(.codexSignedOut)
-                                   if case .codexSignedOut? = liveIssue { liveIssue = nil }
-                               })
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            } else if let issue = liveIssue {
-                CautionCapsule(message: issue.message, accent: Theme.Ink.red,
-                               actionTitle: "Open Settings", onAction: openHealthSettings,
-                               onDismiss: {
-                                   HealthCaution.dismiss(issue)
-                                   withAnimation(.easeInOut(duration: 0.25)) { liveIssue = nil }
-                                   probeHealth()   // the muted kind may have been hiding a lower rung
-                               })
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            } else if computerSetup.updateNotice == .updating || computerSetup.updateNotice == .failed {
-                computerUseUpdateNotice
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            } else if let caution {
-                CautionCapsule(message: caution.message,
-                               actionTitle: cautionAction(caution.kind)?.title,
-                               onAction: cautionAction(caution.kind)?.run ?? {},
-                               onDismiss: {
-                                   OvernightCaution.clear()
-                                   withAnimation(.easeInOut(duration: 0.25)) { self.caution = nil }
-                               })
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            } else if let connector = ConnectorCaution.items(from: connectorCautionData).first {
-                CautionCapsule(message: connector.message,
-                               actionTitle: "Open Settings", onAction: openSourceSettings,
-                               onDismiss: {
-                                   withAnimation(.easeInOut(duration: 0.25)) {
-                                       ConnectorCaution.dismiss(connector.slug)
-                                   }
-                               })
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            } else if computerSetup.updateNotice == .ready {
-                computerUseUpdateNotice
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            } else {
-                ZStack(alignment: .topTrailing) {
-                    UpdateNoticeCapsule()
-                    // The offer waits until update notices are dismissed and the home is
-                    // active. Keeping it here also postpones it behind every caution above.
-                    if isPresented && deck == .real && !letterShown && !showAnalysis {
-                        InviteBanner()
-                    }
-                }
-            }
-        }
-        .animation(.easeInOut(duration: 0.25), value: connectorCautionData)
-        .animation(.easeInOut(duration: 0.25), value: computerSetup.updateNotice)
+    private var notices: some View {
+        HomeNotices(visible: (!inConversation && !needsPersonalSetup) || hasCriticalCaution,
+                    signedOut: needsCodexSignIn && !dismissedCodexSignInReminder,
+                    liveIssue: liveIssue,
+                    caution: caution,
+                    connector: ConnectorCaution.items(from: connectorCautionData).first,
+                    computerNotice: computerSetup.updateNotice,
+                    computerProgress: computerSetup.progress,
+                    showsInvite: isPresented && deck == .real && !letterShown && !showAnalysis,
+                    reduceMotion: reducedMotion,
+                    actions: noticeActions)
     }
 
-    private var computerUseUpdateNotice: some View {
-        ComputerUseUpdateNotice(state: computerSetup.updateNotice,
-                             progress: computerSetup.progress,
-                             onRetry: {
-                                 let setup = computerSetup
-                                 Task { await setup.install(force: true) }
-                             },
-                             onDismiss: computerSetup.dismissUpdateNotice)
+    private var noticeActions: HomeNoticeActions {
+        HomeNoticeActions(
+            signIn: presentCodexSignIn,
+            dismissSignedOut: {
+                dismissedCodexSignInReminder = true
+                HealthCaution.dismiss(.codexSignedOut)
+                if case .codexSignedOut? = liveIssue { liveIssue = nil }
+            },
+            openHealth: openHealthSettings,
+            dismissIssue: { issue in
+                HealthCaution.dismiss(issue)
+                withAnimation(standardMotion) { liveIssue = nil }
+                probeHealth()   // the muted kind may have been hiding a lower rung
+            },
+            retryComputerUse: {
+                let setup = computerSetup
+                Task { await setup.install(force: true) }
+            },
+            dismissComputerUse: computerSetup.dismissUpdateNotice,
+            cautionAction: caution.flatMap { cautionAction($0.kind) },
+            dismissCaution: {
+                OvernightCaution.clear()
+                withAnimation(standardMotion) { caution = nil }
+            },
+            openSources: openSourceSettings,
+            dismissConnector: { slug in
+                withAnimation(standardMotion) { ConnectorCaution.dismiss(slug) }
+            })
     }
 
-    /// The amber caution's one-click fix, where there is one: a signed-out codex is fixed in
+    /// The overnight caution's one-click fix, where there is one: a signed-out codex is fixed in
     /// Permissions & Health; a full disk in System Settings' Storage pane. Weather kinds (offline,
     /// usage limit) have nothing to click.
     private func cautionAction(_ kind: OvernightCaution.Kind) -> (title: String, run: () -> Void)? {
         switch kind {
         case .loggedOut: return ("Open Settings", openHealthSettings)
-        case .diskFull:  return ("Manage Storage", { DiskSpace.openStorageSettings() })
+        case .diskFull:  return ("Manage Storage…", { DiskSpace.openStorageSettings() })
         case .connectorAuth:   // the fix lives on the engine's own connectors page
-            return ("Sign In Again", { NSWorkspace.shared.open(ConnectorCensus.directoryURL) })
+            return ("Sign In Again…", { NSWorkspace.shared.open(ConnectorCensus.directoryURL) })
         case .noInternet, .usageLimit, .inputTooLarge, .stalled: return nil
         }
     }
 
-    /// Land directly on Permissions & Health — every banner's fix lives there; never strand the
+    /// Land directly on Permissions & Health — every notice's fix lives there; never strand the
     /// user on the default pane.
     private func openHealthSettings() {
         HomeWindowOpening.open(.settings, settingsPane: .health)
@@ -589,14 +800,16 @@ struct HomeView: View {
     }
 
     /// Run HealthCaution's ladder off the main thread of thought: cheap sync probes, plus a
-    /// cached codex login check (forced fresh while a codex banner is up, so a fix clears on the
+    /// cached codex login check (forced fresh while a codex notice is up, so a fix clears on the
     /// very next foreground). Quiet on pitch decks (demo cards must never share the stage with a
-    /// red capsule) and on the free home (HealthCaution guards kbOnly too — defense in depth).
+    /// health notice) and on the free home (HealthCaution guards kbOnly too — defense in depth).
+    /// The result also drives the sidebar's Permissions & Health badge.
     private func probeHealth(forceCodexRecheck: Bool = false) {
         guard deck == .real, !kbOnly, ProcessInfo.processInfo.environment["SENTIENT_SELFTEST"] == nil else { return }
         Task {
             let issue = await HealthCaution.probe(forceCodexRecheck: forceCodexRecheck || liveIssue?.kindKey == "codex")
-            withAnimation(.easeInOut(duration: 0.25)) { liveIssue = issue }
+            MainNavigation.shared.healthIssueCount = issue == nil ? 0 : 1
+            withAnimation(standardMotion) { liveIssue = issue }
         }
     }
 
@@ -637,480 +850,28 @@ struct HomeView: View {
         showCodexSignIn = true
     }
 
-    private var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        let part = hour < 5 ? "Up late" : hour < 12 ? "Good morning"
-                 : hour < 18 ? "Good afternoon" : "Good evening"
-        let name = Self.macFirstName
-        return name.isEmpty ? "\(part)." : "\(part), \(name)."
-    }
+    // MARK: The letter sheet
 
-    /// The user's first name from their macOS account — full name's first word (e.g. "Jesai
-    /// Tarun" → "Jesai"), falling back to the (capitalized) short login name, then to nothing
-    /// (the greeting just drops the name). Resolved once per launch; no account, no network.
-    static let macFirstName: String = {
-        let full = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
-        if let first = full.split(separator: " ").first, !first.isEmpty { return String(first) }
-        let login = NSUserName().trimmingCharacters(in: .whitespacesAndNewlines)
-        return login.isEmpty ? "" : login.capitalized
-    }()
-
-    @ViewBuilder private var analysisPopover: some View {
-        if personalSetupPending && deck == .real {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Your personal context starts here.")
-                    .font(.title2.weight(.medium)).foregroundStyle(SidekickStyle.ink)
-                Text(kbOnly
-                     ? "Connect three sources, then choose when Sentient builds your knowledge."
-                     : "Connect three sources, then choose when Sentient builds your knowledge. Sidekick is ready to use now.")
-                    .font(.body).foregroundStyle(SidekickStyle.secondary).lineSpacing(4)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button { showAnalysis = false; finishPersonalSetup() } label: {
-                    Label("Finish setup", systemImage: "arrow.right")
-                        .font(.body.weight(.medium))
-                }
-                .buttonStyle(.plain).accessibilityIdentifier("analysis.home.finishSetup")
-            }
-            .padding(22).frame(width: 320).background(Theme.Ink.cardBG).preferredColorScheme(.dark)
-        } else {
-            AnalysisPopover(thingsUnderstood: thingsUnderstood, sources: sources,
-                            lastRun: lastRunLabel,
-                            nextWakeAt: appState.scheduler.nextWakeAt,
-                            schedulerEnabled: appState.scheduler.isEnabled,
-                            schedulerNeedsSetup: appState.scheduler.needsSchedulerSetup,
-                            onAnalyze: { showAnalysis = false; onAnalyze() },
-                            onPickWhatsApp: { showAnalysis = false; showWhatsAppPicker = true },
-                            onPickIMessage: { showAnalysis = false; showIMessagePicker = true },
-                            onPickGmail: { showAnalysis = false; showGmailConnect = true },
-                            onPickAppleMail: { showAnalysis = false; showAppleMailPicker = true },
-                            onPickCalendar: { showAnalysis = false; showCalendarConnect = true },
-                            customRoots: customRoots)
-                .preferredColorScheme(.dark)
-        }
-    }
-
-    /// The Analysis popover's "Last run:" value — the real last-cycle stamp (day spelled out once
-    /// it's no longer today's); demo mode: the showcase string.
-    private var lastRunLabel: String {
-        guard deck == .real else { return Demo.lastRun }
-        guard let d = UserDefaults.standard.object(forKey: ProactiveCycle.lastCycleKey) as? Date else {
-            return "not yet"
-        }
-        return d.glanceStamp
-    }
-
-    // MARK: Suggestions — measured, spacious rows that gather into their dock
-
-    private func overviewLayout(in size: CGSize) -> SidekickOverviewLayout {
-        let entries = Array(model.entries.prefix(6))
-        let width = SidekickOverviewLayout.width(for: size, count: entries.count)
-        let heights = entries.map { entry -> CGFloat in
-            guard let measured = cardSizes[entry.id], abs(measured.width - width) < 1 else { return 220 }
-            return measured.height
-        }
-        return SidekickOverviewLayout(size: size, top: chromeHeight + 16,
-            bottom: (overviewDockTop > 0 ? overviewDockTop : size.height - 184) - 10,
-            heights: heights, requestedPage: overviewPage)
-    }
-
-    private func scatter(_ geo: GeometryProxy, layout: SidekickOverviewLayout) -> some View {
-        let availableHeight = layout.region.height - SidekickOverviewLayout.pagerHeight
-        let width = kbOnly ? BriefingCard.width : layout.cardWidth
-        return ZStack {
-            ForEach(Array(model.entries.prefix(6).enumerated()), id: \.element.id) { item in
-                DealtCard(
-                    entry: item.element,
-                    slot: kbOnly ? CGPoint(x: geo.size.width / 2, y: geo.size.height * 0.24) : layout.positions[item.offset],
-                    dealFrom: CGPoint(x: geo.size.width / 2, y: chromeHeight - 20),
-                    gathered: inConversation, gatherPoint: CGPoint(x: proactiveDockFrame.midX, y: proactiveDockFrame.midY),
-                    scrollPull: overviewPull, interactiveGather: gatheringFromScroll,
-                    cardWidth: width, onPage: kbOnly || layout.visibleRange.contains(item.offset),
-                    order: item.offset % layout.capacity, reducedMotion: reducedMotion,
-                    previewBodyLines: availableHeight < 185 ? 2 : (availableHeight < 220 ? 3 : 5),
-                    previewTitleLines: availableHeight < 185 ? 1 : (availableHeight < 220 ? 2 : 3),
-                    measured: { value in if cardSizes[item.element.id] != value { cardSizes[item.element.id] = value } },
-                    fireDimmed: appState.commandCoordinator.run.isRunning
-                        && item.element.action.map { ProactiveExecutor.isFireable($0) } == true,
-                    onOffer: { model.run(item.element.id) },
-                    onDetail: { openLetter(item.element.b) },
-                    onOpenEnvelope: {
-                        // The flap finishes asynchronously. Dismissing it during that
-                        // animation must not reopen the removed card's letter.
-                        guard let current = model.entry(item.element.id),
-                              current.flight == nil else { return }
-                        model.unsealWelcome()
-                        openLetter(current.b)
-                    },
-                    onStop: { model.stopRun(item.element.id) },
-                    onOpenConversation: showConversation,
-                    onFling: { model.dismiss(item.element.id, toward: $0) })
-            }
-            if !kbOnly && !inConversation && layout.pageCount > 1 {
-                HStack(spacing: 4) {
-                    Button { turnSuggestions(to: layout.page - 1) } label: {
-                        Image(systemName: "chevron.left").frame(width: 44, height: 44).contentShape(Circle())
-                    }.disabled(layout.page == 0).accessibilityLabel("Previous suggestions")
-                    ForEach(0..<layout.pageCount, id: \.self) { page in
-                        Button { turnSuggestions(to: page) } label: {
-                            Capsule().fill(.white.opacity(page == layout.page ? 0.7 : 0.22))
-                                .frame(width: page == layout.page ? 17 : 5, height: 5)
-                                .frame(width: 28, height: 44).contentShape(Rectangle())
-                        }.accessibilityLabel("Suggestions page \(page + 1) of \(layout.pageCount)")
-                    }
-                    Button { turnSuggestions(to: layout.page + 1) } label: {
-                        Image(systemName: "chevron.right").frame(width: 44, height: 44).contentShape(Circle())
-                    }.disabled(layout.page + 1 == layout.pageCount).accessibilityLabel("Next suggestions")
-                }
-                .font(.body.weight(.semibold)).foregroundStyle(SidekickStyle.secondary)
-                .buttonStyle(SuggestionPageButtonStyle())
-                .position(x: geo.size.width / 2, y: layout.region.maxY - SidekickOverviewLayout.pagerHeight / 2)
-                .transition(.opacity)
-            }
-        }
-        .allowsHitTesting(!inConversation)
-        .accessibilityHidden(inConversation)
-    }
-
-    private func turnSuggestions(to page: Int) {
-        withAnimation(reducedMotion ? .easeOut(duration: 0.14) : .smooth(duration: 0.28)) { overviewPage = page }
-    }
-
-    // MARK: The empty state — the orb's one home
-
-    @ViewBuilder private func personalWorkspace(in size: CGSize, width: CGFloat) -> some View {
-        let top = max(110, chromeHeight + 20)
-        let bottom = overviewDockTop > top ? overviewDockTop - 24 : size.height - 224
-        let height = max(180, bottom - top)
-        if let selectedPersonalFeature {
-            HomePersonalFeaturePreview(feature: selectedPersonalFeature, onClose: closePersonalFeature,
-                                       isActive: isPresented && presentation.windowActive, availableHeight: height) { naturalHeight in
-                guard self.selectedPersonalFeature == selectedPersonalFeature else { return }
-                let fitted = min(520, max(180, naturalHeight))
-                guard abs(personalPreviewHeight - fitted) > 1 else { return }
-                withAnimation(reducedMotion ? nil : .easeInOut(duration: 0.22)) { personalPreviewHeight = fitted }
-            }
-                .id(selectedPersonalFeature)
-                .frame(width: min(760, width - 76), height: min(personalPreviewHeight, height))
-                .position(x: width / 2, y: top + height / 2)
-                .transition(reducedMotion ? .opacity : .asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity), removal: .opacity))
-        } else if !inConversation {
-            HomeSidekickInvitation(compact: width < 650)
-                .frame(width: width - 108, alignment: .leading)
-                .position(x: width / 2, y: top + height / 2)
-                .allowsHitTesting(false)
-        }
-    }
-
-    private func selectPersonalFeature(_ feature: HomePersonalFeature) {
-        guard !appState.commandCoordinator.run.isRunning, !appState.commandCoordinator.run.recovery.isPending else { return }
-        withAnimation(reducedMotion ? .easeOut(duration: 0.12) : .spring(response: 0.42, dampingFraction: 0.9)) {
-            if selectedPersonalFeature != feature { personalPreviewHeight = 380 }
-            selectedPersonalFeature = selectedPersonalFeature == feature ? nil : feature
-        }
-    }
-
-    private func closePersonalFeature() {
-        withAnimation(.easeOut(duration: 0.16)) { selectedPersonalFeature = nil }
-    }
-
-    private func finishPersonalSetup() {
-        selectedPersonalFeature = nil
-        onFinishSetup()
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 14) {
-            SidekickMark(size: 48, illuminated: true).padding(.bottom, 20)
-            Text("What can I take off your hands?")
-                .font(.title.weight(.medium))
-                .foregroundStyle(Theme.Ink.statusInk)
-                .offset(y: -8)
-            if appState.processing.initialComplete {
-                Text("Your context is already here. Pick up anywhere.")
-                    .font(.body).foregroundStyle(SidekickStyle.secondary)
-            } else {
-                VStack(spacing: 9) {
-                    Text(personalContextStatus)
-                        .font(.body).foregroundStyle(SidekickStyle.secondary)
-                        .multilineTextAlignment(.center).lineSpacing(4)
-                    analysisStatusLink
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .offset(y: -35)
-    }
-
-    private var personalContextStatus: String {
-        if appState.processing.paused {
-            return "Your personal setup is saved. Analysis is paused.\nSidekick is ready; personal context and Double Tap follow your first analysis."
-        }
-        if appState.processing.needsAttention {
-            return "Your personal setup is saved. Analysis needs attention.\nSidekick is ready; check analysis to finish building your context."
-        }
-        return "Your personal setup is saved.\nPersonal context and Double Tap will be ready after your first analysis."
-    }
-
-    private var analysisStatusLink: some View {
-        Button { showAnalysis = true } label: {
-            Text("Check analysis status")
-                .underline().font(.body.weight(.medium))
-                .foregroundStyle(Theme.Ink.bright)
-                .padding(.horizontal, 8).frame(minHeight: 32)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(SidekickPressStyle())
-        .accessibilityIdentifier("analysis.home.checkStatus")
-        .accessibilityHint("Opens the Analysis popover")
-    }
-
-    // MARK: The knowledge-base-only preview state (free/go plans)
-
-    /// The free-plan home: the orb and, where the cards would live, an honest, nicely-set
-    /// note — the knowledge base is real and theirs; the LIVING Sentient needs Plus. Not a
-    /// card: quiet centered text under the orb. The upgrade CTA carries this screen's one glow
-    /// (the command bar is hidden here, so the jewelry budget is free). ALWAYS mounted on the
-    /// kb-only home: while the gift envelope perches top-center the block rides compact and
-    /// low (feature rows tucked away); once the letter is flung it blooms into the full,
-    /// centered note. Once the claim reads Plus, it becomes the reset-and-rebuild celebration.
-    private var previewState: some View {
-        let envelopePresent = !model.entries.isEmpty
-        return VStack(spacing: 0) {
-            Orb(size: envelopePresent ? 84 : 104)
-            if planUpgraded { upgradedNote } else { previewNote(compact: envelopePresent) }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .offset(y: envelopePresent ? 128 : -18)   // envelope above → the block waits lower
-    }
-
-    @ViewBuilder private func previewNote(compact: Bool) -> some View {
-        Text("This is a preview of Sentient.")
-            .display(24)
-            .foregroundStyle(Theme.Ink.statusInk)
-            .padding(.top, 16)
-        Text(appState.processing.initialComplete
-             ? "Your knowledge base is built, private, and yours to explore.\nThe living Sentient uses your ChatGPT Plus:"
-             : "Your first analysis will build your private knowledge base.\nThe living Sentient uses your ChatGPT Plus:")
-            .font(.body)
-            .foregroundStyle(Theme.secondary)
-            .multilineTextAlignment(.center)
-            .lineSpacing(4)
-            .padding(.top, 10)
-        if personalSetupPending {
-            Button(action: finishPersonalSetup) {
-                Label("Finish personal setup", systemImage: "arrow.right")
-                    .font(.body.weight(.medium)).foregroundStyle(Theme.Ink.bright)
-                    .padding(.horizontal, 8).frame(minHeight: 32)
-            }
-            .buttonStyle(SidekickPressStyle())
-            .padding(.top, 4)
-            .accessibilityIdentifier("personalSetup.knowledgeOnly.finish")
-        } else if !appState.processing.initialComplete { analysisStatusLink.padding(.top, 4) }
-        if !compact {   // the feature rows return once the envelope is gone
-            VStack(alignment: .leading, spacing: 11) {
-                previewRow("sunrise", "Mornings where things worth doing arrive already done")
-                previewRow("command", "Sidekick anywhere: tap right \u{2318} and tell it what to do")
-                previewRow("moon.stars", "A knowledge base that keeps learning, night after night")
-            }
-            .padding(.top, 20)
-        }
-        HStack(spacing: 14) {
-            GlowButton(title: "Get ChatGPT Plus", systemImage: "arrow.up.forward",
-                       glowIntensity: 0.5, action: { NSWorkspace.shared.open(CodexAuth.upgradeURL) })
-                .frame(width: 250)
-            QuietPillButton(title: "Reset Sentient…", action: openSystemPane)
-        }
-        .padding(.top, compact ? 22 : 28)
-        Text("Upgraded? Reset rebuilds your knowledge with Gmail, Calendar, and the full engine.")
-            .font(.callout)
-            .foregroundStyle(Theme.faint)
-            .padding(.top, 12)
-    }
-
-    /// The claim reads Plus now — the one job left is the reset, so it gets the glow.
-    @ViewBuilder private var upgradedNote: some View {
-        Text("You're on Plus. Time to go live.")
-            .display(24)
-            .foregroundStyle(Theme.Ink.statusInk)
-            .padding(.top, 16)
-        Text("Reset Sentient and it rebuilds your knowledge with Gmail and Calendar,\nthen keeps it alive: proactive mornings, Sidekick, learning night after night.")
-            .font(.body)
-            .foregroundStyle(Theme.secondary)
-            .multilineTextAlignment(.center)
-            .lineSpacing(4)
-            .padding(.top, 10)
-        GlowButton(title: "Reset & Rebuild", systemImage: "arrow.clockwise",
-                   glowIntensity: 0.5, action: openSystemPane)
-            .frame(width: 250)
-            .padding(.top, 28)
-    }
-
-    private func openSystemPane() {
-        HomeWindowOpening.open(.settings, settingsPane: .system)
-    }
-
-    private func previewRow(_ icon: String, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 11) {
-            Image(systemName: icon)
-                .font(.callout)
-                .foregroundStyle(Theme.Ink.label)
-                .frame(width: 16)
-            Text(text)
-                .font(.body)
-                .foregroundStyle(.primary)
-        }
-    }
-
-    /// A discreet DEV TOOLS handle pinned bottom-right (DX continuity from the old home).
-    /// Opens the DevToolsView sheet via RootView. Compile-gated out of Release entirely —
-    /// this is DevToolsView's ONLY opener, so the sheet is unreachable in Release too.
-    #if DEBUG
-    private var devToolsOverlay: some View {
-        Button(action: onShowDevTools) {
-            HStack(spacing: 5) {
-                Image(systemName: "wrench.and.screwdriver").font(.caption2)
-                Text("DEV TOOLS")
-                    .font(.system(.caption2, design: .monospaced, weight: .medium))
-            }
-            .foregroundStyle(Theme.Ink.deepMuted)
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .opacity(0.6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        .padding(.trailing, 22).padding(.bottom, 13)
-    }
-    #endif
-
-    // MARK: Floor — the command bar + trust footer
-
-    private var bottomDock: some View {
-        VStack(spacing: 10) {
-            if !kbOnly {
-                if needsPersonalSetup && !inConversation {
-                    HomeSidekickSuggestions { prompt in
-                        guard !appState.commandCoordinator.run.isRunning, !appState.commandCoordinator.run.recovery.isPending else { return }
-                        conversation.draft = prompt
-                        composerFocusRequest &+= 1
-                    }
-                    .frame(maxWidth: 744)
-                }
-                SidekickComposer(coordinator: appState.commandCoordinator, presentation: presentation,
-                                 isPresented: isPresented, onAccepted: showConversation,
-                                 focusRequest: composerFocusRequest)
-                    .frame(maxWidth: 744)
-            }
-            HStack(spacing: 5) {
-                Image(systemName: "lock.shield").font(.caption2)
-                Text("Private by design.").font(.caption)
-            }.foregroundStyle(SidekickStyle.secondary.opacity(0.62))
-        }
-        .padding(.horizontal, 38).padding(.top, 8).padding(.bottom, 14)
-        .frame(maxWidth: .infinity)
-    }
-
-    private var conversationPeek: some View {
-        Button(action: showConversation) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle().fill(.quinary).frame(width: 32, height: 32)
-                    Image(systemName: "arrow.up").font(.callout.weight(.semibold))
-                }
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(conversation.messages.isEmpty ? "Sidekick’s ready to take over your work." : "Continue the conversation")
-                        .font(.callout.weight(.medium)).foregroundStyle(SidekickStyle.ink)
-                    if let last = conversation.previewMessage {
-                        Text(peekText(last.event))
-                            .font(.subheadline).foregroundStyle(SidekickStyle.secondary).lineLimit(1)
-                    } else if conversation.messages.isEmpty {
-                        Text("Ready to work across your computer. Just say the word.").font(.subheadline).foregroundStyle(SidekickStyle.secondary)
-                    }
-                }
-                Spacer(minLength: 0)
-                if conversation.unreadCount > 0 {
-                    Circle().fill(SidekickStyle.accent).frame(width: 6, height: 6)
-                }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(alignment: .top) { LinearGradient(colors: [.clear, .white.opacity(0.13), .clear], startPoint: .leading, endPoint: .trailing).frame(height: 1).padding(.horizontal, 22) }
-            .frame(maxWidth: 722)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(SidekickPressStyle())
-        .accessibilityLabel(conversation.messages.isEmpty ? "Open Sidekick" : "Expand conversation history")
-        .accessibilityIdentifier("sidekick.expandHistory")
-    }
-
-    private func peekText(_ event: SidekickConversationEvent) -> AttributedString {
-        let text = String(event.text.prefix(600)).replacingOccurrences(of: "\n", with: " ")
-        guard event.kind == .assistantMessage else { return AttributedString(text) }
-        return (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
-    }
-
-    private func showConversation() {
-        withAnimation(SidekickStyle.motion(reducedMotion)) {
-            selectedPersonalFeature = nil
-            gatheringFromScroll = false
-            presentation.surface = .conversation
-            overviewPull = 0
-        }
-    }
-
-    private func followOverviewScroll(_ distance: Double) {
-        guard !inConversation else { return }
-        // A trackpad is direct manipulation. Do not ease behind the user's fingers.
-        withTransaction(Transaction(animation: nil)) { overviewPull = distance }
-    }
-
-    private func settleOverviewScroll() {
-        guard !inConversation else { return }
-        withAnimation(reducedMotion ? .easeOut(duration: 0.14) : .spring(response: 0.34, dampingFraction: 0.86)) {
-            overviewPull = 0
-        }
-    }
-
-    private func dockOverviewFromScroll() {
-        withAnimation(SidekickStyle.motion(reducedMotion)) {
-            gatheringFromScroll = true
-            presentation.surface = .conversation
-            // Gathered geometry ignores this value, so the existing presentation position
-            // flows straight into the dock rather than returning to the resting card slot.
-            overviewPull = 0
-        }
-    }
-    private func updateConversationVisibility() {
-        let visible = isPresented && presentation.windowActive && inConversation && selectedPersonalFeature == nil
-        if conversation.isVisible != visible { conversation.isVisible = visible }
-        if visible && appState.commandCoordinator.run.recovery.isVisible { appState.commandCoordinator.run.recovery.dismiss() }
-    }
-
-    // MARK: The expanded letter (always-mounted layer; see the note at the top)
-
-    /// An opened card, as a sheet over Home.
+    /// An opened suggestion, as a sheet over Home.
     @ViewBuilder private var letterSheet: some View {
         if let b = letter {
-            LetterView(briefing: b,
-                       phase: model.entry(b.id)?.phase ?? .offer,
-                       editable: model.entry(b.id)?.action != nil && b.draft != nil,   // real action card
-                       // The LIVE content for THIS card (reflects any prior edit) — seeds the editor
-                       // per briefing so a reused letter view never shows the previous card's draft.
-                       liveDraft: model.entry(b.id)?.action?.preparedContent ?? b.draft ?? "",
-                       liveRecipient: model.entry(b.id)?.action?.recipient ?? "",
-                       fireDimmed: appState.commandCoordinator.run.isRunning
-                           && model.entry(b.id)?.action.map { ProactiveExecutor.isFireable($0) } == true,
-                       onCommitEdit: { model.applyEdit(b.id, content: $0, recipient: $1) },
-                       onLiveEdit: { model.updateDraft(b.id, content: $0, recipient: $1) },
-                       onOffer: {
-                           closeLetter()
-                           model.run(b.id)   // real card → fires for real; demo → theater
-                       },
-                       onClose: closeLetter)
-                .frame(width: 620)
-                .frame(minHeight: 340, idealHeight: 600, maxHeight: 760)
+            HomeLetterSheet(briefing: b,
+                            action: model.entry(b.id)?.action,
+                            phase: model.entry(b.id)?.phase ?? .offer,
+                            editable: model.entry(b.id)?.action != nil && b.draft != nil,   // real action card
+                            // The LIVE content for THIS card (reflects any prior edit) — seeds the editor
+                            // per briefing so a reused sheet never shows the previous card's draft.
+                            liveDraft: model.entry(b.id)?.action?.preparedContent ?? b.draft ?? "",
+                            liveRecipient: model.entry(b.id)?.action?.recipient ?? "",
+                            fireDimmed: appState.commandCoordinator.run.isRunning
+                                && model.entry(b.id)?.action.map { ProactiveExecutor.isFireable($0) } == true,
+                            onCommitEdit: { model.applyEdit(b.id, content: $0, recipient: $1) },
+                            onLiveEdit: { model.updateDraft(b.id, content: $0, recipient: $1) },
+                            onOffer: {
+                                closeLetter()
+                                model.run(b.id)   // real card → fires for real; demo → theater
+                            },
+                            onClose: closeLetter)
         }
     }
 
@@ -1121,26 +882,6 @@ struct HomeView: View {
 
     private func closeLetter() {
         letterShown = false
-    }
-}
-
-// Generous targets with quiet, local feedback; page indicators stay visually small.
-private struct SuggestionPageButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var enabled
-    func makeBody(configuration: Configuration) -> some View {
-        SuggestionPageButtonBody(configuration: configuration, enabled: enabled)
-    }
-    private struct SuggestionPageButtonBody: View {
-        let configuration: ButtonStyleConfiguration
-        let enabled: Bool
-        @State private var hover = false
-        var body: some View {
-            configuration.label
-                .foregroundStyle(.white.opacity(enabled ? (hover ? 0.95 : 0.65) : 0.22))
-                .background(Capsule().fill(.white.opacity(enabled && hover ? 0.07 : 0)))
-                .opacity(configuration.isPressed ? 0.65 : 1)
-                .onHover { hover = $0 }
-        }
     }
 }
 
@@ -1428,391 +1169,6 @@ final class ForYouModel {
     }
 }
 
-// MARK: - One dealt card: readable spread + dock morph + drag/flick physics
-
-private struct DealtCard: View {
-    let entry: ForYouModel.Entry
-    let slot: CGPoint
-    let dealFrom: CGPoint
-    var gathered = false
-    var gatherPoint = CGPoint.zero
-    var scrollPull = 0.0
-    var interactiveGather = false
-    var cardWidth: CGFloat = BriefingCard.width
-    var onPage = true
-    var order = 0
-    var reducedMotion = false
-    var previewBodyLines = 5
-    var previewTitleLines = 3
-    var measured: (CGSize) -> Void = { _ in }
-    var fireDimmed: Bool = false       // one task at a time: another task is running → the CTA waits
-    var onOffer: () -> Void
-    var onDetail: () -> Void
-    var onOpenEnvelope: () -> Void
-    var onStop: () -> Void
-    var onOpenConversation: () -> Void
-    var onFling: (CGSize) -> Void
-
-    @State private var drag: CGSize = .zero
-
-    private var pullProgress: CGFloat {
-        reducedMotion ? 0 : min(1, max(0, scrollPull / SidekickOverviewScrollPolicy.preciseThreshold))
-    }
-    private var pulledSlot: CGPoint {
-        CGPoint(x: slot.x, y: slot.y - (reducedMotion ? 0 : scrollPull))
-    }
-
-    var body: some View {
-        BriefingCard(briefing: entry.b, phase: entry.phase,
-                     onOffer: onOffer, onDetail: onDetail, onOpenEnvelope: onOpenEnvelope,
-                     liveLines: entry.liveLines, onStop: entry.action != nil ? onStop : nil,
-                     onOpenConversation: entry.action != nil ? onOpenConversation : nil,
-                     fireDimmed: fireDimmed, cardWidth: cardWidth,
-                     previewBodyLines: previewBodyLines, previewTitleLines: previewTitleLines,
-                     onDismiss: { onFling(CGSize(width: -100, height: -300)) })
-            .fixedSize(horizontal: false, vertical: true)
-            .onGeometryChange(for: CGSize.self) { $0.size } action: { measured($0) }
-            .rotationEffect(.degrees(gathered ? 0 : drag.width / 30))
-            .scaleEffect(gathered && !reducedMotion ? 0.035 : (entry.dealt ? 1 - 0.08 * pullProgress : 0.92))
-            .position(gathered && !reducedMotion ? gatherPoint : (entry.dealt ? pulledSlot : dealFrom))
-            .blur(radius: reducedMotion ? 0 : (gathered ? 3 : (onPage ? 0 : 4)))
-            .animation(reducedMotion ? .easeOut(duration: 0.14) : .spring(response: interactiveGather ? 0.42 : 0.60, dampingFraction: 0.86)
-                .delay(interactiveGather ? 0 : Double(order) * 0.025), value: gathered)
-            .offset(x: drag.width + (entry.flight?.width ?? 0),
-                    y: drag.height + (entry.flight?.height ?? 0))
-            .opacity(gathered || !onPage || entry.flight != nil ? 0 : (entry.dealt ? 1 : 0))
-            .animation(reducedMotion ? .easeOut(duration: 0.14) : .easeOut(duration: 0.18)
-                .delay(gathered ? (interactiveGather ? 0.12 : 0.25 + Double(order) * 0.025) : 0), value: gathered)
-            .animation(.easeInOut(duration: reducedMotion ? 0.14 : 0.22), value: onPage)
-            .accessibilityElement(children: .contain)
-            .allowsHitTesting(onPage && !gathered && entry.dealt && entry.flight == nil)
-            .accessibilityHidden(!onPage || gathered || !entry.dealt || entry.flight != nil)
-            .accessibilityIdentifier("sidekick.suggestion.\(entry.id)")
-            // simultaneous, NOT .gesture: a plain ancestor DragGesture can win macOS click
-            // arbitration and eat the card's buttons ("read it again", the envelope).
-            .simultaneousGesture(DragGesture(minimumDistance: 12)
-                .onChanged { drag = $0.translation }
-                .onEnded { g in
-                    let p = g.predictedEndTranslation
-                    if hypot(p.width, p.height) > 320 {
-                        onFling(p)                       // flick → the model flies it away
-                    } else {
-                        withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) { drag = .zero }
-                    }
-                })
-    }
-
-}
-
-// MARK: - The typeset letter (expanded view)
-
-private struct LetterView: View {
-    let briefing: Briefing
-    let phase: BriefingPhase
-    var editable: Bool = false                       // real card with a draft → the draft is editable
-    var liveDraft: String = ""                       // THIS card's current content (seeds the editor)
-    var liveRecipient: String = ""                   // THIS card's "To:" (seeds the recipient field); "" = no recipient
-    var fireDimmed: Bool = false                     // one task at a time: another task is running → the CTA waits
-    var onCommitEdit: (String, String) -> Void = { _, _ in }   // persist (edited draft, edited recipient) → what fires
-    var onLiveEdit: (String, String) -> Void = { _, _ in }     // current editor values for Sidekick context
-    var onOffer: () -> Void
-    var onClose: () -> Void
-
-    @State private var copied = false
-    @State private var editedDraft = ""        // the live editor text
-    @State private var savedDraft = ""         // the last COMMITTED text — drift from editedDraft = unsaved edits
-    @State private var editedRecipient = ""    // the live "To:" text
-    @State private var savedRecipient = ""     // the last COMMITTED "To:"
-    @State private var saveTask: Task<Void, Never>?   // in-flight debounced auto-save
-    @State private var everEdited = false      // the user has edited THIS opening — flips "✎ Editable" to the save status
-    @State private var giftSaved = false       // the welcome letter's keepsake PNG landed on the Desktop
-
-    /// This card sends a message to someone, so it shows an editable "To:" (the model filled a recipient).
-    private var hasRecipient: Bool { !liveRecipient.isEmpty }
-
-    /// A research briefing (it reads as a letter, not a working draft) — the only expanded note that
-    /// gets the letter-paper dress. The gift keeps its own; drafts stay working documents.
-    private var isResearchNote: Bool { briefing.kind != .welcome && briefing.letter != nil }
-
-
-    /// Auto-save is pending (unsaved edits still settling). Drives the ambient "Saving…" status.
-    private var isDirty: Bool { editable && (editedDraft != savedDraft || editedRecipient != savedRecipient) }
-
-    /// Commit the current draft + recipient so they persist + are what fires. Cancels any pending debounce.
-    private func commitEdit() {
-        saveTask?.cancel()
-        onCommitEdit(editedDraft, editedRecipient)
-        savedDraft = editedDraft
-        savedRecipient = editedRecipient
-    }
-
-    /// Debounced auto-save: commit ~0.3s after the user stops typing (live, without write-spam).
-    private func scheduleAutoSave() {
-        saveTask?.cancel()
-        saveTask = Task {
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            commitEdit()
-        }
-    }
-
-    private func editChanged() {
-        guard editable else { return }
-        onLiveEdit(editedDraft, editedRecipient)
-        if isDirty {
-            everEdited = true
-            scheduleAutoSave()
-        } else {
-            saveTask?.cancel()
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                MonoCaps(briefing.kicker, size: 10, tracking: 2.2, color: briefing.accent)
-                Spacer()
-                Button("Done", action: onClose)
-                    .keyboardShortcut(.cancelAction)   // Esc closes
-            }
-            Text(briefing.title)
-                .font(.title.weight(.bold))
-                .padding(.top, 8)
-            if isResearchNote {   // the letterhead rule: a hairline of the card's accent, fading out
-                LinearGradient(colors: [briefing.accent.opacity(0.5), .clear],
-                               startPoint: .leading, endPoint: .trailing)
-                    .frame(height: 1)
-                    .padding(.top, 14)
-            }
-
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 14) {
-                    paragraphs
-                    if let draft = briefing.draft { draftBlock(draft) }
-                }
-                .padding(.top, 18)
-                .padding(.bottom, 4)
-            }
-
-            if let offer = briefing.offer, phase == .offer {
-                OfferButton(label: offer, accent: briefing.accent, action: {
-                    if editable { commitEdit() }   // fire what's shown — commit any unsaved edit first
-                    onOffer()
-                })
-                    .disabled(fireDimmed)
-                    .opacity(fireDimmed ? 0.45 : 1)
-                    .animation(.easeInOut(duration: 0.25), value: fireDimmed)
-                    .padding(.top, 16)
-            }
-            if briefing.kind == .welcome { giftFooter.padding(.top, 16) }
-        }
-        .padding(28)
-        // Seed the editor from THIS card's live content — on first appear AND every time a different
-        // briefing opens. The letter layer is always-mounted and REUSED across cards (stable identity),
-        // so .onAppear fires only once; without the .onChange a second card would show the first card's
-        // draft. editedDraft + savedDraft start equal (a freshly-opened card has no unsaved edits).
-        .onAppear { editedDraft = liveDraft; savedDraft = liveDraft; editedRecipient = liveRecipient; savedRecipient = liveRecipient }
-        // A different card opened: cancel any pending auto-save (it belongs to the OLD card's closure)
-        // and reseed. edited + saved start equal — a freshly-opened card has no unsaved edits.
-        .onChange(of: briefing.id) { _, _ in
-            saveTask?.cancel(); editedDraft = liveDraft; savedDraft = liveDraft
-            editedRecipient = liveRecipient; savedRecipient = liveRecipient; copied = false
-            giftSaved = false; everEdited = false
-        }
-        // Every keystroke (draft OR recipient) reschedules the debounced commit, so edits persist without a Save click.
-        .onChange(of: editedDraft) { _, _ in editChanged() }
-        .onChange(of: editedRecipient) { _, _ in editChanged() }
-        .onDisappear { saveTask?.cancel() }
-    }
-
-    /// The letter body — the shared editorial-Markdown renderer (LetterBody), so the expanded letter
-    /// and the saved share image draw the exact same thing.
-    private var paragraphs: some View {
-        LetterBody(text: briefing.letter ?? briefing.body, accent: briefing.accent,
-                   neutral: isResearchNote)
-    }
-
-    /// The welcome letter's keepsake row: "Save to Desktop" (a poster PNG of the gift, revealed in
-    /// Finder so sharing is one drag) + the quiet why ("it will be cleared soon" — the gift retires
-    /// when the next cycle replaces the deck).
-    private var giftFooter: some View {
-        HStack(spacing: 14) {
-            if giftSaved {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark").font(.subheadline.weight(.semibold))
-                    Text("Saved to your Desktop").font(.body.weight(.semibold))
-                }
-                .foregroundStyle(Theme.Ink.green)
-                .padding(.vertical, 8)
-            } else {
-                OfferButton(label: "Save to Desktop", accent: briefing.accent,
-                            icon: "square.and.arrow.down", action: saveGift)
-            }
-            Text("Your gift will be cleared from the home screen soon.")
-                .font(.callout).foregroundStyle(Theme.Ink.label)
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func saveGift() {
-        do {
-            let url = try GiftShareImage.save(briefing: briefing)
-            withAnimation(.easeInOut(duration: 0.2)) { giftSaved = true }
-            NSWorkspace.shared.activateFileViewerSelecting([url])   // sharing = one drag from here
-        } catch {
-            Log("GiftShareImage: save failed — \(ErrorLabel(error))")
-        }
-    }
-
-    /// "Subject: X" opening line + the body after it; nil when the draft doesn't open with one.
-    /// The draft STRING stays the single verbatim artifact — this only splits it for display.
-    private static func splitSubject(_ draft: String) -> (subject: String, body: String)? {
-        let lines = draft.components(separatedBy: "\n")
-        guard let first = lines.first?.trimmingCharacters(in: .whitespaces),
-              first.lowercased().hasPrefix("subject:") else { return nil }
-        let subject = String(first.dropFirst("subject:".count)).trimmingCharacters(in: .whitespaces)
-        var rest = Array(lines.dropFirst())
-        while rest.first?.trimmingCharacters(in: .whitespaces).isEmpty == true { rest.removeFirst() }
-        return (subject, rest.joined(separator: "\n"))
-    }
-
-    /// The Subject field, derived from `editedDraft` — edits recombine into the one draft string,
-    /// so auto-save, Copy, and what fires all keep seeing the complete artifact.
-    private var draftSubject: Binding<String> {
-        Binding(get: { Self.splitSubject(editedDraft)?.subject ?? "" },
-                set: { editedDraft = "Subject: \($0)\n\n\(Self.splitSubject(editedDraft)?.body ?? "")" })
-    }
-
-    /// The body editor's text — the part after the Subject line when one exists, the whole draft otherwise.
-    private var draftBody: Binding<String> {
-        Binding(get: { Self.splitSubject(editedDraft)?.body ?? editedDraft },
-                set: { newBody in
-                    if let subject = Self.splitSubject(editedDraft)?.subject {
-                        editedDraft = "Subject: \(subject)\n\n\(newBody)"
-                    } else {
-                        editedDraft = newBody
-                    }
-                })
-    }
-
-    private func draftBlock(_ draft: String) -> some View {
-        HStack(alignment: .top, spacing: 0) {
-            RoundedRectangle(cornerRadius: 1)
-                .fill(LinearGradient(colors: [briefing.accent, briefing.accent.opacity(0.15)],
-                                     startPoint: .top, endPoint: .bottom))
-                .frame(width: 2)
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 14) {
-                    MonoCaps(briefing.draftLabel ?? "Draft", size: 9, tracking: 2.0, color: Theme.Ink.label)
-                    Spacer()
-                    // The edit affordance + auto-save status, in one quiet slot. Fresh card:
-                    // "✎ Editable" (an invitation — "Saved" before any edit means nothing to a
-                    // user). Typing: "Saving…" (muted). Edit landed: "✓ Saved" (green — YOUR
-                    // change is what fires). Edits persist on their own; this is never a button.
-                    if editable {
-                        HStack(spacing: 5) {
-                            if isDirty {
-                                Image(systemName: "arrow.triangle.2.circlepath").font(.caption)
-                                Text("Saving…").font(.subheadline)
-                            } else if everEdited {
-                                Image(systemName: "checkmark").font(.caption)
-                                Text("Saved").font(.subheadline)
-                            } else {
-                                Image(systemName: "pencil").font(.caption)
-                                Text("Editable").font(.subheadline)
-                            }
-                        }
-                        .foregroundStyle(!isDirty && everEdited ? Theme.Ink.green : Theme.Ink.label)
-                        .animation(.easeInOut(duration: 0.2), value: isDirty)
-                        .animation(.easeInOut(duration: 0.2), value: everEdited)
-                    }
-                    Button {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(editable ? editedDraft : draft, forType: .string)
-                        copied = true
-                        Task { try? await Task.sleep(for: .seconds(2)); copied = false }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.caption)
-                            Text(copied ? "Copied" : "Copy").font(.subheadline)
-                        }
-                        .foregroundStyle(copied ? Theme.Ink.green : Theme.Ink.bright)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                // "To:" — WHO this message goes to. Shown only for cards that send to a person; editable
-                // (the executor sends to exactly this), so a wrong recipient is visible and correctable.
-                if hasRecipient {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        MonoCaps("To", size: 9, tracking: 2.0, color: Theme.Ink.label)
-                        if editable {
-                            TextField("", text: $editedRecipient)
-                                .textFieldStyle(.plain)
-                                .font(.body).foregroundStyle(.primary)
-                                .tint(briefing.accent)
-                        } else {
-                            Text(editedRecipient.isEmpty ? liveRecipient : editedRecipient)
-                                .font(.body).foregroundStyle(.primary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    Rectangle().fill(.quaternary).frame(height: 1)   // hairline between "who" and "what"
-                }
-                // "Subject:" — an email draft opens with a Subject line; it composes like a real
-                // email (its own field row) while the draft string that FIRES stays one verbatim
-                // artifact (subject edits recombine into it). Drafts without one are untouched.
-                let split = Self.splitSubject(editable ? editedDraft : draft)
-                if let split {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        MonoCaps("Subject", size: 9, tracking: 2.0, color: Theme.Ink.label)
-                        if editable {
-                            TextField("", text: draftSubject)
-                                .textFieldStyle(.plain)
-                                .font(.body).foregroundStyle(.primary)
-                                .tint(briefing.accent)
-                        } else {
-                            Text(split.subject)
-                                .font(.body).foregroundStyle(.primary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    Rectangle().fill(.quaternary).frame(height: 1)
-                }
-                // A computer-use PLAN speaks in the machine's voice: mono step lines, airy leading,
-                // step numbers in quiet grey — PlanEditor (an NSTextView bridge; SwiftUI's TextEditor
-                // can't style ranges and falls back to Courier for mono besides). Messages, emails,
-                // and events keep the composer prose. Both ride the same draftBody binding.
-                if editable {
-                    if briefing.isPlan {
-                        PlanEditor(text: draftBody, accent: briefing.accent)
-                    } else {
-                        TextEditor(text: draftBody)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                            .lineSpacing(4)
-                            .tint(briefing.accent)
-                            .scrollContentBackground(.hidden)
-                            .scrollIndicators(.never)   // the legacy always-on scroller is clutter; the wheel still scrolls
-                            .frame(minHeight: 56, maxHeight: 300)   // a short message shouldn't float in empty box
-                    }
-                } else {
-                    Text(split?.body ?? draft)
-                        .font(briefing.isPlan ? Font(NSFont.monospacedSystemFont(ofSize: 12, weight: .regular))
-                                              : .body)
-                        .foregroundStyle(.primary)
-                        .lineSpacing(briefing.isPlan ? 9 : 4)
-                        .textSelection(.enabled)
-                }
-            }
-            .padding(14)
-        }
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(Theme.stroke, lineWidth: 1))
-    }
-}
-
 // MARK: - Demo data (the home's own showcase strings — cards live in Briefing.jesaiDemo/.launchDemo)
 
 private enum Demo {
@@ -1822,14 +1178,14 @@ private enum Demo {
 #Preview("Home — the suggestions") {
     HomeView(thingsUnderstood: 3339,
              sources: .init(files: true, whatsapp: true, imessage: true, notes: true))
-        .frame(width: 1180, height: 880)
+        .frame(width: 1180, height: 820)
 }
 
 #Preview("Home — launch demo deck") {
     HomeView(thingsUnderstood: 3339,
              sources: .init(files: true, whatsapp: true, imessage: true, notes: true),
              deck: .launch)
-        .frame(width: 1180, height: 880)
+        .frame(width: 1180, height: 820)
 }
 
 #Preview("Home — knowledge-base-only (free plan)") {
@@ -1838,7 +1194,7 @@ private enum Demo {
              deck: .real,
              previewKBOnly: true,
              previewUpgraded: false)
-        .frame(width: 1180, height: 880)
+        .frame(width: 1180, height: 820)
 }
 
 #Preview("Home — kb-only, upgrade detected") {
@@ -1847,92 +1203,5 @@ private enum Demo {
              deck: .real,
              previewKBOnly: true,
              previewUpgraded: true)
-        .frame(width: 1180, height: 880)
-}
-
-#Preview("Research letter") {
-    let sample = """
-    ## Who she is
-    **Priya Iyer, Partner at Northbeam Capital**; leads early-stage consumer AI. Ex-product at Dropbox. Writes $500K to $1.5M first checks.
-
-    ## Lead with
-    - Traction: **2,500 waitlist signups in 24 hours** from one Reddit post, zero marketing spend.
-    - Moat: the full on-device pipeline runs on real data today; cloud clones burn roughly $200 per user just to read a life in.
-    - Momentum: YC S26 and a16z Speedrun interviews, and a live term conversation with Premise.vc.
-
-    ## Likely questions
-    1. Why won't Apple do this? Walled garden: Apple Intelligence can't read WhatsApp or act across apps; **Sentient does both**.
-    2. Business model? Free consumer wedge; AGPL dual-licensing for enterprise later.
-    3. Round status? Use the Premise interest as gentle heat, not a hammer.
-
-    ## Decide before the call
-    Whether you'd take a $500K check on the terms Premise floated, or hold for a priced round after launch.
-    """
-    let action = PreparedAction(
-        title: "Prep notes for tomorrow's call with Priya",
-        method: .research, target: "", urgency: .medium,
-        dueDate: "Tuesday, July 14, 10:30 AM", status: .confirmed,
-        verification: "", cardSummary: "", preparedContent: sample,
-        executionRecipe: "none", buttonText: "", detailLabel: "read the brief",
-        sources: [], reviewNote: "")
-    return ZStack { Color.black.ignoresSafeArea()
-        LetterView(briefing: Briefing(from: action), phase: .offer,
-                   onOffer: {}, onClose: {})
-            .frame(width: 560)
-            .padding(40)
-    }
-}
-
-#Preview("Computer plan letter") {
-    let steps = """
-    1. Open the browser to canva.com/settings/billing-and-teams (already logged in).
-    2. Under Canva Pro, click Cancel trial.
-    3. If asked for a reason, pick 'I don't use it enough'.
-    4. Decline any pause, discount, or free-month offers.
-    5. Confirm the cancellation.
-    6. Verify the page shows Pro ending July 15 with no renewal.
-    """
-    let action = PreparedAction(
-        title: "Cancel Canva Pro before Wednesday's charge",
-        method: .computer, target: "Canva", urgency: .high,
-        dueDate: "Wednesday, July 15", status: .updated,
-        verification: "",
-        cardSummary: "Your Canva Pro trial converts to $15/month on Wednesday; this cancels it from your logged-in account before the charge.",
-        preparedContent: steps,
-        executionRecipe: "Start in the user's default browser at canva.com/settings/billing-and-teams.",
-        buttonText: "Cancel it before the charge?", detailLabel: "read the plan",
-        sources: [], reviewNote: "")
-    return ZStack { Color.black.ignoresSafeArea()
-        LetterView(briefing: Briefing(from: action), phase: .offer,
-                   editable: true, liveDraft: steps,
-                   onOffer: {}, onClose: {})
-            .frame(width: 560)
-            .padding(40)
-    }
-}
-
-#Preview("Gift letter") {
-    let sample = """
-    # The System Builder's Map
-
-    I just analyzed your entire digital life to understand you. So much stands out :)
-    ### Something you might not know about yourself
-
-    **Your real pattern is turning recurring ambiguity into reusable systems.**
-    In IB Math AA HL you built decision-tree guides; for Jacob you made timetables, exam calendars, and custom AI prompts. Sentient OS is the same reflex at startup scale.
-
-    ## Also noticed
-
-    ✦ Your breakout projects keep starting from Apple-shaped constraints: Writing Tools as an Apple Intelligence port, iPadOS on iPhone, and Sentient's on-device layer.
-    ✦ You care about assistants having the right operating manual: you maintain tailored prompts across ChatGPT, Claude, Gemini, and Perplexity.
-    ✦ Your public credibility is unusually concrete: 30,000+ Writing Tools users, 28+ publications, WIRED coverage, and a 2025 UMass Tech Challenge win.
-
-    -- Your Sentient
-    """
-    return ZStack { Color.black.ignoresSafeArea()
-        LetterView(briefing: Briefing(fromGiftMarkdown: sample), phase: .offer,
-                   onOffer: {}, onClose: {})
-            .frame(width: 560)
-            .padding(40)
-    }
+        .frame(width: 1180, height: 820)
 }

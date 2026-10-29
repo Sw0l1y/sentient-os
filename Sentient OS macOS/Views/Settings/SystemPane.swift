@@ -2,27 +2,30 @@
 //  SystemPane.swift
 //  Sentient OS macOS
 //
-//  Settings → System: how Sentient lives on this Mac. The daily overnight wake time,
-//  the launch-at-login toggle (LoginItem.swift)
-//  with its keep-Sentient-alive confirm, the privacy pledge with the two anonymous-reporting
-//  switches (crash reports → CrashReporting/Sentry · analytics → Analytics/TelemetryDeck), the
-//  how-we-protect-your-data line with its Read More door to the PrivacyPolicyView sheet, the
-//  danger-zone Reset (the shared FactoryReset wipe — a system-level act, so it lives here),
-//  and the Uninstall group (the farewell sheet → the full System/Uninstall teardown).
-//  The updates group lands here once Sparkle ships.
+//  Settings › General, laid out like System Settings › General (+ Login Items, Software Update,
+//  Privacy & Security › Analytics): tiled rows in named sections.
+//  Startup: launch at login (LoginItem.swift), held on while its keep-Sentient-alive alert asks.
+//  Overnight: the daily wake time and the wake helper row (only when overnight analysis is on).
+//  Updates: the version, the conditional last-checked line, Check for Updates.
+//  Privacy: the two reporting switches (crash reports → CrashReporting/Sentry · analytics →
+//  Analytics/TelemetryDeck) and the Privacy Policy sheet.
+//  Diagnostics: export a diagnostics file.
+//  Invitations: InviteSettingsSection (WP13).
+//  Reset and Uninstall: the shared FactoryReset wipe and the full System/Uninstall teardown,
+//  marked destructive by role, not by color.
 //
 
 import SwiftUI
+import AppKit
 
 struct SystemPane: View {
     @Environment(AppState.self) private var appState   // for the updater (Check Now / version)
 
-    /// Crash reports (Sentry) — the original `diagnosticsEnabled` key, kept so existing installs
+    /// Crash reports (Sentry): the original `diagnosticsEnabled` key, kept so existing installs
     /// carry their choice over. Analytics has its own key since the two toggles split.
     @AppStorage("diagnosticsEnabled") private var crashReportsEnabled = true
     @AppStorage("analyticsEnabled") private var analyticsEnabled = true
     @AppStorage(OvernightScheduler.minutesKey) private var wakeMinutes = OvernightScheduler.defaultMinutes
-
 
     @State private var launchAtLogin = LoginItem.cachedIsEnabled
     @State private var confirmLoginOff = false
@@ -34,48 +37,20 @@ struct SystemPane: View {
     @State private var exportingDiagnostics = false
     @State private var diagnosticFile: URL?
     @State private var diagnosticError: String?
+    @State private var wakeSetup = OvernightWakeSetup()
 
     var body: some View {
-        SettingsPane(title: "System", whisper: "How Sentient lives on this Mac.") {
-            VStack(alignment: .leading, spacing: 34) {
-                startupGroup
-                privacyGroup
-                diagnosticsGroup
-                InviteSettingsSection()
-                SettingsGroup(label: "Danger zone", description: "Remove your knowledge or uninstall Sentient.", inset: 0, destructive: true) {
-                    VStack(spacing: 0) {
-                        dangerGroup
-                        SettingsHairline(opacity: 0.10)
-                        uninstallGroup
-                    }
-                }
-
-            }
+        PaneForm {
+            startupSection
+            overnightSection
+            updatesSection
+            privacySection
+            diagnosticsSection
+            InviteSettingsSection()
+            resetSection
         }
-        .task { launchAtLogin = await LoginItem.refreshedIsEnabled() }   // live status — revocable in System Settings
-    }
-
-    // MARK: - General
-
-    private var startupGroup: some View {
-        SettingsGroup(label: "General", inset: 0) {
-            VStack(spacing: 0) {
-                SettingToggleLine(title: "Launch at login",
-                                  sub: "Keep Sentient ready in your menu bar.", isOn: $launchAtLogin)
-                SettingsHairline(opacity: 0.10)
-                SettingsRow(title: "Overnight wake time", subtitle: "Start overnight intelligence daily at this time, in your Mac’s local time zone.") {
-                    DatePicker("Overnight wake time", selection: wakeTime, displayedComponents: .hourAndMinute)
-                        .datePickerStyle(.field).labelsHidden().fixedSize()
-                        .accessibilityIdentifier("settings.overnightWakeTime")
-                }
-                SettingsDetails(title: "When does overnight intelligence run?") {
-                    SettingsProse(PrivacyCopy.overnight)
-                }
-                .padding(.horizontal, 20).padding(.bottom, 20)
-                SettingsHairline(opacity: 0.10)
-                updatesGroup
-            }
-        }
+        .pageSubtitle("Version \(UpdateController.currentVersionString)", page: .settings, pane: .system)
+        .task { launchAtLogin = await LoginItem.refreshedIsEnabled() }   // live status: revocable in System Settings
         .onChange(of: launchAtLogin) { _, on in
             if on {
                 if !LoginItem.enable() { launchAtLogin = false }
@@ -84,7 +59,9 @@ struct SystemPane: View {
                 confirmLoginOff = true
             }
         }
-        .alert("Turn off launch at login?", isPresented: $confirmLoginOff) {
+        .onChange(of: crashReportsEnabled) { _, _ in CrashReporting.applyEnabledChange() }
+        .onChange(of: analyticsEnabled) { _, _ in Analytics.applyEnabledChange() }
+        .alert("Turn Off Launch at Login?", isPresented: $confirmLoginOff) {
             Button("Keep It On", role: .cancel) {}
             Button("Turn Off Anyway", role: .destructive) {
                 Task {
@@ -94,6 +71,71 @@ struct SystemPane: View {
             }
         } message: {
             Text("To stay helpful, your Sentient runs its on-device intelligence at your chosen overnight wake time, and that can only happen if Sentient is already running. It's heavily optimized and stays out of your RAM and CPU the rest of the time.\n\nWe recommend leaving this on to keep your Sentient alive.")
+        }
+        .alert("Erase Everything Sentient Has Learned?", isPresented: $confirmReset) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset Knowledge", role: .destructive) {
+                resetting = true
+                Task {
+                    resetError = nil
+                    let completed = await FactoryReset.run(appState: appState)
+                    resetting = false
+                    if completed { HomeWindowOpening.open() }
+                    else { resetError = "Reset couldn’t clear saved app connections. Unlock your Mac and try again." }
+                }
+            }
+        } message: {
+            Text(PrivacyCopy.resetConfirmation)
+        }
+        .sheet(isPresented: $showPrivacyPolicy) {
+            PrivacyPolicyView().environment(\.settingsFormStyle, false)
+        }
+        .sheet(isPresented: $showUninstall) {
+            UninstallView().environment(\.settingsFormStyle, false)
+        }
+    }
+
+    // MARK: - Startup
+
+    private var startupSection: some View {
+        Section {
+            Toggle(isOn: $launchAtLogin) {
+                TileLabel("Launch at Login", tile: .launchAtLogin)
+            }
+            .toggleStyle(.switch)
+        } header: {
+            Text("Startup")
+        } footer: {
+            Text("How Sentient lives on this Mac. Keep Sentient ready in your menu bar.")
+        }
+    }
+
+    // MARK: - Overnight
+
+    private var overnightSection: some View {
+        Section {
+            DatePicker(selection: wakeTime, displayedComponents: .hourAndMinute) {
+                TileLabel("Overnight Wake Time", tile: .overnight)
+            }
+            .datePickerStyle(.field)
+            .accessibilityIdentifier("settings.overnightWakeTime")
+            // Same rule as Permissions & Health: no red "Not set up" for a feature not asked for.
+            if HealthCaution.overnightRequested() {
+                OvernightWakeRow(setup: wakeSetup)
+            } else {
+                StatusRow("Overnight Wake", tile: .overnight,
+                          detail: "Overnight analysis is off. Wake setup is optional.", tone: .off)
+            }
+            DisclosureGroup("When Does Overnight Intelligence Run?") {
+                Text(PrivacyCopy.overnight)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("Overnight")
+        } footer: {
+            Text("Start overnight intelligence daily at this time, in your Mac’s local time zone.")
         }
     }
 
@@ -112,102 +154,118 @@ struct SystemPane: View {
         })
     }
 
-    // MARK: - Updates (Sparkle — the story is "we keep you current", not a dial)
+    // MARK: - Updates (Sparkle: the story is "we keep you current", not a dial)
 
-    private var updatesGroup: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SettingsRow(title: "Updates", subtitle: "Version \(UpdateController.currentVersionString)") {
-                SettingsPillButton(title: "Check for updates") {
+    private var updatesSection: some View {
+        Section {
+            LabeledContent {
+                Button("Check for Updates") {
                     appState.update.checkForUpdatesNow(from: .settings)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
                 .disabled(!UpdateController.appUpdatesEnabled)
+            } label: {
+                TileLabel("Version \(UpdateController.currentVersionString)",
+                          subtitle: appState.update.lastCheckDate.map {
+                              "Last checked \($0.formatted(date: .abbreviated, time: .shortened))"
+                          },
+                          tile: .updates)
             }
-            if let last = appState.update.lastCheckDate {
-                Text("Last checked \(last.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.callout).foregroundStyle(SettingsStyle.secondary)
-                    .padding(.horizontal, 20).padding(.bottom, 16)
-            }
+        } header: {
+            Text("Updates")
+        } footer: {
             if !UpdateController.appUpdatesEnabled {
-                SettingsProse("Updates are disabled in this development build.")
-                    .padding(.horizontal, 20).padding(.bottom, 16)
+                Text("Updates are turned off in this development build.")
             }
         }
     }
 
     // MARK: - Privacy
 
-    private var privacyGroup: some View {
-        SettingsGroup(label: "Privacy", inset: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                SettingToggleLine(title: "Share crash reports", sub: PrivacyCopy.crashReports,
-                                  isOn: $crashReportsEnabled)
-                SettingsHairline(opacity: 0.10)
-                SettingToggleLine(title: "Share extended usage analytics", sub: PrivacyCopy.extendedAnalytics,
-                                  isOn: $analyticsEnabled)
-                SettingsProse(PrivacyCopy.coreAnalytics)
-                    .padding(.horizontal, 20).padding(.bottom, 20)
-                SettingsHairline(opacity: 0.10)
-                SettingsRow(title: "Your data", subtitle: PrivacyCopy.headline) {
-                    SettingsPillButton(title: "Privacy policy") { showPrivacyPolicy = true }
+    private var privacySection: some View {
+        Section {
+            Toggle(isOn: $crashReportsEnabled) {
+                HStack(spacing: Space.s) {
+                    Text("Share Crash Reports")
+                    InfoPopoverButton(PrivacyCopy.crashReports)
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: analyticsEnabled)
+            .toggleStyle(.switch)
+            Toggle(isOn: $analyticsEnabled) {
+                HStack(spacing: Space.s) {
+                    Text("Share Extended Usage Analytics")
+                    InfoPopoverButton(PrivacyCopy.extendedAnalytics)
+                }
+            }
+            .toggleStyle(.switch)
+            LabeledContent {
+                Button("Privacy Policy…") { showPrivacyPolicy = true }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            } label: {
+                TileLabel("Your Data", tile: .privacy)
+            }
+        } header: {
+            Text("Privacy")
+        } footer: {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text(PrivacyCopy.headline)
+                Text(PrivacyCopy.coreAnalytics)
+            }
         }
-        .onChange(of: crashReportsEnabled) { _, _ in CrashReporting.applyEnabledChange() }
-        .onChange(of: analyticsEnabled) { _, _ in Analytics.applyEnabledChange() }
-        .sheet(isPresented: $showPrivacyPolicy) { PrivacyPolicyView() }
     }
 
     // MARK: - Diagnostics
 
-    private var diagnosticsGroup: some View {
-        SettingsGroup(label: "Diagnostics", inset: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                SettingsRow(title: "Export diagnostic file",
-                            subtitle: "Send this diagnostics file to the devs to help us fix any bugs you're facing") {
-                    SettingsPillButton(title: exportingDiagnostics ? "Preparing…" : "Export…") {
-                        exportingDiagnostics = true
-                        diagnosticError = nil
-                        diagnosticFile = nil
-                        Task {
-                            defer { exportingDiagnostics = false }
-                            do { diagnosticFile = try await DiagnosticExport.save(appState: appState) }
-                            catch {
-                                diagnosticError = DiskSpace.isDiskFull(error)
-                                    ? "Your disk is full. Free up space and try exporting again."
-                                    : "The diagnostics file couldn't be saved. Try another location."
-                                Log("Diagnostics export: save failed (\(ErrorLabel(error)))")
-                            }
-                        }
-                    }
+    private var diagnosticsSection: some View {
+        Section {
+            LabeledContent {
+                Button(exportingDiagnostics ? "Preparing…" : "Export…", action: exportDiagnostics)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                     .disabled(exportingDiagnostics)
                     .accessibilityLabel("Export diagnostic file")
-                }
-                VStack(alignment: .leading, spacing: 10) {
-                    SettingsProse(DiagnosticExport.disclosure)
-                    SettingsProse(DiagnosticExport.sharingNote)
-                    if let diagnosticError {
-                        Text(diagnosticError).font(.body).foregroundStyle(Theme.Ink.amber)
+            } label: {
+                TileLabel("Export Diagnostic File", tile: .diagnostics)
+            }
+            if let diagnosticFile {
+                LabeledContent {
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([diagnosticFile])
                     }
-                    if let diagnosticFile {
-                        HStack {
-                            Text("Saved. Review the file before sharing.")
-                                .font(.body).foregroundStyle(SettingsStyle.secondary)
-                            Spacer()
-                            SettingsPillButton(title: "Show in Finder") {
-                                NSWorkspace.shared.activateFileViewerSelecting([diagnosticFile])
-                            }
-                        }
-                    }
+                    .buttonStyle(.link)
+                } label: {
+                    StatusLabel("Saved. Review the file before sharing.", tone: .ok)
                 }
-                .padding(.horizontal, 20).padding(.bottom, 20)
+            }
+            if let diagnosticError {
+                StatusLabel(diagnosticError, tone: .error)
+            }
+        } header: {
+            Text("Diagnostics")
+        } footer: {
+            Text("Send this diagnostics file to the developers to help fix any bugs you’re facing. \(DiagnosticExport.disclosure) \(DiagnosticExport.sharingNote)")
+        }
+    }
+
+    private func exportDiagnostics() {
+        exportingDiagnostics = true
+        diagnosticError = nil
+        diagnosticFile = nil
+        Task {
+            defer { exportingDiagnostics = false }
+            do { diagnosticFile = try await DiagnosticExport.save(appState: appState) }
+            catch {
+                diagnosticError = DiskSpace.isDiskFull(error)
+                    ? "Your disk is full. Free up space and try exporting again."
+                    : "The diagnostics file couldn't be saved. Try another location."
+                Log("Diagnostics export: save failed (\(ErrorLabel(error)))")
             }
         }
     }
 
-    // MARK: - Danger zone
-
-    private static let dangerRed = Color(red: 1.0, green: 0.36, blue: 0.36)
+    // MARK: - Reset and Uninstall
 
     // Running analysis is cancellable. Only another teardown blocks these actions.
     private var maintenanceInProgress: Bool {
@@ -220,64 +278,62 @@ struct SystemPane: View {
             ? "Stopping…" : "Erasing…"
     }
 
-    private var dangerGroup: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SettingsRow(title: "Reset Sentient", subtitle: "Erase learned knowledge and return to setup.") {
-                SettingsPillButton(title: resetTitle, tint: Self.dangerRed) {
-                    confirmReset = true
-                }
-                .disabled(maintenanceInProgress)
+    private var resetSection: some View {
+        Section {
+            LabeledContent {
+                Button(resetTitle, role: .destructive) { confirmReset = true }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(maintenanceInProgress)
+            } label: {
+                TileLabel("Reset Sentient", tile: .reset)
             }
-            SettingsDetails(title: "What gets removed?") { SettingsProse(PrivacyCopy.reset) }
-                .padding(.horizontal, 20).padding(.bottom, 20)
+            DisclosureGroup("What Gets Removed?") {
+                Text(PrivacyCopy.reset)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if appState.processing.isBusy {
-                SettingsProse(resetting ? "Stopping analysis safely before erasing your knowledge."
-                              : "Reset will stop analysis before erasing your knowledge.")
-                    .padding(.horizontal, 20).padding(.bottom, 16)
+                StatusLabel(resetting ? "Stopping analysis safely before erasing your knowledge."
+                            : "Reset will stop analysis before erasing your knowledge.",
+                            tone: .working)
             }
             if let resetError {
-                Text(resetError).font(.body).foregroundStyle(Theme.Ink.amber)
-                    .padding(.horizontal, 20).padding(.bottom, 16)
+                StatusLabel(resetError, tone: .error)
             }
-        }
-        .alert("Erase everything Sentient has learned?", isPresented: $confirmReset) {
-            Button("Cancel", role: .cancel) {}
-            Button("Reset Knowledge", role: .destructive) {
-                resetting = true
-                Task {
-                    resetError = nil
-                    let completed = await FactoryReset.run(appState: appState)
-                    resetting = false
-                    if completed { HomeWindowOpening.open() }
-                    else { resetError = "Reset couldn’t clear saved app connections. Unlock your Mac and try again." }
-                }
-            }
-        } message: {
-            Text(PrivacyCopy.resetConfirmation)
-        }
-    }
-
-    // MARK: - Uninstall (the full teardown — UninstallView + System/Uninstall.swift)
-
-    private var uninstallGroup: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SettingsRow(title: "Uninstall Sentient", subtitle: "Remove Sentient and its local data from this Mac.") {
-                SettingsPillButton(title: "Uninstall…", tint: Self.dangerRed) { showUninstall = true }
+            LabeledContent {
+                Button("Uninstall…", role: .destructive) { showUninstall = true }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                     .disabled(maintenanceInProgress)
+            } label: {
+                TileLabel("Uninstall Sentient", tile: .uninstall)
             }
-            SettingsDetails(title: "What gets removed?") { SettingsProse(PrivacyCopy.uninstall) }
-                .padding(.horizontal, 20).padding(.bottom, 20)
+            DisclosureGroup("What Gets Removed?") {
+                Text(PrivacyCopy.uninstall)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if appState.processing.isBusy {
-                SettingsProse("Uninstall will stop analysis before removing Sentient’s data.")
-                    .padding(.horizontal, 20).padding(.bottom, 16)
+                StatusLabel("Uninstall will stop analysis before removing Sentient’s data.", tone: .working)
             }
+        } header: {
+            Text("Reset and Uninstall")
+        } footer: {
+            Text("Remove your knowledge or uninstall Sentient. Reset erases learned knowledge and returns to setup. Uninstall removes Sentient and its local data from this Mac.")
         }
-        .sheet(isPresented: $showUninstall) { UninstallView() }
     }
 }
 
-#Preview("System pane") {
-    SystemPane()
-        .background(Theme.bg)
-        .frame(width: 720, height: 700)
+#Preview("General pane") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            SystemPane()
+                .environment(AppState())
+                .frame(width: 720, height: 760)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }

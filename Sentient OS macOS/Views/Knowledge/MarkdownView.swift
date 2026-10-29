@@ -2,7 +2,7 @@
 //  MarkdownView.swift
 //  Sentient OS macOS
 //
-//  Renders a knowledge-base note as editorial SwiftUI. The vault's markdown is a small, verified
+//  Renders a knowledge-base note as a document on the reading surface. The vault's markdown is a small, verified
 //  subset — `#/##/###` headings, paragraphs, `- ` bullets, the odd `---` rule, ``` code fences
 //  (the README's vault-map tree lives in one), and very dense [[wikilinks]] (no tables /
 //  blockquotes / nested or numbered lists). So this is a tidy block renderer (the same shape as
@@ -10,9 +10,10 @@
 //  in monospace with whitespace intact; every other line renders on its own.
 //
 //  Inline text goes through AttributedString for **bold** / *italic* / `code` / [text](url); but
-//  [[wikilinks]] are pre-split out first and rendered as accent links carrying a custom
+//  [[wikilinks]] are pre-split out first and rendered in the system link colour carrying a custom
 //  `sentient-wiki:` URL. An OpenURLAction routes those to onNavigate (jump to the note) and real
-//  http links to onExternal. Unresolved wikilinks render dimmed and inert.
+//  http links to onExternal. Unresolved wikilinks render in tertiary grey and are inert.
+//  Type follows the system text styles: body prose, title2/title3/headline headings.
 //
 //  Doc: Views/Knowledge/Documentation - Knowledge Window (Constellation & Reader).md
 //
@@ -40,7 +41,7 @@ struct MarkdownView: View {
                 }
             }
         }
-        .tint(Theme.knowledgeLink)
+        .tint(Color(nsColor: .linkColor))
         .environment(\.openURL, OpenURLAction { url in
             if url.absoluteString.hasPrefix(Self.wikiScheme) {
                 let title = String(url.absoluteString.dropFirst(Self.wikiScheme.count)).removingPercentEncoding ?? ""
@@ -97,19 +98,20 @@ struct MarkdownView: View {
         return "├└│".contains(first)
     }
 
-    /// A fenced block, verbatim: monospace (the machine's voice), whitespace intact, neutral ink
-    /// on a whisper of a panel. The README's vault-map tree is the main resident.
+    /// A fenced block, verbatim: monospace, whitespace intact, on a quiet fill with a hairline.
+    /// The README's vault-map tree is the main resident.
     private func codeBlock(_ lines: [String]) -> some View {
         Text(verbatim: lines.joined(separator: "\n"))
-            .font(.system(.body, design: .monospaced))
+            .font(.system(.callout, design: .monospaced))
             .foregroundStyle(.primary)
-            .lineSpacing(3)
+            .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16).padding(.vertical, 14)
-            .background(RoundedRectangle(cornerRadius: 9).fill(.quinary))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.stroke, lineWidth: 1))
-            .padding(.vertical, 10)
+            .padding(Space.m)
+            .background(RoundedRectangle(cornerRadius: Radius.group, style: .continuous).fill(.quaternary))
+            .overlay(RoundedRectangle(cornerRadius: Radius.group, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+            .padding(.vertical, Space.s)
     }
 
     // MARK: One block per line (blank line = spacer)
@@ -117,38 +119,41 @@ struct MarkdownView: View {
     @ViewBuilder
     private func line(_ s: String) -> some View {
         if s.isEmpty {
-            Color.clear.frame(height: 9)
+            Color.clear.frame(height: Space.s)
         } else if s == "---" || s == "***" || s == "___" {
-            Rectangle().fill(.quaternary).frame(height: 1)
-                .padding(.vertical, 12)
+            Divider().padding(.vertical, Space.m)
         } else if s.hasPrefix("### ") {
             Text(inline(String(s.dropFirst(4))))
-                .font(.title3.weight(.semibold))
+                .font(.headline)
                 .foregroundStyle(.primary)
-                .padding(.top, 14).padding(.bottom, 2)
+                .accessibilityAddTraits(.isHeader)
+                .padding(.top, Space.m).padding(.bottom, Space.xs / 2)
         } else if s.hasPrefix("## ") {
             Text(inline(String(s.dropFirst(3))))
-                .font(.title.weight(.semibold))
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(.primary)
-                .padding(.top, 20).padding(.bottom, 4)
+                .accessibilityAddTraits(.isHeader)
+                .padding(.top, Space.l).padding(.bottom, Space.xs / 2)
         } else if s.hasPrefix("# ") {
             Text(inline(String(s.dropFirst(2))))
-                .font(.largeTitle.weight(.semibold))
+                .font(.title2.bold())
                 .foregroundStyle(.primary)
-                .padding(.top, 10).padding(.bottom, 4)
+                .accessibilityAddTraits(.isHeader)
+                .padding(.top, Space.l).padding(.bottom, Space.xs)
         } else if let bullet = bulletText(s) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("•").font(.title3).foregroundStyle(.tertiary)
+            HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+                Text("•").font(.body).foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 Text(inline(bullet))
-                    .font(.title3).foregroundStyle(.primary)
-                    .lineSpacing(5).fixedSize(horizontal: false, vertical: true)
+                    .font(.body).foregroundStyle(.primary)
+                    .lineSpacing(3).fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.vertical, 3)
+            .padding(.vertical, Space.xs / 2)
         } else {
             Text(inline(s))
-                .font(.title3).foregroundStyle(.primary)
-                .lineSpacing(6).fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 4)
+                .font(.body).foregroundStyle(.primary)
+                .lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, Space.xs)
         }
     }
 
@@ -182,8 +187,8 @@ struct MarkdownView: View {
         return out
     }
 
-    /// `[[Title]]` or `[[Title|alias]]` → a styled run. Resolved → the sky-blue link; unresolved →
-    /// dimmed neutral (color here means "you can go somewhere").
+    /// `[[Title]]` or `[[Title|alias]]` → a styled run. Resolved → the system link colour, no
+    /// underline (the macOS link convention); unresolved → tertiary grey, inert.
     private func wikilink(_ inner: String) -> AttributedString {
         let parts = inner.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
         let target = parts[0].trimmingCharacters(in: .whitespaces)
@@ -193,10 +198,9 @@ struct MarkdownView: View {
            let encoded = target.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
            let url = URL(string: Self.wikiScheme + encoded) {
             run.link = url
-            run.foregroundColor = Theme.knowledgeLink
-            run.underlineStyle = .single
+            run.foregroundColor = Color(nsColor: .linkColor)
         } else {
-            run.foregroundColor = Color.white.opacity(0.38)   // unresolved — visible but inert
+            run.foregroundColor = Color(nsColor: .tertiaryLabelColor)   // unresolved — visible but inert
         }
         return run
     }
@@ -210,45 +214,47 @@ struct MarkdownView: View {
 }
 
 #Preview("MarkdownView") {
-    ScrollView {
-        MarkdownView(markdown: """
-        Jesai Tarun is building **Sentient OS**, a privacy-first intelligence layer for a person's
-        digital life.
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            ScrollView {
+                MarkdownView(markdown: """
+                Jesai Tarun is building **Sentient OS**, a privacy-first intelligence layer for a person's
+                digital life.
 
-        ## Vault Map
+                ## Vault Map
 
-        - `Identity/` — who Jesai is. Start with [[Jesai Tarun - Current Portrait]].
-        - `Sentient OS/` — product thesis and roadmap. See [[Sentient OS Map]].
-        - An *unresolved* one: [[Does Not Exist]].
+                - `Identity/` — who Jesai is. Start with [[Jesai Tarun - Current Portrait]].
+                - `Sentient OS/` — product thesis and roadmap. See [[Sentient OS Map]].
+                - An *unresolved* one: [[Does Not Exist]].
 
-        ### Something noticed
+                ### Something noticed
 
-        His center of gravity is [[Sentient OS - Product Thesis]].
+                His center of gravity is [[Sentient OS - Product Thesis]].
 
-        ## Structure
+                ---
 
-        ```
-        Sentient OS - Knowledge Base/
-        ├── Identity/
-        │   ├── Jesai Tarun - Current Portrait.md
-        │   └── Values and Working Style.md
-        ├── Sentient OS/
-        │   ├── Product Thesis.md
-        │   └── Fundraising/
-        │       └── Afore Pre-Seed.md
-        └── People/
-            └── Aditya Vellanki.md
-        ```
+                ## Structure
 
-        And a fence-less tree, as the model sometimes draws it:
+                ```
+                Sentient OS - Knowledge Base/
+                ├── Identity/
+                │   ├── Jesai Tarun - Current Portrait.md
+                │   └── Values and Working Style.md
+                └── People/
+                    └── Aditya Vellanki.md
+                ```
 
-        ├── Identity/
-        │   └── Jesai Tarun - Current Portrait.md
-        └── People/
-        """, exists: { ["jesai tarun - current portrait", "sentient os map", "sentient os - product thesis"].contains($0.lowercased()) })
-        .frame(maxWidth: 680, alignment: .leading)
-        .padding(40)
+                And a fence-less tree, as the model sometimes draws it:
+
+                ├── Identity/
+                │   └── Jesai Tarun - Current Portrait.md
+                └── People/
+                """, exists: { ["jesai tarun - current portrait", "sentient os map", "sentient os - product thesis"].contains($0.lowercased()) })
+                .padding(Space.xxl)
+            }
+            .frame(width: 560, height: 760)
+            .background(Color(nsColor: .textBackgroundColor))
+            .environment(\.colorScheme, scheme)
+        }
     }
-    .frame(width: 760, height: 900)
-    .background(Color.black)
 }

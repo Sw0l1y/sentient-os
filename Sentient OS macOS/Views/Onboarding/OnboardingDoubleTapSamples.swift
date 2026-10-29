@@ -1,8 +1,11 @@
 //  OnboardingDoubleTapSamples.swift
-//  The native Mail and Messages fixtures used by the Double Tap lesson, with shared window
-//  controls, material, and caret anchors. Replies stay in their compose fields; nothing sends.
+//  The Double Tap lesson's two vignettes, in the manner of Apple Intelligence's Smart Reply
+//  card: a GroupBox with the real Mail or Messages icon, the incoming message, and the reply
+//  field where the draft lands. The caret publishes its anchor so the swirl lands on it.
+//  Replies stay in their fields; nothing sends.
 //  Doc: Documentation - Onboarding.md (this folder).
 
+import AppKit
 import SwiftUI
 
 struct DoubleTapDemoCaretAnchor: PreferenceKey {
@@ -31,103 +34,42 @@ struct DoubleTapDemoEmailWindow: View {
     let reduceMotion: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack {
-                HStack(spacing: 6) {
-                    DemoTrafficLights()
-                    Spacer()
-                    Image(systemName: "arrowshape.turn.up.left")
-                        .font(.callout)
-                        .foregroundStyle(.quaternary)
-                }
-                Text("Mail")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 20)
-            .frame(height: 42)
-            .accessibilityHidden(true)
-
-            Rectangle().fill(.quaternary).frame(height: 1)
-
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(alignment: .top, spacing: 12) {
-                    Text("A")
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36)
-                        .background(.quinary, in: Circle())
-                        .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 1))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 4) {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    AppIconImage(bundleID: "com.apple.mail", size: 32, fallback: .emailAndCalendar)
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(DemoEmail.sender)
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(.primary)
-                        Text("to you")
+                            .font(.headline)
+                        Text(DemoEmail.subject)
                             .font(.subheadline)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
-                    Spacer()
+                    Spacer(minLength: Space.s)
                     Text("Just now")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 2)
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(DemoEmail.subject)
-                        .font(.title.weight(.medium))
-                        .foregroundStyle(.primary)
-                    Text(DemoEmail.message)
-                        .font(.body)
-                        .lineSpacing(6)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                replyField
+                Text(DemoEmail.message)
+                    .font(.callout)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Divider()
+
+                DemoReplyField(placeholder: "Reply to Alex", draft: DemoEmail.reply,
+                               replied: replied, waiting: waiting, reduceMotion: reduceMotion,
+                               minHeight: 64, showsDraftBadge: true)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(replied ? "Your draft reply" : "Empty reply field")
             }
-            .padding(.horizontal, 30)
-            .padding(.top, 26)
-            .padding(.bottom, 28)
+            .padding(Space.xs)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .modifier(DemoWindowSurface())
+        .frame(maxWidth: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sample email")
-    }
-
-    private var replyField: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 7) {
-                Image(systemName: "arrowshape.turn.up.left")
-                    .font(.caption)
-                Text("Reply to Alex")
-                    .font(.subheadline.weight(.medium))
-                Spacer()
-                Text(replied ? "Draft" : "")
-                    .font(.caption)
-            }
-            .foregroundStyle(.tertiary)
-
-            ZStack(alignment: .topLeading) {
-                // The final text always participates in layout. The email never grows on paste.
-                Text(DemoEmail.reply)
-                    .font(.body)
-                    .lineSpacing(4)
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .opacity(replied ? 1 : 0)
-                    .accessibilityHidden(!replied)
-
-                DemoReplyCaret(replied: replied, waiting: waiting, reduceMotion: reduceMotion)
-            }
-            .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
-        }
-        .padding(18)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(replied ? 0.12 : 0.075), lineWidth: 1))
-        .accessibilityLabel(replied ? "Your draft reply" : "Empty reply field")
     }
 }
 
@@ -135,7 +77,6 @@ private enum DemoMessage {
     static let recipient = "Maya"
     static let incoming = "Yo, want to grab dinner tonight?\nGot a place in mind?"
     static let reply = "Yo sup, let's hit my favorite restaurant in downtown SF. Their kimchi is so good. You down for 7?"
-    static let blue = Color(red: 10.0 / 255, green: 132.0 / 255, blue: 1)
 }
 
 struct DoubleTapDemoMessageWindow: View {
@@ -144,160 +85,141 @@ struct DoubleTapDemoMessageWindow: View {
     let reduceMotion: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            ZStack {
-                HStack {
-                    DemoTrafficLights()
-                    Spacer()
-                    Image(systemName: "video")
-                        .font(.title3)
-                        .foregroundStyle(.tertiary)
-                }
-                HStack(spacing: 9) {
-                    Text("M")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(.primary)
-                        .frame(width: 30, height: 30)
-                        .background(.quaternary, in: Circle())
-                    VStack(alignment: .leading, spacing: 3) {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    AppIconImage(bundleID: "com.apple.MobileSMS", size: 32, fallback: .conversations)
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(DemoMessage.recipient)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.primary)
+                            .font(.headline)
                         Text("iMessage")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
+                    Spacer(minLength: Space.s)
+                    Text("Today 5:42 PM")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-            }
-            .padding(.horizontal, 20)
-            .frame(height: 62)
-            .background(.white.opacity(0.022))
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Messages with Maya")
-
-            Rectangle().fill(.quaternary).frame(height: 1)
-
-            VStack(spacing: 14) {
-                Text("Today 5:42 PM")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Messages with Maya")
 
                 HStack {
                     Text(DemoMessage.incoming)
-                        .font(.body)
-                        .lineSpacing(4)
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 11)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 17))
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: Radius.bubble, style: .continuous))
                         .accessibilityLabel("Maya: \(DemoMessage.incoming)")
-                    Spacer(minLength: 80)
+                    Spacer(minLength: Space.xxxl)
                 }
-            }
-            .padding(.horizontal, 28)
-            .padding(.top, 18)
 
-            Spacer(minLength: 20)
-            composeField
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
+                Divider()
+
+                DemoReplyField(placeholder: "iMessage", draft: DemoMessage.reply,
+                               replied: replied, waiting: waiting, reduceMotion: reduceMotion,
+                               minHeight: 36, showsDraftBadge: false)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(replied ? "Draft reply to Maya" : "Empty iMessage field")
+            }
+            .padding(Space.xs)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .modifier(DemoWindowSurface())
+        .frame(maxWidth: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sample iMessage conversation")
     }
+}
 
-    private var composeField: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "plus.circle")
-                .font(.title.weight(.light))
-                .foregroundStyle(.quaternary)
-                .accessibilityHidden(true)
+/// A text field drawn in the system's style: the caret and placeholder while empty, the draft
+/// once it lands. The draft always takes part in layout, so the card never grows on paste.
+private struct DemoReplyField: View {
+    let placeholder: String
+    let draft: String
+    let replied: Bool
+    let waiting: Bool
+    let reduceMotion: Bool
+    let minHeight: CGFloat
+    let showsDraftBadge: Bool
+    @Environment(\.pixelLength) private var pixelLength
 
-            HStack(alignment: .bottom, spacing: 12) {
-                ZStack(alignment: .topLeading) {
-                    Text(DemoMessage.reply)
-                        .font(.body)
-                        .lineSpacing(4)
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .opacity(replied ? 1 : 0)
-                        .accessibilityHidden(!replied)
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        ZStack(alignment: .topLeading) {
+            Text(draft)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.trailing, showsDraftBadge ? Space.xxxl : 0)
+                .opacity(replied ? 1 : 0)
+                .accessibilityHidden(!replied)
 
-                    Text("iMessage")
-                        .font(.body)
-                        .foregroundStyle(.quaternary)
-                        .padding(.leading, 5)
-                        .opacity(replied ? 0 : 1)
-                        .accessibilityHidden(true)
-
-                    DemoReplyCaret(replied: replied, waiting: waiting, reduceMotion: reduceMotion)
-                }
-                .frame(maxWidth: .infinity, minHeight: 42, alignment: .topLeading)
-
-                // Decorative only: the lesson drafts into the composer, and never sends.
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title)
-                    .foregroundStyle(replied ? DemoMessage.blue : .white.opacity(0.14))
+            HStack(alignment: .center, spacing: 2) {
+                DemoReplyCaret(replied: replied, waiting: waiting, reduceMotion: reduceMotion)
+                Text(placeholder)
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+                    .opacity(replied ? 0 : 1)
                     .accessibilityHidden(true)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(replied ? 0.18 : 0.12), lineWidth: 1))
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(replied ? "Draft reply to Maya" : "Empty iMessage field")
         }
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
+        .padding(Space.s)
+        .background(shape.fill(.background))
+        .overlay(shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: pixelLength))
+        .overlay(alignment: .topTrailing) {
+            if showsDraftBadge && replied {
+                Text("Draft")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.quaternary, in: Capsule())
+                    .padding(6)
+                    .transition(.opacity)
+                    .accessibilityHidden(true)
+            }
+        }
+        .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: replied)
     }
 }
 
+/// A 1.5 × 18 accent caret that blinks like a text cursor while the lesson waits. It stays in
+/// layout after the draft lands so the swirl's anchor never jumps.
 private struct DemoReplyCaret: View {
     let replied: Bool
     let waiting: Bool
     let reduceMotion: Bool
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.1, paused: !waiting || reduceMotion)) { context in
-            let pulse = reduceMotion ? 1 : 0.55 + 0.45 * cos(context.date.timeIntervalSinceReferenceDate * .pi * 2 / 1.4)
-            RoundedRectangle(cornerRadius: 1)
-                .fill(.white.opacity(replied ? 0 : 0.5 * pulse))
+        TimelineView(.animation(minimumInterval: 0.53, paused: !waiting || reduceMotion)) { context in
+            let blinkOn = !waiting || reduceMotion
+                || Int(context.date.timeIntervalSinceReferenceDate / 0.53) % 2 == 0
+            RoundedRectangle(cornerRadius: 0.75)
+                .fill(Color.accentColor)
                 .frame(width: 1.5, height: 18)
+                .opacity(replied || !blinkOn ? 0 : 1)
         }
         .anchorPreference(key: DoubleTapDemoCaretAnchor.self, value: .bounds) { $0 }
         .accessibilityHidden(true)
     }
 }
 
-/// The Sidekick film's active window controls (RecipeShop.tsx), shared by both native samples.
-private struct DemoTrafficLights: View {
-    private static let colors: [Color] = [
-        Color(red: 1, green: 95.0 / 255, blue: 87.0 / 255),            // #ff5f57
-        Color(red: 254.0 / 255, green: 188.0 / 255, blue: 46.0 / 255), // #febc2e
-        Color(red: 40.0 / 255, green: 200.0 / 255, blue: 64.0 / 255),  // #28c840
-    ]
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(Self.colors.indices, id: \.self) { index in
-                Circle().fill(Self.colors[index]).frame(width: 10, height: 10)
+#if DEBUG
+#Preview("Double Tap vignettes") {
+    HStack(alignment: .top, spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            VStack(spacing: Space.xl) {
+                DoubleTapDemoEmailWindow(replied: false, waiting: true, reduceMotion: false)
+                DoubleTapDemoEmailWindow(replied: true, waiting: false, reduceMotion: false)
+                DoubleTapDemoMessageWindow(replied: false, waiting: true, reduceMotion: false)
+                DoubleTapDemoMessageWindow(replied: true, waiting: false, reduceMotion: false)
             }
+            .frame(width: 512)
+            .padding(Space.xl)
+            .background(.background)
+            .environment(\.colorScheme, scheme)
         }
-        .accessibilityHidden(true)
     }
 }
-
-private struct DemoWindowSurface: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .background(Color(red: 0.036, green: 0.037, blue: 0.043))
-            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .strokeBorder(LinearGradient(colors: [.white.opacity(0.19), .white.opacity(0.065)],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.5), radius: 32, y: 18)
-    }
-}
+#endif

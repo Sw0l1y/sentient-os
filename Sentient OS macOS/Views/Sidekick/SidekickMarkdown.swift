@@ -7,11 +7,13 @@ struct SidekickPlainText: View {
     var onReply: ((String) -> Void)? = nil
     var onReplyToMessage: (() -> Void)? = nil
     var onSelectionChange: ((Bool) -> Void)? = nil
+    /// White text on an accent bubble that hugs its text (your messages in the transcript).
+    var bubble = false
     @State private var selected = false
 
     var body: some View {
         SidekickSelectableMarkdown(fragment: .plain(text), source: text,
-            style: .init(compact: false, heading: nil, code: false, bold: false, alignment: .left),
+            style: .init(compact: false, heading: nil, code: false, bold: false, alignment: .left, bubble: bubble),
             wrapping: true, onReply: onReply, onReplyToMessage: onReplyToMessage) { value in
                 selected = value; onSelectionChange?(value)
             }
@@ -34,19 +36,18 @@ struct SidekickMarkdown: View {
 
     var body: some View {
         let document = SidekickMarkdownCache.shared.document(markdown)
-        VStack(alignment: .leading, spacing: compact ? 9 : 13) {
+        VStack(alignment: .leading, spacing: compact ? 9 : 12) {
             ForEach(Array(document.blocks.prefix(visibleBlocks).enumerated()), id: \.offset) { index, block in
                 blockView(block, index: index, source: document.source)
             }
             if document.blocks.count > visibleBlocks {
-                Button("Show more") { visibleBlocks += 80 }
-                    .buttonStyle(.plain).foregroundStyle(.tint).font(.callout.weight(.medium))
+                Button("Show More") { visibleBlocks += 80 }
+                    .buttonStyle(.link)
             } else if let remainder = document.remainder {
-                DisclosureGroup("Show remaining text", isExpanded: $showRemainder) {
+                DisclosureGroup("Show Remaining Text", isExpanded: $showRemainder) {
                     selectable(remainder, source: document.source, id: "remainder")
                         .padding(.top, 8)
                 }
-                .font(.callout.weight(.medium))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -72,11 +73,12 @@ struct SidekickMarkdown: View {
             }
         case .code(let fragment, let language, let decoration):
             decorated(decoration) {
+                // An inset code box like Xcode's documentation viewer: a quiet fill, a small
+                // header with the language and a Copy button, then the horizontally scrolling code.
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         Text(language?.isEmpty == false ? language! : "Code")
-                            .lineLimit(1).font(.system(.subheadline, design: .monospaced, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .lineLimit(1).font(.caption).foregroundStyle(.secondary)
                         Spacer(minLength: 16)
                         Button {
                             NSPasteboard.general.clearContents()
@@ -84,27 +86,27 @@ struct SidekickMarkdown: View {
                             copiedBlock = index
                         } label: {
                             Label(copiedBlock == index ? "Copied" : "Copy", systemImage: copiedBlock == index ? "checkmark" : "doc.on.doc")
-                                .font(.subheadline.weight(.medium))
                         }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .buttonStyle(.borderless).controlSize(.small)
                         .accessibilityLabel(copiedBlock == index ? "Code copied" : "Copy code")
                     }
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    Divider().opacity(0.45)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    Divider()
                     ScrollView(.horizontal) {
                         selectable(fragment, source: source, id: "\(index)", code: true, wrapping: false)
                             .fixedSize(horizontal: true, vertical: true)
                             .padding(12)
                     }
                 }
-                .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.primary.opacity(0.09), lineWidth: 0.75))
+                // `10` is Radius.group; this file compiles standalone and cannot name Views/Design.
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
         case .table(let table, let decoration):
             decorated(decoration) {
                 ScrollView(.horizontal) {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(table.rows.enumerated()), id: \.offset) { rowIndex, row in
+                            if rowIndex > 0 { Divider() }
                             HStack(alignment: .top, spacing: 0) {
                                 ForEach(Array(table.columns.enumerated()), id: \.offset) { columnIndex, column in
                                     let cell = row.cells.first { $0.column == columnIndex }
@@ -115,28 +117,33 @@ struct SidekickMarkdown: View {
                                         .padding(.horizontal, 12).padding(.vertical, compact ? 8 : 10)
                                 }
                             }
-                            .background(.primary.opacity(row.header ? 0.065 : (rowIndex.isMultiple(of: 2) ? 0.025 : 0)))
-                            .overlay(alignment: .bottom) { Rectangle().fill(.primary.opacity(0.07)).frame(height: 0.5) }
+                            .background { if row.header { Rectangle().fill(.quaternary) } }
                         }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(.primary.opacity(0.10), lineWidth: 0.75))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
                 }
             }
-        case .rule: Divider().opacity(0.65).padding(.vertical, compact ? 2 : 5)
+        case .rule: Divider().padding(.vertical, compact ? 2 : 5)
         }
+    }
+
+    /// The body text size for this density, so list markers and table columns match the text.
+    private static func bodySize(_ compact: Bool) -> CGFloat {
+        SidekickSelectableMarkdown.Style(compact: compact, heading: nil, code: false, bold: false, alignment: .left).pointSize
     }
 
     private func decorated<Content: View>(_ decoration: SidekickMarkdownDocument.Decoration,
                                           @ViewBuilder content: () -> Content) -> some View {
         HStack(alignment: .top, spacing: 10) {
             if decoration.quoteDepth > 0 {
-                Rectangle().fill(.secondary.opacity(0.30)).frame(width: 2)
+                Rectangle().fill(.tertiary).frame(width: 3)
                     .padding(.leading, CGFloat(min(decoration.quoteDepth - 1, 4)) * 8)
             }
             if decoration.listDepth > 0 {
                 Text(decoration.marker ?? " ")
-                    .font(.system(size: compact ? 12.5 : 14.5, weight: .medium))
+                    .font(.system(size: Self.bodySize(compact), weight: .medium))
                     .foregroundStyle(.secondary).frame(width: 22, alignment: .trailing).padding(.top, 1)
                     .padding(.leading, CGFloat(min(decoration.listDepth - 1, 12)) * 18)
                     .accessibilityHidden(decoration.marker == nil)
@@ -161,7 +168,7 @@ struct SidekickMarkdown: View {
     private func columnWidth(_ table: SidekickMarkdownDocument.Table, _ column: Int) -> CGFloat {
         let measured = table.rows.compactMap { row -> CGFloat? in
             guard let cell = row.cells.first(where: { $0.column == column }) else { return nil }
-            let font = NSFont.systemFont(ofSize: compact ? 12.5 : 14.5, weight: row.header ? .semibold : .regular)
+            let font = NSFont.systemFont(ofSize: Self.bodySize(compact), weight: row.header ? .semibold : .regular)
             return (cell.fragment.text as NSString).size(withAttributes: [.font: font]).width
         }.max() ?? 0
         return min(compact ? 220 : 300, max(compact ? 88 : 110, ceil(measured) + 6))
@@ -195,10 +202,17 @@ struct SidekickSelectableMarkdown: NSViewRepresentable {
         var code: Bool
         var bold: Bool
         var alignment: NSTextAlignment
+        /// White text inside an accent bubble, hugging its natural width.
+        var bubble = false
+        /// The window uses the macOS text styles (body 13, headings 17/15/13). The notch's compact
+        /// sizes are measured by SidekickNotchMessageLayout and stay exactly as they were.
         var pointSize: CGFloat {
-            if code { return compact ? 11.5 : 12.5 }
-            if let heading { return (compact ? 17 : 23) - CGFloat(min(max(heading - 1, 0), 4)) * (compact ? 1.2 : 2) }
-            return compact ? 12.5 : 14.5
+            if code { return compact ? 11.5 : 12 }
+            if let heading {
+                let level = min(max(heading - 1, 0), 4)
+                return compact ? 17 - CGFloat(level) * 1.2 : [17, 15, 13][min(level, 2)]
+            }
+            return compact ? 12.5 : 13
         }
     }
     let fragment: SidekickMarkdownDocument.Fragment
@@ -220,7 +234,7 @@ struct SidekickSelectableMarkdown: NSViewRepresentable {
         view.isVerticallyResizable = false; view.isHorizontallyResizable = false
         view.minSize = .zero; view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         view.delegate = view
-        view.linkTextAttributes = [.foregroundColor: NSColor(white: 0.88, alpha: 1), .underlineStyle: NSUnderlineStyle.single.rawValue]
+        view.systemSelectedTextAttributes = view.selectedTextAttributes
         updateNSView(view, context: context)
         return view
     }
@@ -230,6 +244,7 @@ struct SidekickSelectableMarkdown: NSViewRepresentable {
         // Carry it into AppKit too, so dynamic label/link colors never become black on black.
         let appearance: NSAppearance.Name = context.environment.colorScheme == .dark ? .darkAqua : .aqua
         if view.appearance?.name != appearance { view.appearance = NSAppearance(named: appearance) }
+        if view.chromeIsBubble != style.bubble { Self.applyChrome(view, bubble: style.bubble) }
         if onReply == nil || view.source != source || view.rendered != fragment.attributed || view.style != style {
             view.dismissSelectionReply()
         }
@@ -244,17 +259,35 @@ struct SidekickSelectableMarkdown: NSViewRepresentable {
         else { view.setSelectedRange(NSRange(location: 0, length: 0)) }
         view.invalidateIntrinsicContentSize()
     }
+    /// System link colour and selection on the reading surface; white links and a translucent
+    /// white selection inside an accent bubble, where the system colours would not read.
+    private static func applyChrome(_ view: SidekickMarkdownTextView, bubble: Bool) {
+        view.chromeIsBubble = bubble
+        if bubble {
+            view.linkTextAttributes = [.foregroundColor: NSColor.alternateSelectedControlTextColor,
+                                       .underlineStyle: NSUnderlineStyle.single.rawValue]
+            view.selectedTextAttributes = [.backgroundColor: NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.35)]
+        } else {
+            view.linkTextAttributes = [.foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue]
+            if let system = view.systemSelectedTextAttributes { view.selectedTextAttributes = system }
+        }
+    }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView view: SidekickMarkdownTextView, context: Context) -> CGSize? {
         Self.measuredSize(view, proposedWidth: proposal.width, style: style, wrapping: wrapping)
     }
     static func measuredSize(_ view: SidekickMarkdownTextView, proposedWidth: CGFloat?, style: Style, wrapping: Bool) -> CGSize? {
         guard let container = view.textContainer, let layout = view.layoutManager else { return nil }
-        let width: CGFloat
-        if wrapping { width = max(1, proposedWidth.flatMap { $0.isFinite ? $0 : nil } ?? 320) }
-        else {
-            let natural = view.attributedString().boundingRect(with: NSSize(width: 100_000, height: CGFloat.greatestFiniteMagnitude),
+        func naturalWidth() -> CGFloat {
+            view.attributedString().boundingRect(with: NSSize(width: 100_000, height: CGFloat.greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading]).width
-            width = max(1, ceil(natural) + 2)
+        }
+        let width: CGFloat
+        if wrapping {
+            let proposed = max(1, proposedWidth.flatMap { $0.isFinite ? $0 : nil } ?? 320)
+            // A bubble hugs short text, like Messages; long text still wraps at the proposal.
+            width = style.bubble ? max(1, min(proposed, ceil(naturalWidth()) + 2)) : proposed
+        } else {
+            width = max(1, ceil(naturalWidth()) + 2)
         }
         let size = NSSize(width: width, height: .greatestFiniteMagnitude)
         if container.containerSize != size { container.containerSize = size }
@@ -271,11 +304,12 @@ struct SidekickSelectableMarkdown: NSViewRepresentable {
     static func styled(_ input: AttributedString, style: Style) -> NSAttributedString {
         let result = NSMutableAttributedString(string: String(input.characters))
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = style.code ? 3 : (style.compact ? 3 : 5)
+        paragraph.lineSpacing = 3
         paragraph.alignment = style.alignment
         let base = style.code ? NSFont.monospacedSystemFont(ofSize: style.pointSize, weight: .regular)
             : NSFont.systemFont(ofSize: style.pointSize, weight: style.heading != nil || style.bold ? .semibold : .regular)
-        result.addAttributes([.font: base, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph],
+        let ink = style.bubble ? NSColor.alternateSelectedControlTextColor : NSColor.labelColor
+        result.addAttributes([.font: base, .foregroundColor: ink, .paragraphStyle: paragraph],
             range: NSRange(location: 0, length: result.length))
         for run in input.runs {
             let range = NSRange(run.range, in: input)
@@ -318,6 +352,10 @@ final class SidekickMarkdownTextView: NSTextView, NSTextViewDelegate {
     var onReply: ((String) -> Void)?
     var onReplyToMessage: (() -> Void)?
     var onSelectionChange: ((Bool) -> Void)?
+    /// Which link and selection colours are applied (nil until the first update).
+    var chromeIsBubble: Bool?
+    /// AppKit's own selection attributes, restored when a view stops being a bubble.
+    var systemSelectedTextAttributes: [NSAttributedString.Key: Any]?
     private var reportedSelection = false
     private var selectionReplyDelay: Task<Void, Never>?
     private var draggingSelection = false
@@ -367,18 +405,21 @@ final class SidekickMarkdownTextView: NSTextView, NSTextViewDelegate {
         let identifiers = Set(["sidekick.replySelection", "sidekick.replyMessage", "sidekick.copyMessage", "sidekick.messageSeparator"])
         for item in menu.items where identifiers.contains(item.identifier?.rawValue ?? "") { menu.removeItem(item) }
         var actions: [NSMenuItem] = []
-        func action(_ title: String, selector: Selector, id: String) {
+        func action(_ title: String, selector: Selector, id: String, symbol: String) {
             let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
             item.target = self; item.identifier = NSUserInterfaceItemIdentifier(id)
+            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
             actions.append(item)
         }
         if onReply != nil, fragment.sourceQuote(for: selectedRange(), in: source) != nil {
-            action("Reply to selection", selector: #selector(replyToSelection), id: "sidekick.replySelection")
+            action("Reply to selection", selector: #selector(replyToSelection), id: "sidekick.replySelection",
+                   symbol: "arrowshape.turn.up.left")
         }
         if onReplyToMessage != nil {
-            action("Reply to message", selector: #selector(replyToMessage(_:)), id: "sidekick.replyMessage")
+            action("Reply to message", selector: #selector(replyToMessage(_:)), id: "sidekick.replyMessage",
+                   symbol: "arrowshape.turn.up.left")
         }
-        action("Copy message", selector: #selector(copyMessage(_:)), id: "sidekick.copyMessage")
+        action("Copy message", selector: #selector(copyMessage(_:)), id: "sidekick.copyMessage", symbol: "doc.on.doc")
         if menu.numberOfItems > 0 {
             let separator = NSMenuItem.separator()
             separator.identifier = NSUserInterfaceItemIdentifier("sidekick.messageSeparator")
@@ -515,12 +556,32 @@ nonisolated enum SidekickSelectionReplyPlacement {
             panel.becomesKeyOnlyIfNeeded = true
             panel.collectionBehavior = [.transient, .fullScreenAuxiliary]
             panel.title = "Reply to selection"
-            panel.contentView = ReplyHostingView(rootView: ReplyCapsule { [weak self] in
+            // A popover-material capsule, like the Writing Tools affordance. The mask image shapes
+            // the behind-window blur and the window shadow; the layer only draws the hairline.
+            // Reduce Transparency makes the popover material opaque on its own.
+            let effect = ReplyEffectView()
+            effect.material = .popover; effect.blendingMode = .behindWindow; effect.state = .active
+            effect.maskImage = Self.capsuleMask
+            effect.wantsLayer = true
+            effect.layer?.cornerRadius = 16; effect.layer?.borderWidth = 0.5
+            effect.refreshHairline()
+            let host = ReplyHostingView(rootView: ReplyCapsule { [weak self] in
                 self?.selectedView?.replyToSelection()
             })
+            host.translatesAutoresizingMaskIntoConstraints = false
+            effect.addSubview(host)
+            NSLayoutConstraint.activate([
+                host.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
+                host.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
+                host.topAnchor.constraint(equalTo: effect.topAnchor),
+                host.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
+            ])
+            panel.contentView = effect
             self.panel = panel
         }
-        panel.appearance = NSAppearance(named: .darkAqua)
+        // Follow the message's own appearance: light in a light window, dark over the notch
+        // (whose text view is bridged to darkAqua from its SwiftUI colour scheme).
+        panel.appearance = view.effectiveAppearance
         panel.level = owner.level
         panel.setFrame(frame, display: true)
         if panel.parent !== owner { panel.parent?.removeChildWindow(panel); owner.addChildWindow(panel, ordered: .above) }
@@ -578,12 +639,33 @@ nonisolated enum SidekickSelectionReplyPlacement {
         override var canBecomeKey: Bool { false }
         override var canBecomeMain: Bool { false }
     }
+    /// A 32 pt capsule that stretches horizontally to the panel's width.
+    private static let capsuleMask: NSImage = {
+        let image = NSImage(size: NSSize(width: 32, height: 32), flipped: false) { rect in
+            NSBezierPath(roundedRect: rect, xRadius: 16, yRadius: 16).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        image.resizingMode = .stretch
+        return image
+    }()
+
+    private final class ReplyEffectView: NSVisualEffectView {
+        func refreshHairline() {
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                self.layer?.borderColor = NSColor.separatorColor.cgColor
+            }
+        }
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            refreshHairline()
+        }
+    }
     private final class ReplyHostingView: NSHostingView<ReplyCapsule> {
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     }
     private struct ReplyCapsule: View {
         let reply: () -> Void
-        @Environment(\.accessibilityReduceTransparency) private var opaque
         var body: some View {
             Button(action: reply) {
                 Label("Reply", systemImage: "arrowshape.turn.up.left")
@@ -592,16 +674,6 @@ nonisolated enum SidekickSelectionReplyPlacement {
                     .frame(width: 96, height: 32).contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .background {
-                if opaque { Capsule().fill(Color(white: 0.16)) }
-                else if #available(macOS 26.0, *) {
-                    Capsule().fill(.clear).glassEffect(.regular.tint(.black.opacity(0.28)), in: Capsule())
-                } else {
-                    Capsule().fill(.ultraThinMaterial).overlay(Capsule().fill(.black.opacity(0.20)))
-                }
-            }
-            .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 0.75).allowsHitTesting(false))
-            .environment(\.colorScheme, .dark)
             .accessibilityLabel("Reply to selected text")
             .accessibilityIdentifier("sidekick.selection.reply")
         }

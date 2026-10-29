@@ -1,6 +1,8 @@
 // DoubleTapPane.swift
-// Settings for Double Tap: autosaved reply instructions and provider-specific API key/model controls.
-// DoubleTapCredentials keeps unsaved keys in view state and persists them only to Keychain on Save.
+// Settings › Double Tap, laid out like System Settings › Keyboard: the shortcut first, then the
+// drafting model and its credentials, the autosaved custom instructions with a live byte count,
+// the writing examples, and what is shared. DoubleTapCredentials keeps unsaved keys in view state
+// and persists them only to Keychain on Save.
 // Doc: Documentation - Settings.md
 
 import SwiftUI
@@ -10,6 +12,8 @@ import AppKit
 struct DoubleTapPane: View {
     @AppStorage(CustomInstructions.doubleTapKey) private var instructions = ""
     @AppStorage(DoubleTapProvider.key) private var providerRaw = DoubleTapProvider.sentient.rawValue
+    @AppStorage(DoubleTap.enabledKey) private var doubleTapEnabled = true
+    @AppStorage(ShortcutPreferences.storageKey) private var keyRaw = "rightCommand"
     @State private var activity = PipelineActivity.shared
     @State private var hasWritingExamples = WritingStyle.exists()
     @State private var hasWritingSources = WritingStyle.hasSources
@@ -17,92 +21,148 @@ struct DoubleTapPane: View {
     @State private var writingStatus: String?
 
     private var provider: DoubleTapProvider { DoubleTapProvider(rawValue: providerRaw) ?? .sentient }
+    private var key: ShortcutKey { ShortcutKey(rawValue: keyRaw) ?? .rightCommand }
+
+    /// Today's rule: the trimmed instructions' UTF-8 size against the Double Tap limit.
+    private var bytes: Int { instructions.trimmingCharacters(in: .whitespacesAndNewlines).utf8.count }
+    private var overLimit: Bool { bytes > CustomInstructions.doubleTapByteLimit }
 
     var body: some View {
-        SettingsPane(title: "Double Tap", whisper: "Replies in your voice, ready for you to review.") {
-            VStack(alignment: .leading, spacing: 32) {
-                SettingsGroup(label: "Custom instructions", description: "Tell Double Tap how you like to write.") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        SettingsTextBox(placeholder: "Keep texts casual and lowercase. Use a professional tone for email.", text: $instructions)
-                            .frame(height: 112)
-                            .accessibilityLabel("Double Tap custom instructions")
-                        if instructions.trimmingCharacters(in: .whitespacesAndNewlines).utf8.count > CustomInstructions.doubleTapByteLimit {
-                            Text("These instructions are too long. Shorten them before using Double Tap.")
-                                .font(.body).foregroundStyle(Theme.Ink.red)
+        PaneForm {
+            Section {
+                ShortcutSetting()
+            } header: {
+                Text("Shortcut")
+            } footer: {
+                Text("Replies in your voice, ready for you to review. The same key opens Sidekick. Double-tap it to draft a reply.")
+            }
+
+            Section {
+                LabeledContent("Provider") {
+                    SettingsMenu(title: "Double Tap provider", value: provider.label, selection: $providerRaw) {
+                        ForEach(DoubleTapProvider.allCases) { provider in
+                            Text(provider.label).tag(provider.rawValue)
+                        }
+                    }
+                    .frame(width: 200)
+                }
+                if provider == .sentient {
+                    Text(PrivacyCopy.doubleTapCovered)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    DoubleTapCredentials(provider: provider).id(provider)
+                }
+            } header: {
+                Text("Drafting Model")
+            } footer: {
+                Text("Independent of your Sidekick model.")
+            }
+
+            Section {
+                SettingsTextBox(placeholder: "Keep texts casual and lowercase. Use a professional tone for email.",
+                                text: $instructions)
+                    .frame(minHeight: 112)
+                    .accessibilityLabel("Double Tap custom instructions")
+            } header: {
+                Text("Custom Instructions")
+            } footer: {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("Tell Double Tap how you like to write.")
+                    HStack(alignment: .firstTextBaseline) {
+                        if overLimit {
+                            StatusLabel("These instructions are too long. Shorten them before using Double Tap.", tone: .error)
                         } else {
                             Text("Saved automatically for every reply.")
-                                .font(.callout).foregroundStyle(SettingsStyle.secondary)
                         }
-                    }
-                }
-
-                SettingsGroup(label: "Writing style", inset: 0) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        SettingsRow(title: "Your writing examples", subtitle: hasWritingExamples
-                                    ? "A one-time snapshot you can inspect and edit."
-                                    : "Optional. Double Tap can use your instructions and visible conversation.") {
-                            if hasWritingExamples {
-                                SettingsPillButton(title: "Show in Finder") {
-                                    NSWorkspace.shared.activateFileViewerSelecting([
-                                        VaultGenerator.vaultRoot.appendingPathComponent(WritingStyle.fileName)
-                                    ])
-                                }
-                            } else {
-                                SettingsPillButton(title: collectingExamples ? "Collecting…" : "Collect examples", action: collectExamples)
-                                    .disabled(collectingExamples || activity.isRunning || !hasWritingSources
-                                        || !FileManager.default.fileExists(atPath: VaultGenerator.vaultRoot.appendingPathComponent("README.md").path))
-                            }
-                        }
-                        if let writingStatus {
-                            SettingsProse(writingStatus).padding(.horizontal, 20).padding(.bottom, 12)
-                        } else if !hasWritingExamples && !hasWritingSources {
-                            SettingsProse("Choose chats or an email source in Knowledge Sources to add examples of your own writing.")
-                                .padding(.horizontal, 20).padding(.bottom, 12)
-                        }
-                        SettingsDetails(title: "How writing examples are used") {
-                            SettingsProse(PrivacyCopy.writingSamples)
-                            SettingsProse(PrivacyCopy.writingSources)
-                        }
-                        .padding(.horizontal, 20).padding(.bottom, 20)
-                    }
-                }
-
-                SettingsGroup(label: "Drafting model", inset: 0) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        SettingsRow(title: "Provider", subtitle: "Independent of your Sidekick model.") {
-                            SettingsMenu(title: "Double Tap provider", value: provider.label, selection: $providerRaw) {
-                                ForEach(DoubleTapProvider.allCases) { provider in
-                                    Text(provider.label).tag(provider.rawValue)
-                                }
-                            }
-                            .frame(width: 200)
-                        }
-                        SettingsHairline(opacity: 0.10)
-                        VStack(alignment: .leading, spacing: 18) {
-                            if provider == .sentient {
-                                SettingsProse(PrivacyCopy.doubleTapCovered)
-                            } else {
-                                DoubleTapCredentials(provider: provider).id(provider)
-                            }
-                            SettingsDetails(title: "What is shared with this provider?") {
-                                SettingsProse(PrivacyCopy.doubleTapContext)
-                                SettingsProse(provider == .sentient
-                                    ? "This context passes through Sentient’s relay to OpenAI."
-                                    : provider.hasCustomEndpoint
-                                    ? "This context goes directly to your configured endpoint. For local drafting, use a local model served on this Mac."
-                                    : "This context goes directly to your chosen \(provider.name) provider, under its policies and your account settings.")
-                            }
-                        }
-                        .padding(20)
+                        Spacer(minLength: Space.m)
+                        Text("\(bytes.formatted()) of \(CustomInstructions.doubleTapByteLimit.formatted())")
+                            .monospacedDigit()
+                            .accessibilityLabel("\(bytes.formatted()) of \(CustomInstructions.doubleTapByteLimit.formatted()) bytes")
                     }
                 }
             }
+
+            Section {
+                LabeledContent {
+                    if hasWritingExamples {
+                        Button("Show in Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([
+                                VaultGenerator.vaultRoot.appendingPathComponent(WritingStyle.fileName)
+                            ])
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    } else {
+                        Button(collectingExamples ? "Collecting…" : "Collect Examples", action: collectExamples)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(collectingExamples || activity.isRunning || !hasWritingSources
+                                || !FileManager.default.fileExists(atPath: VaultGenerator.vaultRoot.appendingPathComponent("README.md").path))
+                    }
+                } label: {
+                    TileLabel("Your Writing Examples", subtitle: hasWritingExamples ? "Collected" : nil,
+                              tile: .writingExamples)
+                }
+                if let writingStatus {
+                    StatusLabel(writingStatus, tone: writingStatusTone(writingStatus))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                DisclosureGroup("How Writing Examples Are Used") {
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        Text(PrivacyCopy.writingSamples)
+                        Text(PrivacyCopy.writingSources)
+                    }
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } header: {
+                Text("Writing Examples")
+            } footer: {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    if hasWritingExamples {
+                        Text("A one-time snapshot you can inspect and edit.")
+                    } else {
+                        Text("Optional. Double Tap can use your instructions and visible conversation.")
+                        if !hasWritingSources && writingStatus == nil {
+                            Text("Choose chats or an email source in Knowledge Sources to add examples of your own writing.")
+                        }
+                    }
+                }
+            }
+
+            Section {
+                DisclosureGroup("What Is Shared with This Provider?") {
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        Text(PrivacyCopy.doubleTapContext)
+                        Text(routeLine)
+                    }
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
         }
+        .pageSubtitle(doubleTapEnabled ? "\(key.label) · On" : "Off", page: .settings, pane: .doubleTap)
         .onAppear(perform: refreshWritingState)
         .onChange(of: activity.isRunning) { _, _ in refreshWritingState() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refreshWritingState() }
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
             .receive(on: RunLoop.main)) { _ in refreshWritingState() }
+    }
+
+    /// Where the drafting context goes, by provider.
+    private var routeLine: String {
+        provider == .sentient
+            ? "This context passes through Sentient’s relay to OpenAI."
+            : provider.hasCustomEndpoint
+            ? "This context goes directly to your configured endpoint. For local drafting, use a local model served on this Mac."
+            : "This context goes directly to your chosen \(provider.name) provider, under its policies and your account settings."
+    }
+
+    private func writingStatusTone(_ status: String) -> StatusTone {
+        if status.hasPrefix("Writing examples are ready") { return .ok }
+        if status.hasPrefix("Examples could not be collected") { return .error }
+        return .info
     }
 
     private func refreshWritingState() {
@@ -127,6 +187,7 @@ struct DoubleTapPane: View {
     }
 }
 
+/// The chosen provider's endpoint, key and model, as rows of the "Drafting Model" Section.
 private struct DoubleTapCredentials: View {
     let provider: DoubleTapProvider
     @AppStorage private var model: String
@@ -155,109 +216,118 @@ private struct DoubleTapCredentials: View {
         })
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            if provider.hasCustomEndpoint {
-                endpointFields
+    /// Several Form rows. Only the key row carries the Keychain probe (a modifier on this view
+    /// would run once per row).
+    @ViewBuilder var body: some View {
+        if provider.hasCustomEndpoint {
+            LabeledContent("Base URL") {
+                TextField("Base URL", text: $baseURL,
+                          prompt: Text(provider.defaultBaseURL.isEmpty ? "https://your-endpoint.example/v1" : provider.defaultBaseURL))
+                    .labelsHidden()
+                    .font(.body.monospaced())
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("\(provider.name) base URL")
             }
-            VStack(alignment: .leading, spacing: 9) {
-                Text(provider.requiresKey ? "\(provider.name) API key" : "API key (optional)")
-                    .font(.headline)
-                HStack(spacing: 10) {
-                    SecureField(keySaved ? "Enter a replacement key"
-                                : provider.requiresKey ? "Enter your API key" : "Optional for keyless servers", text: $keyDraft)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("\(provider.name) API key")
-                        .onSubmit(saveKey)
-                    SettingsPillButton(title: "Save", action: saveKey)
-                        .disabled(trimmedKey.isEmpty)
-                }
-                HStack(spacing: 7) {
-                    if keySaved {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.Ink.green)
-                        Text("API key saved in Keychain")
-                        Spacer(minLength: 10)
-                        Button("Remove") {
-                            if provider.removeKey() {
-                                keySaved = false
-                                keyDraft = ""
-                                keyError = nil
-                            } else {
-                                keyError = "Couldn't remove the key. Unlock your Mac and try again."
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        Text(provider.requiresKey ? "Save your API key to use \(provider.name)."
-                             : "Leave empty if your server does not require an API key.")
+            if DoubleTapProvider.endpoint(baseURL: baseURL,
+                                          api: DoubleTapProvider.API(rawValue: apiRaw) ?? .chatCompletions) == nil {
+                StatusLabel("Enter a valid http:// or https:// base URL, including its API prefix (usually /v1).", tone: .error)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            LabeledContent("API Format") {
+                SettingsMenu(title: "API format", value: (DoubleTapProvider.API(rawValue: apiRaw) ?? .chatCompletions).label, selection: $apiRaw) {
+                    ForEach(DoubleTapProvider.API.allCases) { api in
+                        Text(api.label).tag(api.rawValue)
                     }
                 }
-                .font(.callout).foregroundStyle(Theme.Ink.label)
-                if let keyError {
-                    Text(keyError).font(.body).foregroundStyle(Theme.Ink.red)
-                }
+                .frame(width: 240)
             }
+            Text("Use Chat Completions for most compatible servers, or Responses if your endpoint requires it.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
 
-            VStack(alignment: .leading, spacing: 9) {
-                Text("Model")
-                    .font(.title3.weight(.medium)).foregroundStyle(Theme.Ink.statusInk)
-                if provider.hasModelPresets {
-                    SettingsMenu(title: "Model", value: DoubleTapProvider.modelPresets.first(where: { provider.modelID($0.id) == model })?.label ?? "Other model…", selection: modelSelection) {
-                        ForEach(DoubleTapProvider.modelPresets, id: \.id) { preset in
-                            Text(preset.label).tag(provider.modelID(preset.id))
-                        }
-                        Text("Other model…").tag("other")
-                    }
-                    .frame(width: 240)
-                }
-                if !provider.hasModelPresets || editingOtherModel || !isPreset {
-                    inputField(provider == .openRouter ? "provider/model-id"
-                               : provider == .ollama ? "e.g. gemma4:e4b" : "model-id",
-                               text: $model, label: "\(provider.name) model ID")
-                    SettingsProse("Enter a model ID from \(provider.name) that supports images and text replies.")
-                }
-                if provider.hasCustomEndpoint {
-                    SettingsProse("Choose a model with enough context for your knowledge base. If you use a local server, keep it running with the model loaded. Double Tap stops after 30 seconds.")
-                    Text("Saved automatically. Applies to the next Double Tap reply.")
-                        .font(.callout).foregroundStyle(Theme.Ink.label)
-                } else {
-                    SettingsProse("Usage is billed to your \(provider.name) account.")
-                }
+        LabeledContent(provider.requiresKey ? "\(provider.name) API Key" : "API Key (Optional)") {
+            HStack(spacing: Space.s) {
+                SecureField("API Key", text: $keyDraft,
+                            prompt: Text(keySaved ? "Enter a replacement key"
+                                         : provider.requiresKey ? "Enter your API key" : "Optional for keyless servers"))
+                    .labelsHidden()
+                    .accessibilityLabel("\(provider.name) API key")
+                    .onSubmit(saveKey)
+                Button("Save", action: saveKey)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(trimmedKey.isEmpty)
             }
         }
         .onAppear { keySaved = provider.apiKey != nil }
-    }
 
-    private var endpointFields: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text("Base URL")
-                .font(.title3.weight(.medium)).foregroundStyle(Theme.Ink.statusInk)
-            inputField(provider.defaultBaseURL.isEmpty ? "https://your-endpoint.example/v1" : provider.defaultBaseURL,
-                       text: $baseURL, label: "\(provider.name) base URL")
-            if DoubleTapProvider.endpoint(baseURL: baseURL,
-                                          api: DoubleTapProvider.API(rawValue: apiRaw) ?? .chatCompletions) == nil {
-                Text("Enter a valid http:// or https:// base URL, including its API prefix (usually /v1).")
-                    .font(.body).foregroundStyle(Theme.Ink.red)
-            }
-            Text("API format")
-                .font(.title3.weight(.medium)).foregroundStyle(Theme.Ink.statusInk)
-                .padding(.top, 7)
-            SettingsMenu(title: "API format", value: (DoubleTapProvider.API(rawValue: apiRaw) ?? .chatCompletions).label, selection: $apiRaw) {
-                ForEach(DoubleTapProvider.API.allCases) { api in
-                    Text(api.label).tag(api.rawValue)
+        if keySaved {
+            LabeledContent {
+                Button("Remove") {
+                    if provider.removeKey() {
+                        keySaved = false
+                        keyDraft = ""
+                        keyError = nil
+                    } else {
+                        keyError = "Couldn't remove the key. Unlock your Mac and try again."
+                    }
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } label: {
+                StatusLabel("Saved in Keychain", tone: .ok)
             }
-            .frame(width: 240)
-            SettingsProse("Use Chat Completions for most compatible servers, or Responses if your endpoint requires it.")
+        } else {
+            Text(provider.requiresKey ? "Save your API key to use \(provider.name)."
+                 : "Leave empty if your server does not require an API key.")
+                .foregroundStyle(.secondary)
         }
-    }
+        if let keyError {
+            StatusLabel(keyError, tone: .error)
+        }
 
-    private func inputField(_ placeholder: String, text: Binding<String>, label: String) -> some View {
-        TextField(placeholder, text: text)
-            .textFieldStyle(.roundedBorder)
-            .font(.body.monospaced())
-            .autocorrectionDisabled()
-            .accessibilityLabel(label)
+        if provider.hasModelPresets {
+            LabeledContent("Model") {
+                SettingsMenu(title: "Model", value: DoubleTapProvider.modelPresets.first(where: { provider.modelID($0.id) == model })?.label ?? "Other model…", selection: modelSelection) {
+                    ForEach(DoubleTapProvider.modelPresets, id: \.id) { preset in
+                        Text(preset.label).tag(provider.modelID(preset.id))
+                    }
+                    Text("Other model…").tag("other")
+                }
+                .frame(width: 240)
+            }
+        }
+        if !provider.hasModelPresets || editingOtherModel || !isPreset {
+            LabeledContent("Model ID") {
+                TextField("Model ID", text: $model,
+                          prompt: Text(provider == .openRouter ? "provider/model-id"
+                                       : provider == .ollama ? "e.g. gemma4:e4b" : "model-id"))
+                    .labelsHidden()
+                    .font(.body.monospaced())
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("\(provider.name) model ID")
+            }
+            Text("Enter a model ID from \(provider.name) that supports images and text replies.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        if provider.hasCustomEndpoint {
+            Text("Choose a model with enough context for your knowledge base. If you use a local server, keep it running with the model loaded. Double Tap stops after 30 seconds.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Saved automatically. Applies to the next Double Tap reply.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Usage is billed to your \(provider.name) account.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func saveKey() {
@@ -272,13 +342,21 @@ private struct DoubleTapCredentials: View {
     }
 }
 
+
 #Preview("Double Tap") {
-    DoubleTapPane().background(Theme.bg).preferredColorScheme(.dark)
-        .frame(width: 680, height: 740)
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            DoubleTapPane()
+                .environment(\.settingsFormStyle, true)
+                .frame(width: 680, height: 740)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }
 
 #Preview("Ollama provider") {
-    DoubleTapCredentials(provider: .ollama)
-        .padding(32).frame(width: 600)
-        .background(Theme.bg).preferredColorScheme(.dark)
+    PaneForm {
+        Section("Drafting Model") { DoubleTapCredentials(provider: .ollama) }
+    }
+    .frame(width: 600, height: 520)
 }

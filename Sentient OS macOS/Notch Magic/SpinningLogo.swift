@@ -2,84 +2,69 @@
 //  SpinningLogo.swift
 //  Sentient OS macOS
 //
-//  The 2D Sentient mark for the notch (matches the app icon): a THICK ring of the accent's shades
-//  (Theme.accentRamp) rendered SHARP so the colour reads boldly, over a
-//  soft additive bloom, with a thin white ring for shape and a white planet-dot. The spectrum slowly
-//  spins, FASTER when Sentient is acting (`fast`); the spin is anchored on every speed change so the
-//  colours never jump. Tiny + cheap — the heavy 3D Orb is too much at this size.
+//  The notch's identity mark: the Sentient BrandMark (a ring with a gap and a dot sitting in it),
+//  filled with one tint. Motion has one meaning, the way a Dynamic Island leading glyph animates only
+//  while its activity is live: at rest (`fast == false`) the mark stands still; while Sentient is
+//  working (`fast == true`) the whole mark turns once every 1.6 s, so the gap and the dot circle the ring.
+//  `paused` freezes it in place (hidden notch, Reduce Motion, Low Power Mode).
 //
 
 import SwiftUI
 
 struct SpinningLogo: View {
-    var size: CGFloat = 20
-    var fast: Bool = false            // running → quicker spin
-    var paused = false               // retained hidden surfaces do not keep a display clock alive
+    var size: CGFloat
+    var fast: Bool
+    var paused: Bool
+    var tint: Color
 
-    // Anchor (angle + wall-time) so a period change re-bases the spin instead of jumping it.
+    init(size: CGFloat = 20, fast: Bool = false, paused: Bool = false, tint: Color = NotchTone.accent) {
+        self.size = size
+        self.fast = fast
+        self.paused = paused
+        self.tint = tint
+    }
+
+    // Anchor (angle + wall-time) so a pause freezes the mark instead of jumping it.
     @State private var anchorAngle: Double = 0
     @State private var anchorTime: Double = Date().timeIntervalSinceReferenceDate
 
-    private static func period(fast: Bool) -> Double { fast ? 2 : 13 }   // seconds / revolution (2s = the fast "processing" spin)
-
-    /// The ring's palette: the accent's shades (Theme.accentRamp), so the mark matches the rest of
-    /// the app's single-accent language instead of the old rainbow spectrum.
-    private static var bandStops: [Color] { Theme.accentRamp }
+    private static let period: Double = 1.6   // seconds per turn while working
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: fast ? 1.0 / 60.0 : 1.0 / 30.0, paused: paused)) { ctx in
+        // The clock runs only while the mark actually turns; a resting or paused mark costs no frames.
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: paused || !fast)) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate
-            let angle = anchorAngle + (paused ? 0 : (t - anchorTime) / Self.period(fast: fast) * 360)
-            ZStack {
-                // The colored ring is rasterized ONCE (drawingGroup) and spun as a compositor
-                // transform — re-shading a conic gradient every frame ran on the CPU.
-                colorRing.rotationEffect(.degrees(angle))
-                // 3. A thin white ring — just for the shape (kept extra-fine; floor governs at notch size).
-                Circle().stroke(.white, lineWidth: max(0.75, size * 0.028)).blur(radius: size * 0.005)
-                // 4. The white planet — with a tiny additive glow so it reads as lit, not flat.
-                Circle().fill(.white).frame(width: size * 0.50, height: size * 0.50)
-                    .blur(radius: size * 0.07).blendMode(.plusLighter).opacity(0.6)
-                Circle().fill(.white).frame(width: size * 0.36, height: size * 0.36)
-            }
-            .frame(width: size, height: size)
+            let angle = fast ? anchorAngle + (paused ? 0 : (t - anchorTime) / Self.period * 360) : 0
+            BrandMark()
+                .fill(tint)
+                .frame(width: size, height: size)
+                .rotationEffect(.degrees(angle))
         }
-        // The spin is wall-clock driven — never let a parent's animation (the notch morph) interpolate
-        // the gradient angle, or a speed change reverse-spins it for the morph's duration.
+        // The turn is wall-clock driven: never let a parent's animation (the notch morph) interpolate it.
         .transaction { $0.animation = nil }
-        .onChange(of: fast) { oldFast, _ in
-            let t = Date().timeIntervalSinceReferenceDate
-            if !paused { anchorAngle += (t - anchorTime) / Self.period(fast: oldFast) * 360 }
-            anchorTime = t
+        // Rest ⇄ work always starts from the resting angle.
+        .onChange(of: fast) { _, _ in
+            anchorAngle = 0
+            anchorTime = Date().timeIntervalSinceReferenceDate
         }
+        // Re-base on pause so it freezes where it is and resumes from there.
         .onChange(of: paused) { wasPaused, _ in
             let t = Date().timeIntervalSinceReferenceDate
-            if !wasPaused { anchorAngle += (t - anchorTime) / Self.period(fast: fast) * 360 }
+            if fast && !wasPaused { anchorAngle += (t - anchorTime) / Self.period * 360 }
             anchorTime = t
         }
         .allowsHitTesting(false)
-    }
-
-    /// 1. Soft colored bloom (the neon bleed) + 2. the thick band, both from one fixed-angle
-    /// gradient. Padded so the bloom's tail fits inside the raster bounds.
-    private var colorRing: some View {
-        let spectrum = AngularGradient(colors: Self.bandStops, center: .center)
-        return ZStack {
-            Circle().stroke(spectrum, lineWidth: size * 0.22).blur(radius: size * 0.14).blendMode(.plusLighter)
-            Circle().stroke(spectrum, lineWidth: size * 0.17).blur(radius: size * 0.008)
-        }
-        .frame(width: size, height: size)
-        .padding(size * 0.4)
-        .drawingGroup()
-        .padding(-size * 0.4)
+        .accessibilityHidden(true)
     }
 }
 
-#Preview("logo") {
+#Preview("mark") {
     ZStack {
         Color.black
         HStack(spacing: 30) {
-            SpinningLogo(size: 22, fast: false)
-            SpinningLogo(size: 22, fast: true)
+            SpinningLogo(size: 17, fast: false)
+            SpinningLogo(size: 17, fast: true)
+            SpinningLogo(size: 22, fast: true, paused: true)
         }
     }
     .frame(width: 200, height: 120)

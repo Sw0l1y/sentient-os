@@ -88,9 +88,13 @@ if CommandLine.arguments.dropFirst().first == ClaudeSubscriptionProcess.argument
     CrashReporting.start(.wakeHelper)   // crash reporting for the root overnight path
     WakeHelper.run(legacy: CommandLine.arguments.contains(WakeHelperConfig.legacyHelperFlag))
 } else {
-    // Native glass is created before SwiftUI propagates preferredColorScheme to the window.
-    // Establish the app's dark-only appearance first so its initial material is never light.
-    NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+    // The app follows the system appearance. QA hook (ADDENDUM 12.6): `defaults write <bundle id>
+    // dbg.appearance light|dark` forces one for screenshots; anything else (or unset) follows the system.
+    switch UserDefaults.standard.string(forKey: "dbg.appearance") {
+    case "light": NSApplication.shared.appearance = NSAppearance(named: .aqua)
+    case "dark": NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+    default: NSApplication.shared.appearance = nil
+    }
     CrashReporting.start(.app)          // crash reporting for the GUI app
     Analytics.start()                   // product analytics (TelemetryDeck) — GUI app only
     Analytics.countInstallOnce()        // the one anonymous install ping — fires even when opted out

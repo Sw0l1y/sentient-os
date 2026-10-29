@@ -2,40 +2,43 @@
 //  SettingsView.swift
 //  Sentient OS macOS
 //
-//  The Settings page — the selected pane, with the trust ribbon riding the foot. The main
-//  window's sidebar lists the panes (AppSidebar). Every pane is real and lives beside this file:
-//  SourcesPane · FrontierModelPane · DoubleTapPane · ProactivePane · ShareKnowledgePane · SystemPane · HealthPane.
+//  The Settings detail column, as in System Settings: the sidebar row (AppSidebar) picks the pane,
+//  and the window title and subtitle name it (RootView). Every pane is a grouped Form and lives
+//  beside this file: SourcesPane · FrontierModelPane · DoubleTapPane · ProactivePane ·
+//  ShareKnowledgePane · SystemPane · HealthPane.
 //
 
 import SwiftUI
 import AppKit
 
 struct SettingsView: View {
-    /// The sections, in sidebar order.
+    /// The panes, in sidebar order. `String(describing:)` of a case is persisted by MainNavigation
+    /// (`nav.lastSettingsPane`), so the case names and their order never change.
     enum Pane: CaseIterable, Identifiable {
         case sources, frontierModel, doubleTap, proactive, shareKnowledge, system, health
 
         var id: Self { self }
         var title: String {
             switch self {
-            case .sources:   return "Knowledge Sources"
-            case .frontierModel: return "Frontier Model Choice"
-            case .doubleTap: return "Double Tap"
-            case .proactive: return "Proactive & Sidekick"
-            case .shareKnowledge: return "Give AIs Knowledge"
-            case .system:    return "System"
-            case .health:    return "Permissions & Health"
+            case .sources:        return "Knowledge Sources"
+            case .frontierModel:  return "AI Model"
+            case .doubleTap:      return "Double Tap"
+            case .proactive:      return "Sidekick"
+            case .shareKnowledge: return "Share with AIs"
+            case .system:         return "General"
+            case .health:         return "Permissions & Health"
             }
         }
+        /// The filled symbol of the pane's sidebar tile (equals `TileSpec.pane(self).symbol`).
         var icon: String {
             switch self {
-            case .sources:   return "tray.full"
-            case .frontierModel: return "cpu"
-            case .doubleTap: return "hand.tap"
-            case .proactive: return "sparkles"
+            case .sources:        return "tray.full.fill"
+            case .frontierModel:  return "cpu.fill"
+            case .doubleTap:      return "hand.tap.fill"
+            case .proactive:      return "sparkles"
             case .shareKnowledge: return "antenna.radiowaves.left.and.right"
-            case .system:    return "gearshape"
-            case .health:    return "checkmark.shield"
+            case .system:         return "gearshape.fill"
+            case .health:         return "checkmark.shield.fill"
             }
         }
     }
@@ -43,52 +46,35 @@ struct SettingsView: View {
     @Bindable private var navigation = MainNavigation.shared
     private var selection: Pane { navigation.settingsPane }
 
-    /// The main window's sidebar lists the panes; this is the selected one. A pane may push
-    /// a sub-page (Give AIs Knowledge → Connect your AIs), which the stack's Back button pops.
+    /// The stack lets a pane push a detail page (Share with AIs → Connect Your AIs); `.id` resets
+    /// it whenever the pane changes. Panes draw no title: the window chrome names them.
     var body: some View {
         NavigationStack {
-            detail.navigationTitle(selection.title)
+            detail
         }
         .id(selection)
+        .environment(\.settingsFormStyle, true)
     }
 
-    // MARK: - Detail
-
-    private var detail: some View {
-        VStack(spacing: 0) {
-            Group {
-                switch selection {
-                case .sources:   SourcesPane()
-                case .frontierModel: FrontierModelPane()
-                case .doubleTap: DoubleTapPane()
-                case .proactive: ProactivePane()
-                case .shareKnowledge: ShareKnowledgePane()
-                case .system:    SystemPane()
-                case .health:    HealthPane()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if selection == .sources || selection == .health { trustFooter }
+    @ViewBuilder private var detail: some View {
+        switch selection {
+        case .sources:        SourcesPane()
+        case .frontierModel:  FrontierModelPane()
+        case .doubleTap:      DoubleTapPane()
+        case .proactive:      ProactivePane()
+        case .shareKnowledge: ShareKnowledgePane()
+        case .system:         SystemPane()
+        case .health:         HealthPane()
         }
-    }
-
-    /// The trust ribbon — in Settings it rides ONLY Knowledge Sources and Permissions & Health,
-    /// the panes where the files story is the message (what we read · what the grants allow);
-    /// boilerplate on every pane would cheapen it.
-    private var trustFooter: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "shield").font(.system(size: selection == .sources ? 10.5 : 12)).foregroundStyle(Theme.Ink.label)
-            Text(PrivacyCopy.trustRibbon)
-                .font(.system(size: selection == .sources ? 11.5 : 13)).foregroundStyle(Theme.Ink.label)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 13)
-        .overlay(alignment: .top) { Divider() }
     }
 }
 
 #Preview("Settings") {
-    SettingsView().frame(width: 1120, height: 800)
-        .preferredColorScheme(.dark)
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            SettingsView()
+                .frame(width: 720, height: 760)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }

@@ -2,10 +2,10 @@
 //  OnboardingFrontierModelView.swift
 //  Sentient OS macOS
 //
-//  Onboarding's frontier-model step (grew out of the codex-login-only screen, 2026-07-25): the
-//  five engine pills in one centered row over the SAME per-engine panels Settings renders
-//  (FrontierEnginePicker), with the live codex login embedded as the ChatGPT panel
-//  (OnboardingCodexLoginPanel). Continue prepares and commits a signed-in Claude choice;
+//  Onboarding's "Choose Your AI" step, a Setup Assistant page (SPEC-D6 S8): the five engine
+//  choices in one row over the SAME per-engine panels Settings renders (FrontierEnginePicker),
+//  with the live codex login embedded as the ChatGPT panel (OnboardingCodexLoginPanel). The
+//  footer holds Back, the telemetry footnote, the gift link, the GitHub mark and Continue. Continue prepares and commits a signed-in Claude choice;
 //  other choices must already be the active, healthy engine, including the selected custom
 //  preset. Every choice prepares its CLI, so an existing login cannot bypass its update check.
 //  Joins shared Codex preparation at launch; browsing tabs never changes the saved engine.
@@ -16,7 +16,18 @@ import SwiftUI
 import AppKit
 
 struct OnboardingFrontierModelView: View {
+    let onBack: (() -> Void)?
     let onContinue: () -> Void
+    /// The gift celebration hides and disables the rest of onboarding (OnboardingView owns it).
+    @Binding private var isPresentingGift: Bool
+
+    init(onBack: (() -> Void)? = nil,
+         isPresentingGift: Binding<Bool> = .constant(false),
+         onContinue: @escaping () -> Void) {
+        self.onBack = onBack
+        self._isPresentingGift = isPresentingGift
+        self.onContinue = onContinue
+    }
 
     @State private var codex = CodexSetup.shared
     @State private var claude = ClaudeSetup.shared
@@ -57,65 +68,34 @@ struct OnboardingFrontierModelView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Top-anchored, not vertically centered: panels differ in height, and re-centering
-            // on every tab switch made the header and pills jump. Anchored, only the area
-            // below the pills changes; the ScrollView carries the tall endpoint panels.
-            ScrollView {
-                VStack(spacing: 34) {
-                    VStack(spacing: 14) {
-                        OnboardingWhisper("FRONTIER MODEL")
-
-                        Text("Choose your frontier model")
-                            .display(26)
-                            .foregroundStyle(Theme.Ink.bright)
-
-                        Text(PrivacyCopy.frontierSummary)
-                            .font(.title3)
-                            .foregroundStyle(Theme.secondary)
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(4)
-                            .frame(maxWidth: 640)
-                    }
-
-                    FrontierEnginePicker(tab: $tab, layout: .singleRow,
-                                         chatgptHealthy: codex.loggedIn) {
-                        OnboardingCodexLoginPanel()
-                    }
-
-                    if tab != .claude {
-                        if codex.preparing || codex.installing { MonoWaitLine("preparing codex…") }
-                        OnboardingStatusText(codex.installStatus)
-                    }
-
-                    OnboardingStatusText(continueStatus)
-
-                    if limitedChatGPT {
-                        VStack(spacing: 10) {
-                            Text("Your ChatGPT plan has limited usage. Try Sidekick now; Sentient will offer an upgrade if your provider reaches a limit.")
-                                .font(.body).foregroundStyle(Theme.secondary)
-                                .multilineTextAlignment(.center).frame(maxWidth: 520)
-                        }
-                        .accessibilityIdentifier("onboarding.limitedPlan")
-                    }
-
-                    // The quiet reward: the halo lights only once an engine is actually
-                    // ready (GlowHalo's `active` rides `enabled`), at the armed-CTA subtlety.
-                    OnboardingNextButton(title: "Continue",
-                                         enabled: engineReady && !continuing && !enginePreparing,
-                                         glow: 0.28, action: continueWithEngine)
+        // A Setup Assistant page: tile, title and message, the engine picker, then a status
+        // line reserved so Continue never moves. The footer carries Back, the privacy small
+        // print, the gift link and the GitHub mark, with Continue on the right.
+        SetupAssistantPage(tile: .setupChooseAI, title: "Choose Your AI",
+                           message: PrivacyCopy.frontierSummary, width: 640) {
+            VStack(alignment: .leading, spacing: Space.xl) {
+                FrontierEnginePicker(tab: $tab, layout: .singleRow,
+                                     chatgptHealthy: codex.loggedIn) {
+                    OnboardingCodexLoginPanel()
                 }
-                .padding(.horizontal, 40)
-                .padding(.vertical, 48)
-                .frame(maxWidth: .infinity)
+                statusStack
+                    .frame(minHeight: 22, alignment: .top)
             }
-            .scrollBounceBehavior(.basedOnSize)
-
-            // Keep room for the privacy controls and invitation ticket while tall provider
-            // panels scroll. OnboardingView hosts the ticket so its gift covers all chrome.
-            Color.clear.frame(height: 220)
+        } footer: {
+            SetupAssistantFooter(primaryTitle: "Continue",
+                                 primaryEnabled: engineReady && !continuing && !enginePreparing,
+                                 back: onBack) {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    OnboardingTelemetryConsent()
+                    HStack(spacing: Space.m) {
+                        OnboardingInviteView(isPresentingGift: $isPresentingGift)
+                        OnboardingGitHubButton()
+                    }
+                }
+            } primary: {
+                continueWithEngine()
+            }
         }
-        .overlay { OnboardingTelemetryConsent() }
         .onAppear {
             tab = activeTab
             // Join launch preparation, including adoption of a portable existing login into
@@ -147,6 +127,23 @@ struct OnboardingFrontierModelView: View {
         .onChange(of: presetRaw) { cancelContinue() }
         .onChange(of: tab) { cancelContinue() }
         .onDisappear { cancelContinue() }
+    }
+
+    /// Preparation, install and Continue status, plus the limited-plan note.
+    @ViewBuilder private var statusStack: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if tab != .claude {
+                if codex.preparing || codex.installing { MonoWaitLine("Preparing Codex…") }
+                OnboardingStatusText(codex.installStatus)
+            }
+            OnboardingStatusText(continueStatus)
+            if limitedChatGPT {
+                StatusLabel("Your ChatGPT plan has limited usage. Try Sidekick now; Sentient will offer an upgrade if your provider reaches a limit.",
+                            tone: .info)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("onboarding.limitedPlan")
+            }
+        }
     }
 
     private func continueWithEngine() {
@@ -204,11 +201,13 @@ struct OnboardingFrontierModelView: View {
     }
 }
 
-#Preview("Onboarding — frontier model") {
-    ZStack {
-        Theme.bg.ignoresSafeArea()
-        OnboardingFrontierModelView(onContinue: {})
+#Preview("Onboarding — Choose Your AI") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            OnboardingFrontierModelView(onBack: {}, onContinue: {})
+                .frame(width: 1100, height: 820)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
     }
-    .frame(width: 1180, height: 880)
-    .preferredColorScheme(.dark)
 }

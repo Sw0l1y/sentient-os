@@ -3,8 +3,8 @@
 //  Sentient OS macOS
 //
 //  @main app shell. One main window hosts onboarding, then a sidebar of pages — Home,
-//  Knowledge, Analysis, Personal Setup and each Settings pane; plus an always-present
-//  MenuBarExtra. The live store is CycleStore (Ingestion/CycleStore.swift),
+//  Knowledge, Analysis, Finish Setup and each Settings pane; plus an always-present
+//  MenuBarExtra (a standard menu). The app follows the system appearance. The live store is CycleStore (Ingestion/CycleStore.swift),
 //  reached directly by the views — the app shell owns no store.
 //
 
@@ -44,7 +44,6 @@ struct SentientOSApp: App {
         Window("Sentient OS", id: Self.homeWindowID) {
             RootView()
                 .environment(appState)
-                .preferredColorScheme(.dark)   // Sentient OS is dark-only — no light mode
                 .task {
                     #if DEBUG
                     guard ProcessInfo.processInfo.environment["SENTIENT_SELFTEST"] == nil else { return }
@@ -62,7 +61,9 @@ struct SentientOSApp: App {
         .restorationBehavior(.disabled)
         .commands {
             CommandGroup(replacing: .appSettings) {
-                Button("Settings…") { HomeWindowOpening.open(.settings) }
+                Button("Settings…") {
+                    HomeWindowOpening.open(.settings, settingsPane: MainNavigation.shared.lastSettingsPane)
+                }
                     .keyboardShortcut(",", modifiers: .command)
                     .disabled(!appState.hasCompletedOnboarding || ComputerUseUpgrade.shared.isBlockingInterface)
             }
@@ -87,6 +88,14 @@ struct SentientOSApp: App {
                     NSWorkspace.shared.open(URL(string: "https://github.com/Sentient-OS-Labs/sentient-os/issues")!)
                 }
             }
+            #if DEBUG
+            CommandMenu("Debug") {
+                Button("Developer Tools…") {
+                    MainNavigation.shared.showDevTools = true
+                    HomeWindowOpening.open()
+                }
+            }
+            #endif
         }
 
         // PROACTIVE · EXECUTE — the dev window for PART 3 (the executor). Lists the real
@@ -119,10 +128,10 @@ struct SentientOSApp: App {
         MenuBarExtra {
             MenuBarView()
                 .environment(appState)
-                .preferredColorScheme(.dark)
         } label: {
             MenuBarIcon().modifier(NotificationRouting())
         }
+        .menuBarExtraStyle(.menu)
     }
 }
 

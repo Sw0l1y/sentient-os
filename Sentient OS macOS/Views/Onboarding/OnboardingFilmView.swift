@@ -5,12 +5,12 @@
 //  Onboarding slide 1 — the website's film (sentient-os.ai/onboarding) playing inside a
 //  WKWebView. The page drives itself (its Autopilot scrolls the film) and parks at the
 //  morning-home rest (?end=0.42 in film progress); at each park it posts "parked" to the
-//  `autopilot` message handler and the native Continue button blooms in. The night film leads
+//  `autopilot` message handler and the native Continue button appears. The night film leads
 //  into Sidekick, then a native Double Tap lesson before the frontier-model picker.
 //  The webview is a movie, not a page: hit-testing
 //  returns nil (no scrolling, no clicks), navigation off our host is blocked, and the view
-//  fades in black-on-black only after the page loads (no flash).
-//  Offline or a failed load falls back to a quiet branded slide, so onboarding is never
+//  fades in only after the page has painted, over the window background.
+//  Offline or a failed load falls back to a Setup Assistant page, so onboarding is never
 //  blocked on the network. Watchdogs bound every wait: 12s to load, 40s to park.
 //  DEBUG: `defaults write` the string `dev.film.url` to point the step at a local dev
 //  server (e.g. http://localhost:3100/onboarding?end=0.42).
@@ -39,7 +39,9 @@ struct OnboardingFilmView: View {
     /// For the notch demo: the film step arms the coordinator's one-shot scripted Sidekick
     /// performance while the film is parked on the invitation (click the notch / press right ⌘).
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
+    private var reduceMotion: Bool { motionOverride ?? systemReduceMotion }
 
     private var inviting: Bool { phase == .awaitingNotch && appState.commandCoordinator.phase == .hidden }
 
@@ -67,6 +69,8 @@ struct OnboardingFilmView: View {
     /// didFinish fired — arms the fallback fade for a "ready"-less page (older deploy).
     @State private var finishedLoad = false
     @State private var filmUnavailable = false
+    /// The loading spinner shows only once loading has taken longer than a second.
+    @State private var showSpinner = false
 
     /// The bridge for driving the page's autopilot (leg 2's continueTo).
     @State private var driver = FilmDriver()
@@ -130,8 +134,6 @@ struct OnboardingFilmView: View {
 
     private var stage: some View {
         ZStack {
-            Theme.bg.ignoresSafeArea()
-
             if phase == .unavailable {
                 fallbackSlide.transition(.opacity)
             } else {
@@ -152,15 +154,25 @@ struct OnboardingFilmView: View {
                         .allowsHitTesting(false)
                 }
 
-                // Keep the page mounted and hidden during the native lesson so a stale
-                // Sidekick frame cannot flash through the transition to the next step.
-                if phase == .doubleTap {
-                    OnboardingDoubleTapView(coordinator: appState.commandCoordinator,
-                                            onContinue: finishDoubleTap)
+                // Loading: nothing for the first second, then a small spinner.
+                if phase == .loading && showSpinner {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Loading")
                         .transition(.opacity)
                 }
 
-                // Continue blooms in whenever a leg parks. On the MORNING park the laptop
+                // Keep the page mounted and hidden during the native lesson so a stale
+                // Sidekick frame cannot flash through the transition to the next step. The
+                // lesson sits on the window background, so none of the film shows through.
+                if phase == .doubleTap {
+                    OnboardingDoubleTapView(coordinator: appState.commandCoordinator,
+                                            onContinue: finishDoubleTap)
+                        .background { Rectangle().fill(.background).ignoresSafeArea() }
+                        .transition(.opacity)
+                }
+
+                // Continue appears whenever a leg parks. On the MORNING park the laptop
                 // fills the window's lower half, so the button sits ABOVE it — centered in
                 // the black band between the "9:00 AM" whisper and the lid's top edge.
                 // The band's position is PAGE-MEASURED (driver.morningBand: the film lays
@@ -171,7 +183,7 @@ struct OnboardingFilmView: View {
                 // the bottom.
                 if phase == .parked {
                     GeometryReader { geo in
-                        OnboardingNextButton(title: "Continue", action: advanceFromPark)
+                        continueButton
                             .position(x: geo.size.width / 2,
                                       y: morningBandCenter ?? geo.size.height * 0.185)
                             .onAppear { measureMorningBand() }
@@ -184,7 +196,7 @@ struct OnboardingFilmView: View {
                     // room below the windows, and a bottom-hugging button read awkward.
                     VStack {
                         Spacer()
-                        OnboardingNextButton(title: "Continue", action: advanceFromPark)
+                        continueButton
                             .padding(.bottom, 44)
                     }
                     .transition(.opacity)
@@ -198,11 +210,33 @@ struct OnboardingFilmView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The open-source receipt, bottom-right over the film. The fallback page and the
+        // Double Tap lesson carry it in their own footers instead.
+        .overlay(alignment: .bottomTrailing) {
+            if phase != .doubleTap && phase != .unavailable {
+                OnboardingGitHubButton()
+                    .padding(Space.l)
+            }
+        }
+    }
+
+    /// The film's one native control: the system prominent button, on Return.
+    private var continueButton: some View {
+        Button("Continue", action: advanceFromPark)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .keyboardShortcut(.defaultAction)
     }
 
     var body: some View {
         stage
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: inviting)
+        .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: inviting)
+        .task {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            withAnimation(Motion.gated(Motion.standard, reduceMotion: reduceMotion)) { showSpinner = true }
+        }
         // The film step leaving (Continue, back) must never strand an armed demo — the
         // notch goes back to its real behavior the moment onboarding moves on.
         .onDisappear { appState.commandCoordinator.disarmOnboardingNotchDemo() }
@@ -273,7 +307,7 @@ struct OnboardingFilmView: View {
 
     private func setPhase(_ new: Phase) {
         if new == .unavailable { filmUnavailable = true }
-        withAnimation(.easeInOut(duration: 0.45)) { phase = new }
+        withAnimation(Motion.gated(Motion.standard, reduceMotion: reduceMotion)) { phase = new }
     }
 
     /// A leg landed — route the page's "parked" by which leg was riding.
@@ -358,24 +392,28 @@ struct OnboardingFilmView: View {
         }
     }
 
-    /// The webview's entrance — a long, gentle rise from black (the film's entrance is
-    /// already playing underneath it). Idempotent: ready + the didFinish fallback can race.
+    /// The webview's entrance — a long, gentle rise (the film's entrance is already playing
+    /// underneath it; the 1.2 s matches the film's own opening, and Reduce Motion skips it).
+    /// Idempotent: ready + the didFinish fallback can race.
     private func fadeIn() {
         guard phase == .loading else { return }
-        withAnimation(.easeInOut(duration: 1.2)) { phase = .playing }
+        withAnimation(Motion.gated(.easeInOut(duration: 1.2), reduceMotion: reduceMotion)) { phase = .playing }
     }
 
-    /// The no-internet stand-in: the promise in one line, and onboarding moves on.
+    /// The no-internet stand-in: a Setup Assistant page with the promise as its message. Its
+    /// Continue still runs the Double Tap lesson, which owns leaving the step.
     private var fallbackSlide: some View {
-        VStack(spacing: 40) {
-            Spacer()
-            Text("An AI that knows your life, and acts on it.")
-                .display(30)
-            OnboardingNextButton(title: "Continue", action: { setPhase(.doubleTap) })
-            Spacer()
+        SetupAssistantPage(tile: .setupSidekick, title: "Meet Sentient",
+                           message: "An AI that knows your life, and acts on it.") {
             OnboardingTrustFooter()
+                .frame(maxWidth: .infinity)
+        } footer: {
+            SetupAssistantFooter(primaryTitle: "Continue") {
+                OnboardingGitHubButton()
+            } primary: {
+                setPhase(.doubleTap)
+            }
         }
-        .padding(40)
     }
 }
 
@@ -522,7 +560,9 @@ private struct FilmWebView: NSViewRepresentable {
 
         let webView = PassiveWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
-        webView.underPageBackgroundColor = .black   // never a white flash behind the film
+        // The film's own letterbox: the film is black art, so its under-page colour is black in
+        // both appearances (an NSColor for WebKit, not SwiftUI chrome).
+        webView.underPageBackgroundColor = .black
         webView.allowsMagnification = false
         webView.allowsBackForwardNavigationGestures = false
         driver.webView = webView
@@ -596,7 +636,12 @@ private struct FilmWebView: NSViewRepresentable {
 }
 
 #Preview("Onboarding — film slide") {
-    OnboardingFilmView(onContinue: {})
-        .frame(width: 1180, height: 880)
-        .preferredColorScheme(.dark)
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            OnboardingFilmView(onContinue: {})
+                .frame(width: 1100, height: 820)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }

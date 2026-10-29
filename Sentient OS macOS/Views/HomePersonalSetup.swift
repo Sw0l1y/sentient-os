@@ -1,5 +1,7 @@
-// The optional personal-context invitation lives beside the working Sidekick surface.
-// These examples are local presentation only: they never create tasks or claim real results.
+// Finish Setting Up: the inspector column Home shows while personal setup is pending, the
+// in-column example page each feature row opens, the Today line that says Sidekick is ready, and
+// the starter replies that end Today. The examples are local presentation only: they never
+// create tasks or claim real results.
 import SwiftUI
 
 enum HomePersonalFeature: String, CaseIterable, Identifiable {
@@ -10,7 +12,7 @@ enum HomePersonalFeature: String, CaseIterable, Identifiable {
         switch self {
         case .doubleTap: "Double Tap"
         case .proactive: "Proactive Intelligence"
-        case .knowledge: "Knowledge base"
+        case .knowledge: "Knowledge Base"
         case .sidekick: "Personal Sidekick"
         }
     }
@@ -30,123 +32,98 @@ enum HomePersonalFeature: String, CaseIterable, Identifiable {
         case .sidekick: "sparkles"
         }
     }
+    /// The feature's tile (SPEC-00 2.5, Finish Setup feature rows).
+    var tile: TileSpec {
+        switch self {
+        case .doubleTap: .featureDoubleTap
+        case .proactive: .featureProactive
+        case .knowledge: .featureKnowledge
+        case .sidekick: .featureSidekick
+        }
+    }
 }
 
+/// The "Finish Setting Up" inspector: a grouped form with one row per feature (tile, title,
+/// "See Example") and the one setup action at the bottom.
 struct HomePersonalSetupPanel: View {
-    static let width: CGFloat = 360
+    /// The inspector's ideal width; HomeView sizes the column min 240 / ideal this / max 320.
+    static let width: CGFloat = 260
     let selectedFeature: HomePersonalFeature?
     let emphasizeSetup: Bool
     let active: Bool
     var previewEnabled = true
     let onSelectFeature: (HomePersonalFeature) -> Void
     let onFinishSetup: () -> Void
-    @State private var hoveredFeature: HomePersonalFeature?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Finish Sentient Setup to unlock:")
-                .font(.title.weight(.medium))
-                .foregroundStyle(SidekickStyle.ink)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 12)
-
-            ForEach(HomePersonalFeature.allCases) { feature in
-                featureButton(feature)
-                Rectangle().fill(.quinary).frame(height: 1)
-            }
-
-            // The rewards lead directly to the one setup action.
-            Button(action: onFinishSetup) {
-                HStack(spacing: 16) {
-                    Text("Finish setup").font(.body.weight(.medium))
-                    Spacer(minLength: 0)
-                    Image(systemName: "arrow.right").font(.callout.weight(.medium))
+        Form {
+            Section {
+                ForEach(HomePersonalFeature.allCases) { feature in
+                    featureRow(feature)
                 }
-                .foregroundStyle(Color(white: 0.08))
-                .padding(.horizontal, 17).frame(height: 46)
-                .background(.white, in: Capsule())
-                .contentShape(Capsule())
+            } header: {
+                Text("Finish setting up Sentient to unlock:")
+                    .textCase(nil)
+            } footer: {
+                if emphasizeSetup {
+                    Text("Your first task is done. Add your context next.")
+                }
             }
-            .buttonStyle(SidekickPressStyle())
-            .background(GlowHalo(active: emphasizeSetup, intensity: 0.27, period: 12, animating: active))
-            .padding(.top, 20)
-            .accessibilityIdentifier("personalSetup.finish")
-            .accessibilityHint("Connect three sources to build your personal context")
+            Section {
+                Button(action: onFinishSetup) {
+                    Text("Finish Setup…")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("personalSetup.finish")
+                .accessibilityHint("Connect three sources to build your personal context")
+            }
         }
-        .padding(26)
-        .background(Color(white: 0.055), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous)
-            .strokeBorder(Theme.stroke, lineWidth: 1))
+        .formStyle(.grouped)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("personalSetup.panel")
     }
 
-    private func featureButton(_ feature: HomePersonalFeature) -> some View {
+    private func featureRow(_ feature: HomePersonalFeature) -> some View {
         let selected = selectedFeature == feature
-        let fillOpacity: Double = selected ? 0.045 : (previewEnabled && hoveredFeature == feature ? 0.025 : 0)
-        return Button { onSelectFeature(feature) } label: {
-            HStack(alignment: .top, spacing: 9) {
-                Image(systemName: feature.symbol)
-                    .font(.body.weight(.medium))
-                    .frame(width: 16).padding(.top, 2)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(feature.title).font(.body.weight(.medium))
-                        .foregroundStyle(SidekickStyle.ink)
-                    Text(feature.detail).font(.body)
-                        .foregroundStyle(SidekickStyle.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: selected ? "chevron.up" : "chevron.down")
-                    .font(.caption2.weight(.medium)).padding(.top, 4)
+        return HStack(alignment: .top, spacing: Space.m) {
+            IconTile(feature.tile, size: 30)
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text(feature.title)
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHidden(true)
+                Button("See Example") { onSelectFeature(feature) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!previewEnabled)
+                    .help(previewEnabled ? "Show an example" : "Examples are available after your current task")
+                    .accessibilityLabel(feature.title + ". " + feature.detail)
+                    .accessibilityValue(selected ? "Example open" : "Example closed")
+                    .accessibilityHint("Show an example without sending a request")
+                    .accessibilityIdentifier("personalSetup.feature." + feature.rawValue)
             }
-            .foregroundStyle(selected ? SidekickStyle.ink : SidekickStyle.secondary)
-            .padding(.horizontal, 12).padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(fillOpacity),
-                in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(.white.opacity(selected ? 0.08 : 0), lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
-        // Outset the button, not its text: every row keeps the same alignment, with
-        // a real clickable gutter around the icon and disclosure arrow.
-        .padding(.horizontal, -12).padding(.vertical, 3)
-        .onHover { hovering in
-            if hovering { hoveredFeature = feature }
-            else if hoveredFeature == feature { hoveredFeature = nil }
-        }
-        .animation(.easeOut(duration: 0.12), value: hoveredFeature)
-        .animation(.easeOut(duration: 0.12), value: selectedFeature)
-        .disabled(!previewEnabled)
-        .help(previewEnabled ? "Show an example" : "Examples are available after your current task")
-        .accessibilityLabel(feature.title + ". " + feature.detail)
-        .accessibilityValue(selected ? "Example open" : "Example closed")
-        .accessibilityHint("Show an example without sending a request")
-        .accessibilityIdentifier("personalSetup.feature." + feature.rawValue)
+        .padding(.vertical, Space.xs)
+        .listRowBackground(selected ? Color.accentColor.opacity(0.12) : nil)
     }
 }
 
+/// Today's line once Sidekick can take requests. `compact` is kept for the init and ignored.
 struct HomeSidekickInvitation: View {
     var compact = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Sidekick is ready.")
-                .font(.system(size: compact ? 30 : 34, weight: .medium))
-                .foregroundStyle(SidekickStyle.ink)
-            Text("What can I take off your hands?")
-                .font(.system(size: compact ? 24 : 27, weight: .regular))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.vertical, 16)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("sidekick.readyInvitation")
+        Text("Sidekick is ready now. Ask it anything.")
+            .font(.body)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("sidekick.readyInvitation")
     }
 }
 
+/// The starters that end Today, like Messages' suggested replies: capsule buttons that fill the
+/// draft and never send.
 struct HomeSidekickSuggestions: View {
     struct Suggestion: Identifiable {
         let id: String
@@ -168,35 +145,38 @@ struct HomeSidekickSuggestions: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 7) {
-                ForEach(Self.suggestions) { suggestion in suggestionButton(suggestion).fixedSize(horizontal: true, vertical: false) }
+            HStack(spacing: Space.s) {
+                ForEach(Self.suggestions) { suggestion in
+                    chip(suggestion).fixedSize()
+                }
             }
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 7), GridItem(.flexible(), spacing: 7)], spacing: 7) {
-                ForEach(Self.suggestions) { suggestion in suggestionButton(suggestion) }
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: Space.s, alignment: .leading),
+                                GridItem(.flexible(), spacing: Space.s, alignment: .leading)],
+                      alignment: .leading, spacing: Space.s) {
+                ForEach(Self.suggestions) { suggestion in
+                    chip(suggestion)
+                }
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Try Sidekick")
     }
 
-    private func suggestionButton(_ suggestion: Suggestion) -> some View {
+    private func chip(_ suggestion: Suggestion) -> some View {
         Button { onSelect(suggestion.prompt) } label: {
-            HStack(spacing: 7) {
-                Image(systemName: suggestion.symbol).font(.callout)
-                Text(suggestion.title).font(.subheadline).lineLimit(1)
-            }
-            .foregroundStyle(SidekickStyle.secondary)
-            .padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 43)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(Theme.stroke, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 11))
+            Label(suggestion.title, systemImage: suggestion.symbol)
+                .lineLimit(1)
         }
-        .buttonStyle(SidekickPressStyle())
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        .buttonBorderShape(.capsule)
         .accessibilityIdentifier("sidekick.suggestion." + suggestion.id)
         .accessibilityHint("Fill the message box; review before sending")
     }
 }
 
+/// A feature's example as an in-column drill-in, like a System Settings sub-pane: a Back chevron
+/// at the top left, the feature's title, then the interactive showcase. The Ask bar stays below.
 struct HomePersonalFeaturePreview: View {
     let feature: HomePersonalFeature
     let onClose: () -> Void
@@ -206,55 +186,63 @@ struct HomePersonalFeaturePreview: View {
     @Environment(\.accessibilityReduceMotion) private var systemReducedMotion
     @Environment(\.sidekickReduceMotionOverride) private var motionOverride
     @State private var pageRevision = 0
+    @State private var headerHeight: CGFloat = 53
     private var reducedMotion: Bool { motionOverride ?? systemReducedMotion }
 
     var body: some View {
         GeometryReader { geometry in
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Button(action: onClose) {
-                    Image(systemName: "xmark").font(.subheadline.weight(.medium))
-                        .foregroundStyle(SidekickStyle.secondary)
-                        .frame(width: 30, height: 30)
-                        .background(.quinary, in: Circle())
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.cancelAction)
-                .help("Close example (Escape)")
-                .accessibilityLabel("Close " + feature.title + " example")
-                .accessibilityIdentifier("personalSetup.preview.close")
-                Text(feature.title).font(.body.weight(.medium))
-                    .foregroundStyle(SidekickStyle.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 4)
-                Text("EXAMPLE").font(.system(.caption2, design: .monospaced, weight: .medium))
-                    .foregroundStyle(SidekickStyle.secondary)
-            }
-            .padding(.horizontal, 15).padding(.vertical, 12)
-            Rectangle().fill(.quinary).frame(height: 1)
-            ScrollViewReader { proxy in
-                ScrollView {
-                    example(width: max(1, geometry.size.width - 40))
-                        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
-                            onContentHeightChange($0 + 55) // fixed close/title row and hairline
-                        }
-                        .id("showcase-top")
-                }
-                .scrollBounceBehavior(.basedOnSize)
-                .onChange(of: pageRevision) { _, _ in
-                    proxy.scrollTo("showcase-top", anchor: .top)
+            let column = min(geometry.size.width, PageMetrics.readingColumn)
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                    .frame(maxWidth: PageMetrics.readingColumn, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
+                Divider()
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        example(width: max(1, column - Space.xl * 2))
+                            .padding(.horizontal, Space.xl)
+                            .padding(.vertical, Space.l)
+                            .frame(maxWidth: PageMetrics.readingColumn, alignment: .leading)
+                            .frame(maxWidth: .infinity)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                                onContentHeightChange($0 + headerHeight + 1)   // the header and its divider
+                            }
+                            .id("showcase-top")
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .onChange(of: pageRevision) { _, _ in
+                        proxy.scrollTo("showcase-top", anchor: .top)
+                    }
                 }
             }
         }
-        }
-        .background(Color(white: 0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.stroke, lineWidth: 1))
-        .shadow(color: .black.opacity(0.35), radius: 28, y: 12)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("personalSetup.preview." + feature.rawValue)
+    }
+
+    private var header: some View {
+        HStack(spacing: Space.s) {
+            Button(action: onClose) {
+                Label("Back", systemImage: "chevron.left")
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .keyboardShortcut(.cancelAction)
+            .help("Close example (Escape)")
+            .accessibilityLabel("Close " + feature.title + " example")
+            .accessibilityIdentifier("personalSetup.preview.close")
+            IconTile(feature.tile, size: 20)
+            Text(feature.title)
+                .font(.headline)
+                .lineLimit(1)
+            Spacer(minLength: Space.s)
+            Text("Example")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, Space.xl)
+        .padding(.vertical, Space.l)
     }
 
     @ViewBuilder private func example(width: CGFloat) -> some View {
@@ -274,14 +262,41 @@ struct HomePersonalFeaturePreview: View {
 }
 
 #if DEBUG
-#Preview("Personal setup reward panel") {
-    HomePersonalSetupPanel(selectedFeature: nil, emphasizeSetup: false, active: false,
-                           onSelectFeature: { _ in }, onFinishSetup: {})
-        .frame(width: HomePersonalSetupPanel.width).padding(30).background(SidekickStyle.base).preferredColorScheme(.dark)
+#Preview("Finish Setting Up inspector") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            HomePersonalSetupPanel(selectedFeature: .knowledge, emphasizeSetup: true, active: false,
+                                   onSelectFeature: { _ in }, onFinishSetup: {})
+                .frame(width: HomePersonalSetupPanel.width, height: 520)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }
 
-#Preview("Personal setup Double Tap example") {
-    HomePersonalFeaturePreview(feature: .doubleTap, onClose: {})
-        .frame(width: 580, height: 360).padding(30).background(SidekickStyle.base).preferredColorScheme(.dark)
+#Preview("Today line and starters") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            VStack(alignment: .leading, spacing: Space.l) {
+                HomeSidekickInvitation()
+                HomeSidekickSuggestions { _ in }
+            }
+            .padding(Space.xl)
+            .frame(width: 680)
+            .background(Color(nsColor: .textBackgroundColor))
+            .environment(\.colorScheme, scheme)
+        }
+    }
+}
+
+#Preview("Double Tap example") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            HomePersonalFeaturePreview(feature: .doubleTap, onClose: {})
+                .frame(width: 620, height: 480)
+                .background(Color(nsColor: .textBackgroundColor))
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }
 #endif

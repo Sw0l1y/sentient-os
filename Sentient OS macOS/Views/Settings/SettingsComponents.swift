@@ -2,24 +2,29 @@
 //  SettingsComponents.swift
 //  Sentient OS macOS
 //
-//  Settings scaffolds, grouped forms, rows, and controls. The form appearance is scoped to
-//  SettingsPane; Knowledge Sources and shared onboarding controls keep their original styling.
+//  The legacy Settings vocabulary, rebuilt on the system's own form primitives (Section,
+//  LabeledContent, Toggle, DisclosureGroup, StatusRow, InfoPopoverButton). Every type keeps its
+//  init so callers in other areas keep compiling; inside Settings (`settingsFormStyle == true`,
+//  set by SettingsView) they emit real grouped-Form Sections and rows, and outside a Form they draw
+//  the same content in a GroupBox.
 //  Doc: Documentation - Settings.md
 //
 
 import SwiftUI
+import AppKit
 
-/// Opt-in styling keeps shared source pickers and onboarding visually unchanged.
+/// True while rendering inside Settings' grouped Form (SettingsView sets it). Outside Settings it
+/// stays false, so onboarding, gates and invitations get GroupBoxes instead of bare Sections.
 private struct SettingsFormStyleKey: EnvironmentKey {
     static let defaultValue = false
 }
 
-/// Headings can use Settings typography without restyling the source picker's controls.
+/// Kept for source compatibility; nothing reads it any more.
 private struct SettingsHeadingStyleKey: EnvironmentKey {
     static let defaultValue = false
 }
 
-/// Permissions & Health uses tighter spacing throughout its shared form components.
+/// Kept for source compatibility; nothing reads it any more.
 private struct SettingsCompactLayoutKey: EnvironmentKey {
     static let defaultValue = false
 }
@@ -47,47 +52,30 @@ enum SettingsStyle {
     static let control = Color(nsColor: .controlBackgroundColor)
 }
 
-/// Readable page title and a centered, bounded measure. Sources keeps its chip scaffold
-/// (no form style) but shares the centering.
+/// A Settings pane: one centered grouped Form. The window title names the pane, so `title` is not
+/// drawn; a non-empty `whisper` becomes the first Section's footer. `legacyLayout` is ignored.
 struct SettingsPane<Content: View>: View {
-    @Environment(\.settingsCompactLayout) private var compactLayout
     let title: String
     var whisper: String? = nil
     var legacyLayout = false
     @ViewBuilder var content: Content
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                // The window title names the pane; the heading stays for VoiceOver's rotor.
-                Text(title)
-                    .font(.title2.weight(.semibold))
-                    .accessibilityAddTraits(.isHeader)
-                if let whisper {
-                    Text(whisper)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 4)
-                }
-                content.padding(.top, compactLayout ? 16 : 20)
+        PaneForm {
+            if let whisper, !whisper.isEmpty {
+                Section {} footer: { Text(whisper) }
             }
-            .frame(maxWidth: 680, alignment: .leading)
-            .padding(.horizontal, 28)
-            .padding(.top, 20)
-            .padding(.bottom, 28)
-            .frame(maxWidth: .infinity)
+            content
         }
-        .environment(\.settingsFormStyle, !legacyLayout)
+        .environment(\.settingsFormStyle, true)
     }
 }
 
-/// A sentence-case heading above one bordered group of related settings.
-/// The original source/onboarding appearance remains the default outside SettingsPane.
+/// A group of related settings. Inside a Form it is a `Section` (label as header, description as
+/// footer); outside one it is a headline, a GroupBox and a footnote. `inset` and `destructive` are
+/// accepted for compatibility: destructive buttons carry their own role.
 struct SettingsGroup<Content: View, Trailing: View>: View {
-    @Environment(\.settingsFormStyle) private var formStyle
-    @Environment(\.settingsHeadingStyle) private var headingStyle
-    @Environment(\.settingsCompactLayout) private var compactLayout
+    @Environment(\.settingsFormStyle) private var inForm
     let label: String
     let badge: String?
     let description: String?
@@ -110,34 +98,42 @@ struct SettingsGroup<Content: View, Trailing: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: formStyle ? 8 : 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(label)
-                        .font(.headline)
-                        .foregroundStyle(destructive ? Theme.Ink.red : .primary)
-                        .accessibilityAddTraits(.isHeader)
-                    if let badge {
-                        Text(badge).font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    if Trailing.self != EmptyView.self {
-                        Spacer(minLength: 12)
-                        trailing
-                    }
-                }
-                if let description { SettingsProse(description) }
+        if inForm {
+            Section {
+                content
+            } header: {
+                header
+            } footer: {
+                if let description { Text(description) }
             }
-            if formStyle {
-                // The grouped box System Settings draws around related rows.
-                content
-                    .padding(.horizontal, min(inset, compactLayout ? 12 : 14))
-                    .padding(.vertical, min(inset, compactLayout ? 6 : 8))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quinary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(destructive ? Theme.Ink.red.opacity(0.4) : SettingsStyle.border.opacity(0.6), lineWidth: 0.5))
-            } else {
-                content
+        } else {
+            VStack(alignment: .leading, spacing: Space.s) {
+                header
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                GroupBox {
+                    VStack(alignment: .leading, spacing: Space.s) { content }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if let description {
+                    Text(description)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: Space.s) {
+            Text(label)
+            if let badge {
+                Text(badge).foregroundStyle(.secondary)
+            }
+            if Trailing.self != EmptyView.self {
+                Spacer(minLength: Space.m)
+                trailing
             }
         }
     }
@@ -151,103 +147,72 @@ extension SettingsGroup where Trailing == EmptyView {
     }
 }
 
+/// A secondary explanatory line.
 struct SettingsProse: View {
-    @Environment(\.settingsFormStyle) private var formStyle
     let text: String
     init(_ text: String) { self.text = text }
 
     var body: some View {
         Text(text)
-            .font(formStyle ? .callout : .caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
-            .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-/// Shared label/control alignment for action rows, menus, and switches.
+/// A labeled control row. A subtitle is drawn by macOS as the label's secondary line.
 struct SettingsRow<Control: View>: View {
     let title: String
     var subtitle: String? = nil
     @ViewBuilder var control: Control
 
     var body: some View {
-        HStack(alignment: .center, spacing: 20) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.body)
-                if let subtitle { SettingsProse(subtitle) }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            control.fixedSize(horizontal: true, vertical: false)
+        LabeledContent {
+            control
+        } label: {
+            Text(title)
+            if let subtitle { Text(subtitle) }
         }
-        .padding(.vertical, 10)
-        .frame(minHeight: 44)
     }
 }
 
+/// A switch row with a secondary line.
 struct SettingToggleLine: View {
-    @Environment(\.settingsFormStyle) private var formStyle
     let title: String
     let sub: String
     @Binding var isOn: Bool
 
     var body: some View {
-        if formStyle {
-            SettingsRow(title: title, subtitle: sub) {
-                Toggle(title, isOn: $isOn)
-                    .labelsHidden().toggleStyle(.switch)
-                    .controlSize(.small)
-            }
-        } else {
-            HStack(alignment: .center, spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.body)
-                    Text(sub).font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 12)
-                Toggle("", isOn: $isOn)
-                    .labelsHidden().toggleStyle(.switch).controlSize(.small)
-            }
-            .padding(.vertical, 5)
+        Toggle(isOn: $isOn) {
+            Text(title)
+            Text(sub)
         }
+        .toggleStyle(.switch)
     }
 }
 
-/// A quiet, consistently sized action. Disabled and hover states remain visible on black.
+/// A standard push button: small inside a Form row, regular outside. `tint` is accepted and ignored.
 struct SettingsPillButton: View {
-    @Environment(\.settingsFormStyle) private var formStyle
+    @Environment(\.settingsFormStyle) private var inForm
     let title: String
-    var tint: Color = Theme.Ink.bright
+    var tint: Color = .accentColor
     let action: () -> Void
 
     var body: some View {
         Button(title, action: action)
-            .buttonStyle(SettingsActionStyle(tint: tint))
-            .controlSize(formStyle ? .regular : .small)
+            .buttonStyle(.bordered)
+            .controlSize(inForm ? .small : .regular)
     }
 }
 
-/// Settings actions: a standard push button. A non-default `tint` recolors it (green "connected",
-/// red "remove"); compact layouts step down a size.
+/// The standard bordered push button. `tint` is accepted and ignored (state belongs to a label or
+/// a glyph, never a button color).
 struct SettingsActionStyle: PrimitiveButtonStyle {
-    var tint: Color = Theme.Ink.bright
+    var tint: Color = .accentColor
 
     func makeBody(configuration: Configuration) -> some View {
-        SettingsActionBody(configuration: configuration, tint: tint)
-    }
-}
-
-private struct SettingsActionBody: View {
-    let configuration: PrimitiveButtonStyleConfiguration
-    let tint: Color
-    @Environment(\.settingsCompactLayout) private var compactLayout
-    @Environment(\.controlSize) private var controlSize
-
-    var body: some View {
-        GlassButtonStyle(tint: tint == Theme.Ink.bright ? nil : tint)
-            .makeBody(configuration: configuration)
-            .controlSize(compactLayout ? .small : controlSize)
+        Button(configuration)
+            .buttonStyle(.bordered)
     }
 }
 
@@ -268,25 +233,21 @@ struct SettingsMenu<Selection: Hashable, Options: View>: View {
     }
 }
 
-/// Extra explanation stays available without competing with everyday controls.
+/// Extra explanation behind a standard disclosure, collapsed by default.
 struct SettingsDetails<Content: View>: View {
     let title: String
     @ViewBuilder var content: Content
     @State private var expanded = false
 
     var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            VStack(alignment: .leading, spacing: 10) { content }
-                .padding(.top, 10)
-        } label: {
-            Text(title).font(.callout)
-                .foregroundStyle(.secondary)
+        DisclosureGroup(title, isExpanded: $expanded) {
+            VStack(alignment: .leading, spacing: Space.s) { content }
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
 
-/// Wraps chips onto as many rows as the width needs — like text, not a grid. Rows stay
-/// left-aligned and tidy no matter how many custom folders the user adds.
+/// Wraps views onto as many rows as the width needs, like text. Kept for its outside callers.
 struct ChipFlow: Layout {
     var spacing: CGFloat = 8
 
@@ -316,94 +277,35 @@ struct ChipFlow: Layout {
     }
 }
 
-/// A source/option pill — the connector form (the Analysis popover's chips, grown up a size).
-/// ON is a small celebration: a green wash + green ring + the green dot, so a selected source
-/// visibly counts. The label ink is ALWAYS pure white — the dot/wash/ring carry the on/off
-/// state, never a dimmed label (dim gray on OLED black was unreadable). `detail` carries counts
-/// ("12 chats"). Pure action chips ("+ Add Folder") pass `isAction: true`: no dot, a bright
-/// dashed border — an invitation, not a source. `locked` (knowledge-base-only mode's
-/// Gmail/Calendar) is the one deliberate exception to the always-white rule: a lock in place of
-/// the dot, softened ink, no action — unavailable, with the hover tip explaining why.
-/// `needsAttention` uses a flat amber dot for a connector that needs reconnecting.
-struct SettingsChip: View {
-    let label: String
-    var detail: String? = nil
-    let on: Bool
-    var isAction: Bool = false
-    var locked: Bool = false
-    var needsAttention: Bool = false
-    var action: (() -> Void)? = nil
-
-    @State private var lockHover = false
-
-    @ViewBuilder var body: some View {
-        if locked {
-            chip
-                .onHover { lockHover = $0 }
-                .overlay(alignment: .top) {
-                    if lockHover { LockedChipTip().offset(y: -32) }
-                }
-                .animation(.easeInOut(duration: 0.15), value: lockHover)
-        } else {
-            chip
-        }
-    }
-
-    private var chip: some View {
-        Button { if !locked { action?() } } label: {
-            HStack(spacing: 6) {
-                if locked {
-                    Image(systemName: "lock.fill").foregroundStyle(.secondary)
-                } else if needsAttention {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
-                } else if !isAction {
-                    Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-                }
-                Text(label).foregroundStyle(locked ? .secondary : .primary)
-                if let detail {
-                    Text(detail).foregroundStyle(.secondary)
-                }
-            }
-        }
-        .buttonStyle(.bordered)
-        .accessibilityValue(isAction ? "" : (on ? "On" : "Off"))
-    }
-}
-
-/// The instant hover notice on a locked (knowledge-base-only) connector chip — the system
-/// tooltip's delay made it look like there was none. Shared by SettingsChip and SourceChip.
+/// The instant explanation shown over a locked (knowledge-base-only) connector, which the Analysis
+/// popover overlays on hover.
 struct LockedChipTip: View {
     var body: some View {
         Text(CodexAuth.connectorLockedTip)
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(Color(white: 0.14), in: Capsule())
-            .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
+            .font(.callout)
+            .padding(Space.m)
+            .background(.background.secondary, in: RoundedRectangle(cornerRadius: Radius.group, style: .continuous))
             .fixedSize()
             .allowsHitTesting(false)
             .transition(.opacity)
     }
 }
 
-/// A lit status LED: bright core + double soft glow (tight halo, wide bloom). Shared by
-/// StatusLine and the collapsed codex summary.
+/// A small status dot. Kept for outside callers; status rows use StatusRow's tone glyphs.
 struct HealthDot: View {
     /// The warning orange every status dot shares.
-    static let warnAmber = Color(nsColor: .systemOrange)
+    static let warnAmber = Color.orange
 
     let color: Color
 
     var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 8, height: 8)
+        Image(systemName: "circle.fill")
+            .font(.caption2)
+            .foregroundStyle(color)
     }
 }
 
-/// Shared "warmth" for the info tips: once one tip has opened, sibling tips open instantly for a
-/// short window (the native-menu feel) instead of each re-waiting the hover delay.
+/// Shared "warmth" for info tips: once one tip has opened, siblings open instantly for a short window.
 @MainActor @Observable
 final class TipWarmth {
     static let shared = TipWarmth()
@@ -413,136 +315,114 @@ final class TipWarmth {
     func touch() { lastInteraction = Date() }
 }
 
-/// The tiny info icon beside a permission name. Hover 0.15s to open the explanation (a small
-/// popover); while any tip is warm, siblings open instantly.
+/// ⓘ beside a row: the standard info popover button.
 struct InfoTip: View {
-    @Environment(\.settingsFormStyle) private var formStyle
     let text: String
-    @State private var shown = false
-    @State private var hoverTask: Task<Void, Never>?
 
     var body: some View {
-        Image(systemName: "info.circle")
-            .font(.system(size: formStyle ? 13 : 10))
-            .foregroundStyle(Theme.Ink.label.opacity(0.75))
-            .onHover { inside in
-                hoverTask?.cancel()
-                if inside {
-                    if TipWarmth.shared.isWarm {
-                        shown = true
-                        TipWarmth.shared.touch()
-                    } else {
-                        hoverTask = Task {
-                            try? await Task.sleep(for: .seconds(0.15))
-                            guard !Task.isCancelled else { return }
-                            shown = true
-                            TipWarmth.shared.touch()
-                        }
-                    }
-                } else {
-                    if shown { TipWarmth.shared.touch() }   // keep siblings warm on the way out
-                    shown = false
-                }
-            }
-            .popover(isPresented: $shown, arrowEdge: .trailing) {
-                Text(text)
-                    .font(.system(size: formStyle ? 13 : 11.5))
-                    .lineSpacing(2.5)
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    .frame(width: 250, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        InfoPopoverButton(text)
     }
 }
 
-/// A health row with a verdict, readable status, and an inline fix. Shared permission gates
-/// retain their compact labels outside the Settings form.
+/// A status row with a verdict, its detail, an optional ⓘ and a fix button shown only while the
+/// status is not OK. Renders as a StatusRow (a LabeledContent), which lays out in a Form or a stack.
 struct StatusLine: View {
-    @Environment(\.settingsFormStyle) private var formStyle
-    @Environment(\.settingsCompactLayout) private var compactLayout
     enum Health { case ok, warn, bad }
 
     let title: String
     let health: Health
     let note: String                    // "granted" / "not granted" / "logged in"
-    var tip: String? = nil              // the info-icon explanation (InfoTip)
+    var tip: String? = nil              // the ⓘ explanation
     var fixTitle: String = "Fix…"
     var fix: (() -> Void)? = nil
 
-    private var dot: Color {
+    private var tone: StatusTone {
         switch health {
-        case .ok:   return Theme.Ink.green
-        case .warn: return HealthDot.warnAmber
-        case .bad:  return Theme.Ink.red
+        case .ok:   return .ok
+        case .warn: return .warning
+        case .bad:  return .error
         }
+    }
+
+    /// Today's capitalisation rule: the note's first letter is upper-cased ("Installed · 1.2").
+    private var formattedNote: String {
+        note.prefix(1).uppercased() + note.dropFirst()
     }
 
     var body: some View {
-        HStack(spacing: 11) {
-            HealthDot(color: dot)
-            HStack(spacing: 6) {
-                Text(title).font(.system(size: formStyle ? (compactLayout ? 14 : 15) : 12.5))
-                    .foregroundStyle(Theme.Ink.statusInk)
-                if let tip { InfoTip(text: tip) }
-            }
-            Spacer(minLength: 12)
-            if formStyle {
-                Text(note.prefix(1).uppercased() + note.dropFirst())
-                    .font(.body)
-                    .foregroundStyle(health == .ok ? SettingsStyle.secondary : dot)
-                    .multilineTextAlignment(.trailing)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                MonoCaps(note, size: 8.5, tracking: 1.6,
-                         color: health == .ok ? Theme.Ink.label : dot)
-            }
+        StatusRow(title, detail: formattedNote, tone: tone, info: tip) {
             if health != .ok, let fix {
-                SettingsPillButton(title: fixTitle, action: fix)
+                Button(fixTitle, action: fix)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             }
         }
-        .padding(.vertical, formStyle ? (compactLayout ? 9 : 14) : 6)
     }
 }
 
-/// A multiline text box — the one bordered input surface in Settings. Autosaves through its
-/// binding (pair with @AppStorage at the call site); shows a quiet placeholder while empty.
+/// A multiline text editor that autosaves through its binding, with a placeholder while empty.
+/// Inside a Form the row draws the field's background; outside it gets a hairline box.
 struct SettingsTextBox: View {
-    @Environment(\.settingsFormStyle) private var formStyle
-    @FocusState private var focused: Bool
+    @Environment(\.settingsFormStyle) private var inForm
     let placeholder: String
     @Binding var text: String
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            // Placeholder insets must mirror the editor's first line exactly: the editor sits at
-            // (horizontal 7 + NSTextView's ~5pt line-fragment padding, vertical 8) → (12, 8).
-            if text.isEmpty {
-                Text(placeholder)
-                    .font(.system(size: formStyle ? 14 : 11.5)).foregroundStyle(.white.opacity(formStyle ? 0.45 : 0.55))
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .allowsHitTesting(false)
-            }
-            TextEditor(text: $text)
-                .font(.system(size: formStyle ? 14 : 11.5)).foregroundStyle(Theme.Ink.statusInk)
-                .focused($focused)
-                .accessibilityLabel(placeholder)
-                .scrollContentBackground(.hidden)
-                .padding(.horizontal, 7).padding(.vertical, 8)
+        if inForm {
+            editor
+        } else {
+            editor
+                .padding(Space.s)
+                .overlay(RoundedRectangle(cornerRadius: Radius.thumbnail, style: .continuous)
+                    .strokeBorder(.separator))
         }
-        .frame(minHeight: formStyle ? 96 : 64)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-            .strokeBorder(formStyle && focused ? Color.white.opacity(0.38) : Theme.stroke, lineWidth: 1))
+    }
+
+    private var editor: some View {
+        TextEditor(text: $text)
+            .font(.body)
+            .frame(minHeight: 72)
+            .scrollContentBackground(.hidden)
+            .accessibilityLabel(placeholder)
+            .overlay(alignment: .topLeading) {
+                if text.isEmpty {
+                    Text(placeholder)
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                        .padding(.leading, 5)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
     }
 }
 
-/// The hairline that separates lines inside a group — or, a touch brighter, whole groups.
-/// `color` is for the one semantic exception: the red line guarding System's destructive tail.
+/// A separator. `color` and `opacity` are accepted and ignored.
 struct SettingsHairline: View {
-    var color: Color = .white
+    var color: Color = .secondary
     var opacity: Double = 0.06
 
     var body: some View {
         Divider()
+    }
+}
+
+#Preview("Settings components") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            SettingsPane(title: "Preview", whisper: "A pane whisper becomes the first footer.") {
+                SettingsGroup(label: "Status", description: "Rows render as a grouped Section.") {
+                    StatusLine(title: "Full Disk Access", health: .ok, note: "granted", tip: "Lets Sentient read Mail.")
+                    StatusLine(title: "Screen Recording", health: .bad, note: "not granted", fixTitle: "Open Settings…") {}
+                    SettingToggleLine(title: "Launch at Login", sub: "Opens quietly in the menu bar.", isOn: .constant(true))
+                    SettingsRow(title: "Updates", subtitle: "Version 4.2") {
+                        SettingsPillButton(title: "Check Now") {}
+                    }
+                    SettingsDetails(title: "What Is Shared?") { SettingsProse("Only what you choose.") }
+                }
+            }
+            .frame(width: 560, height: 420)
+            .environment(\.colorScheme, scheme)
+        }
     }
 }

@@ -1,18 +1,20 @@
-// Onboarding's corner invitation: verified lifetime redemption, then the gift overlay.
-// Only a verified submission presents the gift; restored receipts show the corresponding saved pass.
+// Onboarding's gift entry, App Store "Redeem Gift Card or Code…" style (SPEC-D6 S11): a
+// footnote link in Choose Your AI's footer opens a small code-entry popover; a verified
+// redemption presents the gift celebration as a sheet, after which a small saved-pass badge
+// replaces the link. Only a verified submission presents the gift; restored receipts show the
+// corresponding saved pass.
 // Doc: ../Views/Onboarding/Documentation - Onboarding.md
 
 import SwiftUI
+import AppKit
 
 struct OnboardingInviteView: View {
     @Binding var isPresentingGift: Bool
     @State private var program = InviteProgram.shared
     @State private var code = ""
-    @State private var expanded = true
-    @State private var hovering = false
+    @State private var expanded = false
     @State private var redemption: Task<Void, Never>?
     @FocusState private var codeFocused: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var ticket
 #if DEBUG
     // Replay the entry and reveal on a developer's Mac without discarding its permanent grant.
@@ -25,57 +27,59 @@ struct OnboardingInviteView: View {
 #endif
         return program.snapshot?.hasLifetimeAccess == true
     }
-    private var motion: Animation { reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.55, bounce: 0.12) }
+    private var showsLateGift: Bool { program.snapshot?.showsLateGift == true }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            if !isPresentingGift {
-                Group {
-                    if hasAccess {
-                        InviteTicketFace(claimed: true, lateGift: program.snapshot?.showsLateGift == true)
+        // One container (not a Group), so the sheet, task and disappear handlers belong to the
+        // footer slot and do not re-run when the link turns into the badge.
+        HStack(spacing: 0) {
+            if hasAccess && !isPresentingGift {
+                // The saved pass: a small badge, and the matched-geometry source for the gift.
+                // The compact face (no perforation or footer) fits the 28 pt slot at 0.35 without
+                // clipping the value line (WP10 S11 open issue 4 / WP13 deviation 2).
+                InviteTicketFace(claimed: true, lateGift: showsLateGift, compact: true)
+                    .frame(width: 332)
+                    .scaleEffect(0.35, anchor: .leading)
+                    .frame(width: 120, height: 28, alignment: .leading)
+                    .clipped()
+                    .matchedGeometryEffect(id: "invite-ticket", in: ticket)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(showsLateGift ? "Your Sidekick gift is saved" : "Sentient OS lifetime access is saved")
+            } else {
+                HStack(spacing: Space.s) {
+                    if showsLateGift {
+                        // A gift granted earlier: saved, and a lifetime code can still be redeemed.
+                        Label("Gift saved", systemImage: "gift.fill")
+                            .labelStyle(.titleAndIcon)
                             .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(program.snapshot?.showsLateGift == true ? "Your Sidekick gift is saved" : "Sentient OS lifetime access is saved")
-                    } else if expanded {
-                        entryTicket
-                    } else {
-                        Button {
-                            program.clearError()
-                            withAnimation(motion) {
-                                expanded = true
-                            } completion: {
-                                if expanded && !isPresentingGift { codeFocused = true }
-                            }
-                        } label: {
-                            InviteTicketFace(claimed: program.snapshot?.showsLateGift == true,
-                                             lateGift: program.snapshot?.showsLateGift == true)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Have a gift code? Enter your code.")
-                        .help("Redeem your invitation")
-                        .onHover { hovering = $0 }
-                        .rotationEffect(.degrees(reduceMotion ? 0 : (hovering ? 0 : -2)))
-                        .offset(y: hovering && !reduceMotion ? -4 : 0)
-                        .animation(motion, value: hovering)
+                            .accessibilityLabel("Your Sidekick gift is saved")
                     }
+                    Button("Have a gift code?") {
+                        program.clearError()
+                        expanded = true
+                    }
+                    .buttonStyle(.link)
+                    .foregroundStyle(Color(nsColor: .linkColor))
+                    .accessibilityLabel("Have a gift code? Enter your code.")
+                    .help("Redeem your invitation")
+                    .matchedGeometryEffect(id: "invite-ticket", in: ticket)
+                    .popover(isPresented: $expanded, arrowEdge: .top) { entryForm }
                 }
-                .frame(width: 332)
-                .matchedGeometryEffect(id: "invite-ticket", in: ticket)
-                .padding(.trailing, 36).padding(.bottom, 44)
-                .transition(.opacity)
-            }
-
-            if isPresentingGift {
-                InviteCelebration(ticketNamespace: ticket) {
-                    withAnimation(motion) { isPresentingGift = false; expanded = false }
-                }
-                .transition(.opacity)
-                .zIndex(1)
+                .font(.footnote)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        .sheet(isPresented: $isPresentingGift) {
+            InviteCelebration(ticketNamespace: ticket) {
+                isPresentingGift = false
+                expanded = false
+            }
+            // Onboarding disables itself while the gift shows; the sheet's own buttons stay live.
+            .environment(\.isEnabled, true)
+            .presentationSizing(.form)
+        }
         .task {
             await program.refresh(createIfNeeded: false)
-            if program.snapshot?.showsLateGift == true, code.isEmpty {
+            if showsLateGift, code.isEmpty {
                 expanded = false
             }
         }
@@ -86,76 +90,50 @@ struct OnboardingInviteView: View {
         }
     }
 
-    private var entryTicket: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Have a gift code?").font(.largeTitle.weight(.medium))
-                Spacer()
-                Button {
-                    codeFocused = false
-                    withAnimation(motion) { expanded = false }
-                } label: {
-                    Image(systemName: "xmark").font(.subheadline.weight(.medium))
-                        .frame(width: 28, height: 28)
-                        .background(InvitePaper.ink.opacity(0.07), in: Circle())
-                }
-                .buttonStyle(.plain).disabled(program.isRedeeming)
-                .accessibilityLabel("Close invite code field")
-            }
-            .padding(.horizontal, 22).frame(height: 86)
-            InvitePerforation()
-
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 8) {
-                    TextField("Enter invite code", text: $code)
-                        .textFieldStyle(.plain)
-                        .font(.body.weight(.medium))
-                        .autocorrectionDisabled()
-                        .tint(InvitePaper.ink)
-                        .focused($codeFocused)
-                        .onSubmit(redeem)
-                        .onChange(of: code) { program.clearError() }
-                        .accessibilityLabel("Invite code")
-                    Button(action: redeem) {
-                        Group {
-                            if program.isBusy {
-                                ProgressView().controlSize(.small).tint(InvitePaper.light)
-                            } else {
-                                Image(systemName: "arrow.right").font(.body.weight(.semibold))
-                            }
-                        }
-                        .frame(width: 32, height: 32)
-                        .foregroundStyle(InvitePaper.light)
-                        .background(InvitePaper.ink, in: RoundedRectangle(cornerRadius: 7))
-                        .opacity(program.isBusy || !InviteSnapshot.isValidCode(code) ? 0.4 : 1)
+    /// The code-entry form inside the popover. Esc or a click outside closes it.
+    private var entryForm: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Redeem a Gift Code", systemImage: "gift")
+                .font(.headline)
+            HStack(spacing: Space.s) {
+                TextField("Enter invite code", text: $code)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                    .focused($codeFocused)
+                    .onSubmit(redeem)
+                    .onChange(of: code) { program.clearError() }
+                    .accessibilityLabel("Invite code")
+                Button(action: redeem) {
+                    if program.isBusy {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("Redeem")
                     }
-                    .buttonStyle(.plain)
-                    .disabled(program.isBusy || !InviteSnapshot.isValidCode(code))
-                    .accessibilityLabel("Redeem invite code")
                 }
-                .padding(.leading, 12).padding(.trailing, 5).frame(height: 44)
-                .background(.black.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(InvitePaper.ink.opacity(codeFocused ? 0.4 : 0.15), lineWidth: 1)
-                        .allowsHitTesting(false)
-                }
-                .disabled(program.isRedeeming)
-
-                if let error = program.errorMessage {
-                    Text(error).font(.subheadline.weight(.medium))
-                        .foregroundStyle(Color(red: 0.55, green: 0.16, blue: 0.12))
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text(program.isRedeeming ? "Checking your invitation…" : "Redeem your invitation.")
-                        .font(.caption).opacity(0.6)
-                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(program.isBusy || !InviteSnapshot.isValidCode(code))
+                .accessibilityLabel("Redeem invite code")
             }
-            .padding(.horizontal, 20).padding(.vertical, 14)
+            .disabled(program.isRedeeming)
+
+            if let error = program.errorMessage {
+                StatusLabel(error, tone: .error)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(program.isRedeeming ? "Checking your invitation…" : "Redeem your invitation.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .foregroundStyle(InvitePaper.ink)
-        .environment(\.colorScheme, .light)
-        .modifier(InviteTicketMaterial())
+        .padding(14)
+        .frame(width: PageMetrics.popover, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityAction(named: "Close invite code field") {
+            codeFocused = false
+            expanded = false
+        }
+        .onAppear { codeFocused = true }
     }
 
     private func redeem() {
@@ -167,12 +145,11 @@ struct OnboardingInviteView: View {
             let redeemed = await program.redeem(submittedCode)
             guard !Task.isCancelled else { return }
             if redeemed {
-                withAnimation(motion) {
-                    isPresentingGift = true
+                expanded = false
+                isPresentingGift = true
 #if DEBUG
-                    replayInvitation = false
+                replayInvitation = false
 #endif
-                }
             } else {
                 codeFocused = true
             }

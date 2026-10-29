@@ -1,11 +1,13 @@
 // ShortcutSetting.swift
-// Shared shortcut row and local single-key recorder for Sidekick and Double Tap.
-// Other opens a recording sheet; nothing is saved until Use key, and Cancel preserves the binding.
+// The shared shortcut row (Keyboard › Keyboard Shortcuts style: a label and a popup) and the
+// single-key recorder sheet, for Sidekick and Double Tap. "Other…" opens a fitted recorder sheet
+// that shows the key as a key cap; nothing is saved until Use Key, and Cancel keeps the binding.
 // Doc: Documentation - Settings.md
 
 import AppKit
 import SwiftUI
 
+/// One Form row: "Shortcut Key" and its popup. Its explanation lives in the host Section's footer.
 struct ShortcutSetting: View {
     @AppStorage(ShortcutPreferences.storageKey) private var keyRaw = "rightCommand"
     @State private var recording = false
@@ -23,7 +25,7 @@ struct ShortcutSetting: View {
     }
 
     var body: some View {
-        SettingsRow(title: "Shortcut key", subtitle: "Tap to open Sidekick. Double tap to draft a reply.") {
+        LabeledContent("Shortcut Key") {
             SettingsMenu(title: "Sidekick shortcut", value: key.label, selection: selection) {
                 Text("Right ⌘").tag(ShortcutKey.rightCommand.rawValue)
                 Text("Right ⌥").tag(ShortcutKey.rightOption.rawValue)
@@ -35,8 +37,11 @@ struct ShortcutSetting: View {
             }
             .frame(width: 150)
         }
+        // The one row-level sheet in Settings (area rule 1's exception): it is modal, so the row
+        // cannot scroll away while it is up.
         .sheet(isPresented: $recording, onDismiss: { ShortcutPreferences.setRecording(false) }) {
-            ShortcutRecorderSheet()
+            ShortcutRecorderSheet(current: key)
+                .environment(\.settingsFormStyle, false)
         }
         .onDisappear {
             if recording { ShortcutPreferences.setRecording(false) }
@@ -44,48 +49,80 @@ struct ShortcutSetting: View {
     }
 }
 
+/// "Press a key": the current key on a keyboard row, the recorded key as a lit key cap, Cancel and
+/// Use Key. Global shortcuts are suspended while it is open.
 private struct ShortcutRecorderSheet: View {
+    /// The saved key, shown lit on the keyboard row until a new key is pressed.
+    let current: ShortcutKey
     @Environment(\.dismiss) private var dismiss
     @State private var candidate: ShortcutKey?
     @State private var error: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Sidekick shortcut").display(24).foregroundStyle(.primary)
-            SettingsProse("The same key is used for Sidekick and Double Tap. Press and release Command, Option, or Control on either side of your keyboard.")
-            Text(candidate?.label ?? "Press a key…")
-                .font(.largeTitle.weight(.medium))
-                .foregroundStyle(candidate == nil ? SettingsStyle.secondary : .white)
-                .frame(maxWidth: .infinity).frame(height: 88)
-                .background(SettingsStyle.control, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(SettingsStyle.border, lineWidth: 1))
-                .background {
-                    ShortcutRecorderInput(onKey: { candidate = $0; error = nil },
-                                          onError: { candidate = nil; error = $0 },
-                                          onCancel: { dismiss() })
-                }
-                .accessibilityLabel("Recorded key")
-                .accessibilityValue(candidate?.spokenLabel ?? "Waiting for a key")
-            Text(error ?? "Press one modifier key by itself, without a key combination.")
-                .font(.body).foregroundStyle(error == nil ? SettingsStyle.secondary : Theme.Ink.red)
+        VStack(spacing: Space.l) {
+            IconTile(.shortcutKey, size: 64)
+            Text("Sidekick Shortcut")
+                .font(.title2.bold())
+                .accessibilityAddTraits(.isHeader)
+            Text("The same key is used for Sidekick and Double Tap. Press and release Command, Option, or Control on either side of your keyboard.")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(minHeight: 36, alignment: .topLeading)
+
+            VStack(spacing: Space.s) {
+                if let candidate {
+                    KeyCap(key: candidate, highlighted: true)
+                } else {
+                    KeyCapRow(highlighting: current)
+                }
+                Text(candidate?.label ?? "Press a key…")
+                    .font(.headline)
+                    .foregroundStyle(candidate == nil ? .secondary : .primary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 80)
+            .contentShape(Rectangle())
+            // The key listener sits behind the preview, so a click there refocuses it.
+            .background {
+                ShortcutRecorderInput(onKey: { candidate = $0; error = nil },
+                                      onError: { candidate = nil; error = $0 },
+                                      onCancel: { dismiss() })
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Recorded key")
+            .accessibilityValue(candidate?.spokenLabel ?? "Waiting for a key")
+
+            Group {
+                if let error {
+                    StatusLabel(error, tone: .error)
+                } else {
+                    Text("Press one modifier key by itself, without a key combination.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(minHeight: 32, alignment: .top)
+
             HStack {
-                Button("Cancel") { dismiss() }.buttonStyle(SettingsActionStyle())
-                    .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Use key") {
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+                Button("Use Key") {
                     guard let candidate else { return }
                     ShortcutPreferences.save(candidate)
                     dismiss()
                 }
-                .buttonStyle(SettingsActionStyle(tint: Theme.Ink.green))
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(candidate == nil)
             }
         }
-        .padding(28).frame(width: 440)
-        .background(Theme.bg).preferredColorScheme(.dark)
+        .padding(Space.xl)
+        .frame(width: 420)
+        .presentationSizing(.fitted)
         .onDisappear { ShortcutPreferences.setRecording(false) }
     }
 }
@@ -200,16 +237,17 @@ private struct ShortcutRecorderInput: NSViewRepresentable {
 }
 
 #if DEBUG
-#Preview("Shortcut settings") {
-    SettingsPane(title: "Shortcuts") {
-        VStack(spacing: 24) {
-            SettingsGroup(label: "Sidekick", inset: 0) { ShortcutSetting() }
+#Preview("Shortcut row") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            PaneForm { Section { ShortcutSetting() } }
+                .frame(width: 560, height: 200)
+                .environment(\.colorScheme, scheme)
         }
     }
-    .frame(width: 680, height: 420).background(Theme.bg).preferredColorScheme(.dark)
 }
 
 #Preview("Record a shortcut") {
-    ShortcutRecorderSheet()
+    ShortcutRecorderSheet(current: .rightCommand)
 }
 #endif

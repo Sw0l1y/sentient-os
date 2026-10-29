@@ -1,7 +1,7 @@
 //
 // WritingStyleSetupView.swift
-// The introduction sheet for existing knowledge bases: runs the same collector as initial
-// processing, with cancellation and an explicit retry after failures. Hidden for now: RootView
+// The introduction sheet for existing knowledge bases (a system "Preparing…" status sheet): runs
+// the same collector as initial processing, with cancellation and an explicit retry after failures. Hidden for now: RootView
 // runs the same setup silently in the background instead, and this sheet waits for the
 // introduction to return.
 // Doc: Documentation - Double Tap.md
@@ -18,42 +18,30 @@ struct WritingStyleSetupView: View {
     @State private var finished = false
 
     var body: some View {
-        VStack(spacing: 22) {
-            Orb(mode: failure == nil ? (finished ? .idle : .processing) : .attention, size: 72)
-                .frame(height: 108)
-            Text(finished ? "Double Tap is ready" : "Setting up double tap")
-                .display(30)
-                .foregroundStyle(.white)
-            Text(failure ?? (finished ? "Double tap \(ShortcutPreferences.current.label) in a reply box to write in your own voice." : status))
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.secondary)
+        VStack(spacing: Space.l) {
+            BrandMarkView(size: 40)
+            Text(finished ? "Double Tap Is Ready" : "Setting Up Double Tap")
+                .font(.title2.bold())
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
+                .accessibilityAddTraits(.isHeader)
+            stateLine
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 380)
                 .fixedSize(horizontal: false, vertical: true)
-            if finished {
-                primaryButton("Done") { dismiss() }.keyboardShortcut(.defaultAction)
-            } else if failure != nil {
-                HStack(spacing: 18) {
-                    Button("Open Settings") {
-                        dismiss()
-                        HomeWindowOpening.open(.settings, settingsPane: .doubleTap)
-                    }.buttonStyle(.plain).foregroundStyle(Theme.secondary)
-                    primaryButton("Try again") { attempt += 1 }.keyboardShortcut(.defaultAction)
-                }
-            }
             if !finished {
                 Text(PrivacyCopy.writingSetup)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.secondary)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            buttonRow
+                .padding(.top, Space.s)
         }
-        .padding(44)
-        .frame(width: 500)
-        .frame(minHeight: 380)
-        .background(Theme.bg)
-        .preferredColorScheme(.dark)
+        .padding(Space.xxl)
+        .frame(width: 460)
+        .frame(minHeight: 320)
+        .presentationSizing(.form)
         .task(id: attempt) {
             guard runsSetup else { return }
             failure = nil
@@ -76,15 +64,57 @@ struct WritingStyleSetupView: View {
         }
     }
 
-    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.black)
-                .padding(.horizontal, 26).padding(.vertical, 10)
-                .background(.white, in: Capsule())
+    @ViewBuilder private var stateLine: some View {
+        if finished {
+            Text("Double-tap \(ShortcutPreferences.current.label) in a reply box to write in your own voice.")
+                .font(.body)
+                .foregroundStyle(.secondary)
+        } else if let failure {
+            StatusLabel(failure, tone: .error)
+        } else {
+            HStack(spacing: Space.s) {
+                ProgressView().controlSize(.small)
+                Text(status)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private var buttonRow: some View {
+        HStack(spacing: Space.s) {
+            Spacer()
+            if finished {
+                escapeTwin
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            } else if failure != nil {
+                escapeTwin
+                Button("Open Double Tap Settings") {
+                    dismiss()
+                    HomeWindowOpening.open(.settings, settingsPane: .doubleTap)
+                }
+                .buttonStyle(.bordered)
+                Button("Try Again") { attempt += 1 }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            } else {
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
+    }
+
+    /// Esc closes the finished and failed states too, which have no visible Cancel. It stays in
+    /// the hierarchy (invisible, zero size) so its shortcut keeps working.
+    private var escapeTwin: some View {
+        Button("Close") { dismiss() }
+            .keyboardShortcut(.cancelAction)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
     }
 }
 
@@ -104,4 +134,9 @@ extension WritingStyleSetupView {
     }
 }
 
-#Preview { WritingStyleSetupView(runsSetup: false) }
+#Preview {
+    HStack(spacing: 0) {
+        WritingStyleSetupView(runsSetup: false).environment(\.colorScheme, .light)
+        WritingStyleSetupView(runsSetup: false).environment(\.colorScheme, .dark)
+    }
+}

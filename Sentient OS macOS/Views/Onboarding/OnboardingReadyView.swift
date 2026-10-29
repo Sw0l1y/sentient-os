@@ -1,8 +1,9 @@
 //
 // OnboardingReadyView.swift
-// Optional personal setup uses the same source picker and connection flows as Settings.
-// Sources scroll independently of Start Analysis, which stays visible and requires the
-// shared three-source minimum. The selection feeds the first analysis and overnight runs.
+// The Finish Setup page's content: the same source picker Settings uses, as a grouped form,
+// closed by a pinned Setup Assistant footer with the count, the explainer and Start Analysis.
+// Start requires the shared three-source minimum and opens the analysis timing sheet. The
+// selection feeds the first analysis and overnight runs.
 // Doc: Documentation - Onboarding.md
 //
 
@@ -19,6 +20,7 @@ struct OnboardingReadyView: View {
     @State private var timingHandoff = AnalysisTimingHandoff()
     @AppStorage(PersonalSetupProgress.homeKey) private var homeAdmitted = false
     private var canStart: Bool { !isProcessing && !timingHandoff.isPending && selectionCount >= SourceSelection.minimumSelections }
+    private var minimumMet: Bool { selectionCount >= SourceSelection.minimumSelections }
 
     var body: some View {
         GeometryReader { geometry in
@@ -34,6 +36,7 @@ struct OnboardingReadyView: View {
                 }
         }
         .background(AnalysisTimingOwnerAttachment(handoff: timingHandoff))
+        .pageSubtitle(minimumMet ? "Ready to analyze" : "Choose at least 3 sources", page: .setup)
         .onDisappear { timingHandoff.cancel() }
         .onChange(of: homeAdmitted) { _, admitted in
             if !admitted { timingHandoff.cancel(); showTiming = false }
@@ -44,80 +47,74 @@ struct OnboardingReadyView: View {
         }
     }
 
+    /// The picker is the page's Form (it owns its sheets and tasks), so the introduction goes in
+    /// as its leading section. Start Analysis is pinned below the form, so it stays on screen
+    /// however long the source list grows.
     private var content: some View {
-        VStack(spacing: 0) {
-            // Do not publish the source catalog's full intrinsic height as the window minimum.
-            // The viewport takes the space left above the fixed action/footer.
-            GeometryReader { viewport in
-                ScrollView {
-                    VStack(spacing: 24) {
-                        VStack(spacing: 10) {
-                            Text("Connect your world")
-                                .display(29).foregroundStyle(.primary)
-                            Text("Choose at least three sources to give Sentient personal context. You can add more later.")
-                                .font(.body)
-                                .foregroundStyle(Theme.secondary)
-                                .multilineTextAlignment(.center)
-                                .lineSpacing(4)
-                        }
-
-                        KnowledgeSourcesPicker(context: .onboarding) { count in
-                            selectionCount = count
-                        }
-                    }
-                    .frame(maxWidth: 660)
-                    .padding(.horizontal, 40)
-                    .padding(.top, 28)
-                    .padding(.bottom, 20)
-                    .frame(maxWidth: .infinity)
-                }
-                .scrollBounceBehavior(.basedOnSize)
-                .frame(width: viewport.size.width, height: viewport.size.height)
-            }
-
-            VStack(spacing: 18) {
-                MonoCaps(canStart ? "\(selectionCount) sources selected"
-                                  : "\(selectionCount) of \(SourceSelection.minimumSelections) sources selected",
-                         size: 8.5, tracking: 1.6,
-                         color: canStart ? Theme.faint : Theme.Ink.amber)
-
-                GlowButton(title: "Start Analysis", active: canStart) {
-                    // Recheck the persisted selection in case a connection changed this turn.
-                    guard SourceSelection.selectionCount >= SourceSelection.minimumSelections else { return }
-                    stageRaw = PersonalSetupProgress.Stage.timing.rawValue
-                    showTiming = true
-                }
-                .frame(maxWidth: 380)
-                .accessibilityIdentifier("personalSetup.startAnalysis")
-
-                VStack(spacing: 6) {
-                    if CodexAuth.knowledgeBaseOnly {
-                        Text("Choose when to build your knowledge.")
-                            .font(.body).foregroundStyle(Theme.secondary)
-                    } else {
-                        Text("Keep using Sidekick while your Mac learns.")
-                            .font(.body.weight(.medium)).foregroundStyle(Theme.Ink.bright)
-                        Text("Analysis runs in the background to give Sidekick personal context and unlock Double Tap.")
-                            .font(.callout).foregroundStyle(Theme.secondary)
-                    }
-                }
-                .multilineTextAlignment(.center).lineSpacing(3)
-                .frame(maxWidth: 540)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 40)
-            .padding(.top, 16)
-            .padding(.bottom, 28)
-            .frame(maxWidth: .infinity)
-            .fixedSize(horizontal: false, vertical: true)
-            .background(Theme.bg)
+        KnowledgeSourcesPicker(context: .onboarding) { count in
+            selectionCount = count
         }
+        .leadingSections {
+            Section {} header: {
+                Text("Choose at least three sources to give Sentient personal context. You can add more later.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textCase(nil)
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                Divider()
+                SetupAssistantFooter(primaryTitle: "Start Analysis", primaryEnabled: canStart,
+                                     primaryID: "personalSetup.startAnalysis") {
+                    VStack(alignment: .leading, spacing: 2) {
+                        StatusLabel(countText, tone: canStart ? .ok : .warning)
+                        explainer
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } primary: {
+                    startAnalysis()
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, Space.m)
+            }
+            .background(.bar)
+        }
+    }
+
+    private var countText: String {
+        canStart ? "\(selectionCount) sources chosen"
+                 : "\(selectionCount) of \(SourceSelection.minimumSelections) minimum chosen"
+    }
+
+    private var explainer: Text {
+        CodexAuth.knowledgeBaseOnly
+            ? Text("Choose when to build your knowledge.")
+            : Text("Keep using Sidekick while your Mac learns. Analysis runs in the background to give Sidekick personal context and unlock Double Tap.")
+    }
+
+    private func startAnalysis() {
+        // Recheck the persisted selection in case a connection changed this turn.
+        guard SourceSelection.selectionCount >= SourceSelection.minimumSelections else { return }
+        stageRaw = PersonalSetupProgress.Stage.timing.rawValue
+        showTiming = true
     }
 }
 
-#Preview("Analysis setup") {
-    OnboardingReadyView(onStart: { _ in }).frame(width: 1040, height: 800)
+#if DEBUG
+#Preview("Finish Setup") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            OnboardingReadyView(onStart: { _ in })
+                .frame(width: 900, height: 700)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }
+#endif
 
 /// SwiftUI's onDismiss can precede AppKit's actual sheet detachment. Keep the chosen action
 /// until both lifecycle signals agree, so its callback may safely close the setup window.

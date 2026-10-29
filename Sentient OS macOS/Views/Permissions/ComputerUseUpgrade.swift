@@ -203,10 +203,9 @@ final class ComputerUseUpgrade {
         w.title = "Computer Use"
         w.toolbar = NSToolbar(identifier: "ComputerUseUpgrade")
         w.toolbarStyle = .unified
-        w.titlebarAppearsTransparent = true
-        w.titleVisibility = .hidden
-        w.appearance = NSAppearance(named: .darkAqua)
-        w.backgroundColor = .black
+        // System window background and appearance; the traffic lights and the "Computer Use"
+        // toolbar title stay visible.
+        GateWindowStyle.apply(to: w, hidesTitle: false)
         w.isReleasedWhenClosed = false
         w.isMovableByWindowBackground = true
         window = w
@@ -324,57 +323,56 @@ final class ComputerUseUpgrade {
 
 // MARK: - The window's face
 
+/// A three-state Setup Assistant page: the pitch (with the retry after a failed install), the
+/// installer's progress, then the required grants.
 struct ComputerUseUpgradeView: View {
     let model: ComputerUseUpgrade
 
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
+
     private var gate: ComputerUseGate { ComputerUseGate.shared }
+    private var reduceMotion: Bool { motionOverride ?? systemReduceMotion }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            OnboardingWhisper(model.phase == .grants ? "ONE LAST STEP" : "SENTIENT UPDATED")
-                .frame(maxWidth: .infinity)
-
-            Text(model.phase == .grants ? "Allow the permissions needed to control your computer"
-                                        : "Computer use just got better.")
-                .display(23)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 18)
-
-            if model.phase != .grants {
-                Text("Prepare computer use for your selected AI engine.")
-                    .font(.body)
-                    .foregroundStyle(Theme.secondary)
+        SetupAssistantPage(tile: .gateUpgrade,
+                           title: model.phase == .grants ? "Allow the Permissions Needed to Control Your Computer"
+                                                         : "Computer Use Just Got Better",
+                           message: model.phase == .grants ? nil : "Prepare computer use for your selected AI engine.") {
+            VStack(alignment: .leading, spacing: Space.l) {
+                Text(model.phase == .grants ? "One last step" : "Sentient was updated")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
-            }
-
-            switch model.phase {
-            case .pitch, .installing:
-                installSection
-            case .grants:
-                SentientPermissionRows(gate: gate)
-                    .padding(.top, 30)
-                OnboardingNextButton(title: gate.allRequiredGranted ? "Done" : "Grant permissions to finish",
-                                     enabled: gate.allRequiredGranted) {
-                    model.finish()
+                switch model.phase {
+                case .grants:
+                    GateForm { SentientPermissionRows(gate: gate) }
+                case .installing:
+                    ProgressView {
+                        Text(model.setup.status ?? "Starting…")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .progressViewStyle(.linear)
+                case .pitch:
+                    if let line = model.failureLine {
+                        // Retryable, so orange rather than red.
+                        StatusLabel(line, tone: .warning)
+                    } else {
+                        Text(downloadNote)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 32)
             }
+        } footer: {
+            SetupAssistantFooter(primaryTitle: primaryTitle, primaryEnabled: primaryEnabled,
+                                 primaryID: "computerUseUpgrade.primary", primary: primaryAction)
         }
-        .padding(.horizontal, 44)
-        .padding(.top, 34)
-        .padding(.bottom, 24)
-        .frame(width: 560)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
-        .preferredColorScheme(.dark)
-        .animation(.easeInOut(duration: 0.3), value: model.phase)
+        .frame(width: PageMetrics.setupPage, height: model.phase == .grants ? 620 : 460)
+        .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: model.phase)
         .task {
             while !Task.isCancelled {
                 gate.refresh()
@@ -386,46 +384,32 @@ struct ComputerUseUpgradeView: View {
         }
     }
 
-    /// The pitch CTA and, while the engine runs, the live narration under it.
-    @ViewBuilder
-    private var installSection: some View {
-        OnboardingNextButton(title: ctaTitle,
-                             enabled: model.phase == .pitch,
-                             glow: model.phase == .pitch ? 0.4 : 0) {   // the screen's ONE glowing object
-            model.install()
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 34)
-
-        Group {
-            if model.phase == .installing {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small).scaleEffect(0.7)
-                    Text(model.setup.status ?? "Starting…")
-                        .font(.system(.subheadline, design: .monospaced))
-                        .foregroundStyle(Theme.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            } else if let line = model.failureLine {
-                Text(line)
-                    .font(.system(.subheadline, design: .monospaced))
-                    .foregroundStyle(.red.opacity(0.85))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text(model.setup.backend == .openAI ? "Downloaded from Sentient and verified on this Mac." : "A one-time 40 MB download, verified on this Mac.")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.faint)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 14)
+    private var downloadNote: String {
+        model.setup.backend == .openAI ? "Downloaded from Sentient and verified on this Mac."
+                                       : "A one-time 40 MB download, verified on this Mac."
     }
 
-    private var ctaTitle: String {
+    private var primaryTitle: String {
         switch model.phase {
-        case .installing: "Setting up…"
-        default:          model.failureLine == nil ? "Set up the new computer use" : "Try again"
+        case .installing: "Setting Up…"
+        case .pitch:      model.failureLine == nil ? "Set Up Computer Use" : "Try Again"
+        case .grants:     gate.allRequiredGranted ? "Done" : "Grant Permissions to Finish"
+        }
+    }
+
+    private var primaryEnabled: Bool {
+        switch model.phase {
+        case .pitch:      true
+        case .installing: false
+        case .grants:     gate.allRequiredGranted
+        }
+    }
+
+    private func primaryAction() {
+        switch model.phase {
+        case .pitch:      model.install()
+        case .installing: break
+        case .grants:     model.finish()
         }
     }
 }
@@ -433,6 +417,5 @@ struct ComputerUseUpgradeView: View {
 #if DEBUG
 #Preview("Computer-use upgrade") {
     ComputerUseUpgradeView(model: ComputerUseUpgrade.shared)
-        .preferredColorScheme(.dark)
 }
 #endif

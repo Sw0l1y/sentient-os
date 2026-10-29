@@ -1,4 +1,6 @@
 // Only an already-visible, idle Home may present the gift. No idle popup or automatic opener.
+// The gift is a one-time, What’s New-style form sheet (InviteCelebration sizes itself and follows
+// the system appearance); it is marked seen once the app is active while it shows.
 import SwiftUI
 import AppKit
 
@@ -40,8 +42,6 @@ struct LifetimeUpgradePresentation: ViewModifier {
                 InviteCelebration(ticketNamespace: ticket, upgrade: true, continueTitle: "Back to Sentient") {
                     presented = nil
                 }
-                .frame(width: 820, height: 680)
-                .preferredColorScheme(.dark)
                 .onAppear {
                     if NSApp.isActive { announcement.markSeen(notice) }
                 }

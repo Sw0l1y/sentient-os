@@ -2,14 +2,15 @@
 //  OnboardingCodexSteps.swift
 //  Sentient OS macOS
 //
-//  Onboarding's codex login, in panel form — a pure renderer over the SHARED CodexSetup engine
-//  (the same instance the dev tools' CodexSetupView drives; zero setup logic lives here).
+//  Onboarding's codex login, as numbered live steps — a pure renderer over the SHARED CodexSetup
+//  engine (the same instance the dev tools' CodexSetupView drives; zero setup logic lives here).
 //
-//  OnboardingCodexLoginPanel is the ChatGPT panel inside the frontier-model step's engine
-//  picker (OnboardingFrontierModelView): one button that opens the OAuth page, then the panel
-//  NOTICES the finished sign-in on its own (a 2s `codex login status` poll while the browser is
-//  out; the step adds a re-check on app foreground) — no "I'm done" button. The login button
-//  awaits CodexSetup.ensureCurrent before opening the browser, including for existing installs.
+//  OnboardingCodexLoginPanel is the ChatGPT panel inside Choose Your AI's engine picker
+//  (OnboardingFrontierModelView): three StatusRows (log in, finish in the browser, ready) whose
+//  tones show where the user is. Step 1's button opens the OAuth page, then the panel NOTICES
+//  the finished sign-in on its own (a 2s `codex login status` poll while the browser is out;
+//  the step adds a re-check on app foreground) — no "I'm done" button. The login button awaits
+//  CodexSetup.ensureCurrent before opening the browser, including for existing installs.
 //  Also home to the shared onboarding bits: OnboardingWhisper · OnboardingDoneLine ·
 //  MonoWaitLine · OnboardingStatusText.
 //
@@ -31,18 +32,23 @@ struct OnboardingCodexLoginPanel: View {
     private var backend: ModelBackend { ModelBackend(rawValue: backendRaw) ?? .chatgpt }
 
     var body: some View {
-        SettingsGroup(label: "Your ChatGPT") {
-            VStack(alignment: .leading, spacing: 14) {
-                SettingsProse("Codex runs on your own ChatGPT subscription, so a plan you already pay for powers everything: knowledge base, morning cards, Sidekick, and the Gmail and Calendar connectors. Recommended, and the most battle-tested engine.")
-
-                loginStates
+        GroupBox {
+            VStack(alignment: .leading, spacing: Space.m) {
+                Text("Codex runs on your own ChatGPT subscription, so a plan you already pay for powers everything: knowledge base, morning cards, Sidekick, and the Gmail and Calendar connectors. Recommended, and the most battle-tested engine.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Divider()
+                loginSteps
+                OnboardingStatusText(codex.loginStatusLine)
             }
+            .padding(Space.xs)
         }
         .task(id: codex.loggingIn) {
             // The sign-in watcher (replaces the old "I've finished" button): while the browser
-            // flow is out, quietly re-check `codex login status` every 2s — the section flips to
-            // the green done line by itself the moment auth.json lands. (Switching tabs cancels
-            // this; the step's foreground re-check still notices a finished sign-in.)
+            // flow is out, quietly re-check `codex login status` every 2s — step 3 turns green
+            // by itself the moment auth.json lands. (Switching tabs cancels this; the step's
+            // foreground re-check still notices a finished sign-in.)
             guard codex.loggingIn else { return }
             while !Task.isCancelled, codex.loggingIn, !codex.loggedIn {
                 try? await Task.sleep(for: .seconds(2))
@@ -52,43 +58,55 @@ struct OnboardingCodexLoginPanel: View {
         .onDisappear { cancelOwnedLogin() }
     }
 
-    /// The login state machine: done → browser out → install failed → the button.
-    @ViewBuilder private var loginStates: some View {
-        if codex.loggedIn {
-            OnboardingDoneLine("Logged in to Codex")
-            if backend != .chatgpt {
-                // A custom engine won Test & Select earlier — logging in doesn't switch
-                // by itself (browsing never disturbs a live engine); this does.
-                SettingsPillButton(title: "Use ChatGPT") {
-                    preparationTask = Task {
-                        guard await codex.ensureCurrent(), !Task.isCancelled else { return }
-                        backendRaw = ModelBackend.chatgpt.rawValue
-                    }
-                }
-                .disabled(codex.preparing || codex.installing)
-            }
-        } else if codex.loggingIn {
-            LoginLinkButton(url: codex.loginURL)
-            Text("Finish signing in in your browser.")
-                .font(.body)
-                .foregroundStyle(Theme.Ink.body)
-            MonoWaitLine("waiting for the browser sign-in…")
-        } else if codex.installGaveUp && !codex.installed {
+    /// The numbered steps, or the install failure with its retry when the download gave up.
+    @ViewBuilder private var loginSteps: some View {
+        if codex.installGaveUp && !codex.installed && !codex.loggedIn && !codex.loggingIn {
             // Failed downloads remain retryable through the same verified installer.
-            CodexInstallFailedPanel()
-            SettingsPillButton(title: "Try again", action: prepareAndLogin)
-                .disabled(codex.preparing || codex.installing)
-        } else {
-            // The login button — the panel's one big CTA. Lazy install (decision 2026-08-21):
-            // THIS click installs or updates Codex; a broken existing executable can be
-            // repaired here too. Sign-in follows only after preparation succeeds.
-            VStack(spacing: 10) {
-                OnboardingNextButton(title: "Log in with ChatGPT",
-                                     enabled: !codex.preparing && !codex.installing,
-                                     action: prepareAndLogin)
-                OnboardingStatusText(codex.loginStatusLine)
+            StatusRow("Sentient couldn’t finish downloading Codex.", tile: .codex, tone: .error) {
+                Button("Try Again", action: prepareAndLogin)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(codex.preparing || codex.installing)
             }
-            .frame(maxWidth: .infinity)
+            Text("Check your internet connection and available disk space, then try again. Your saved login and tasks are preserved.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            // Lazy install (decision 2026-08-21): step 1's click installs or updates Codex; a
+            // broken existing executable can be repaired here too. Sign-in follows only after
+            // preparation succeeds.
+            StatusRow("1. Log In with ChatGPT", tone: codex.loggedIn || codex.loggingIn ? .ok : .info) {
+                if !codex.loggedIn && !codex.loggingIn {
+                    Button("Log In with ChatGPT", action: prepareAndLogin)
+                        .buttonStyle(.bordered)
+                        .disabled(codex.preparing || codex.installing)
+                }
+            }
+            StatusRow("2. Finish in Your Browser",
+                      detail: codex.loggingIn && !codex.loggedIn ? "Waiting for the browser sign-in…" : nil,
+                      tone: codex.loggedIn ? .ok : (codex.loggingIn ? .working : .off)) {
+                if codex.loggingIn && !codex.loggedIn {
+                    LoginLinkButton(url: codex.loginURL)
+                }
+            }
+            StatusRow("3. Codex Is Ready", tone: codex.loggedIn ? .ok : .off) {
+                if codex.loggedIn && backend != .chatgpt {
+                    // A custom engine won Test & Select earlier — logging in doesn't switch
+                    // by itself (browsing never disturbs a live engine); this does.
+                    Button("Use ChatGPT", action: useChatGPT)
+                        .buttonStyle(.bordered)
+                        .disabled(codex.preparing || codex.installing)
+                }
+            }
+            .accessibilityValue(codex.loggedIn ? "Logged in to Codex" : "")
+        }
+    }
+
+    private func useChatGPT() {
+        preparationTask = Task {
+            guard await codex.ensureCurrent(), !Task.isCancelled else { return }
+            backendRaw = ModelBackend.chatgpt.rawValue
         }
     }
 
@@ -125,92 +143,80 @@ struct OnboardingCodexLoginPanel: View {
     }
 }
 
-/// Shown on the ChatGPT panel when the automatic install has clearly failed (retries exhausted):
-/// preserves the pending onboarding step and explains how to retry the approved download.
-private struct CodexInstallFailedPanel: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Sentient couldn't finish downloading Codex.")
-                .font(.body.weight(.medium))
-                .foregroundStyle(Theme.Ink.body)
-            SettingsProse("Check your internet connection and available disk space, then try again. Your saved login and tasks are preserved.")
-        }
-    }
-}
-
 // MARK: - Shared onboarding bits
 
-/// The monospace-caps whisper label every onboarding screen opens with.
+/// A quiet secondary line (kept for WP12's permission pages).
 struct OnboardingWhisper: View {
     let text: String
     init(_ text: String) { self.text = text }
 
     var body: some View {
         Text(text)
-            .font(.system(.subheadline, design: .monospaced, weight: .medium))
-            .kerning(2)
-            .foregroundStyle(Theme.faint)
+            .font(.callout)
+            .foregroundStyle(.secondary)
     }
 }
 
-/// A green-dot "this step is done" line (shared: the login panel and the plan crossroads).
+/// A "this step is done" line: the OK status label.
 struct OnboardingDoneLine: View {
     let text: String
     init(_ text: String) { self.text = text }
 
     var body: some View {
-        HStack(spacing: 11) {
-            HealthDot(color: Theme.Ink.green)
-            Text(text)
-                .font(.body)
-                .foregroundStyle(Theme.Ink.statusInk)
-        }
+        StatusLabel(text, tone: .ok)
     }
 }
 
-/// A mini spinner + mono-caps whisper — the quiet "something is happening on its own" line
-/// (waiting for the browser sign-in, the background codex install, the upgrade watch).
+/// A small spinner beside a secondary line — something is happening on its own (waiting for
+/// the browser sign-in, the background codex install, the upgrade watch).
 struct MonoWaitLine: View {
     let text: String
     init(_ text: String) { self.text = text }
 
     var body: some View {
-        HStack(spacing: 8) {
-            ProgressView().controlSize(.mini)
+        HStack(spacing: Space.s) {
+            ProgressView().controlSize(.small)
             Text(text)
-                .font(.system(.subheadline, design: .monospaced, weight: .medium))
-                .kerning(1.5)
-                .foregroundStyle(Theme.faint)
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
     }
 }
 
-/// The engine's latest streamed/status line — monospaced, colored by its ✓/✗ prefix (the same
-/// convention the dev CodexSetupView renders).
+/// The engine's latest status line as a status label, toned by its prefix: "✗" is an error,
+/// "✓" is OK, anything else is information. The prefix itself is dropped (the glyph shows it).
 struct OnboardingStatusText: View {
     let status: String?
     init(_ status: String?) { self.status = status }
 
     var body: some View {
-        if let status {
-            Text(status)
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(status.hasPrefix("✓") ? Theme.Ink.green
-                               : status.hasPrefix("✗") ? .red : Theme.secondary)
-                .multilineTextAlignment(.leading)
+        if let status, !status.isEmpty {
+            StatusLabel(Self.text(status), tone: Self.tone(status))
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
+
+    private static func tone(_ status: String) -> StatusTone {
+        if status.hasPrefix("✗") { return .error }
+        if status.hasPrefix("✓") { return .ok }
+        return .info
+    }
+
+    private static func text(_ status: String) -> String {
+        guard status.hasPrefix("✗") || status.hasPrefix("✓") else { return status }
+        return String(status.dropFirst()).trimmingCharacters(in: .whitespaces)
+    }
 }
 
 #Preview("Onboarding — codex login panel") {
-    ZStack {
-        Theme.bg.ignoresSafeArea()
-        OnboardingCodexLoginPanel()
-            .frame(maxWidth: 640)
-            .padding(40)
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            OnboardingCodexLoginPanel()
+                .frame(width: 560)
+                .padding(Space.xl)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
     }
-    .frame(width: 780, height: 500)
-    .preferredColorScheme(.dark)
 }

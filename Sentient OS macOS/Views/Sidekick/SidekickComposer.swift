@@ -12,6 +12,8 @@ struct SidekickComposer: View {
     private var reduced: Bool { motionOverride ?? systemReduced }
     @FocusState private var focused: Bool
     @State private var submissionError: String?
+    /// The field has grown past one line; the capsule becomes a rounded rectangle, like Messages.
+    @State private var multiline = false
 
     private var conversation: SidekickConversation { coordinator.run.conversation }
     private var recovery: SidekickRecovery { coordinator.run.recovery }
@@ -28,106 +30,37 @@ struct SidekickComposer: View {
             && (answering || !coordinator.run.isRunning)
     }
 
+    /// Top to bottom: the RecoveryCard or the ReplyChip, the floating Ask field, then the error
+    /// line. HomeView's floating bar supplies no background; the field carries its own glass.
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.s) {
+            if answering, let content = recovery.content {
+                RecoveryCard(content: content, recovery: recovery, running: coordinator.run.isRunning,
+                             stop: coordinator.stop, choose: { choose(question: $0, index: $1) })
+                    .transition(.opacity)
+            } else if let reference = conversation.replyReference {
+                ReplyChip(preview: replyPreview(reference),
+                          show: { conversation.show(messageID: reference.messageID) },
+                          remove: {
+                              withAnimation(Motion.gated(Motion.quick, reduceMotion: reduced)) {
+                                  conversation.replyReference = nil
+                              }
+                          })
+                    .transition(.opacity)
+            }
+            askField
             if let error = submissionError ?? conversation.storageError {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.circle")
-                    Text(error).fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                .font(.callout).foregroundStyle(Color(red: 1, green: 0.75, blue: 0.65))
-                .padding(.horizontal, 10)
-            }
-            VStack(alignment: .leading, spacing: 12) {
-                if answering, let content = recovery.content {
-                    recoveryHeader(content)
-                        .transition(SidekickStyle.entrance(reduced))
-                } else if let reference = conversation.replyReference {
-                    HStack(spacing: 10) {
-                        RoundedRectangle(cornerRadius: 2).fill(SidekickStyle.accent).frame(width: 3)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Replying to a message").font(.subheadline.weight(.semibold)).foregroundStyle(SidekickStyle.accent)
-                            Text(replyPreview(reference))
-                                .font(.callout).lineLimit(2).foregroundStyle(SidekickStyle.secondary)
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                        Button { conversation.show(messageID: reference.messageID) } label: { Image(systemName: "arrow.up.right") }
-                            .help("Show original message")
-                        Button { withAnimation(SidekickStyle.motion(reduced)) { conversation.replyReference = nil } } label: { Image(systemName: "xmark") }
-                            .help("Remove reply").accessibilityLabel("Remove reply")
-                    }
-                    .buttonStyle(.plain).font(.subheadline.weight(.semibold))
-                    .padding(12).background(.quinary, in: RoundedRectangle(cornerRadius: 12))
+                StatusLabel(error, tone: .error)
                     .fixedSize(horizontal: false, vertical: true)
-                    .transition(SidekickStyle.entrance(reduced))
-                }
-                HStack(alignment: .bottom, spacing: 14) {
-                    TextField(answering ? "Add your answer…" : "Ask Sidekick…", text: text, axis: .vertical)
-                        .textFieldStyle(.plain).font(.title3)
-                        .foregroundStyle(SidekickStyle.ink).tint(SidekickStyle.accent)
-                        .lineLimit(1...5).focused($focused).onSubmit(handleReturn)
-                        .padding(.vertical, 10)
-                        .accessibilityLabel(answering ? "Answer Sidekick" : "Message Sidekick")
-                        .accessibilityIdentifier("sidekick.composer")
-                        .help("Return to send. Shift-Return for a new line.")
-                    if coordinator.run.isRunning && !answering {
-                        Button(action: coordinator.stop) {
-                            Image(systemName: "stop.fill").font(.callout.weight(.semibold))
-                                .foregroundStyle(SidekickStyle.ink)
-                                .frame(width: 36, height: 36)
-                                .background(.quaternary, in: Circle())
-                                .overlay(Circle().strokeBorder(.white.opacity(0.18)))
-                        }
-                        .buttonStyle(SidekickPressStyle())
-                        .accessibilityLabel("Stop current task")
-                        .accessibilityIdentifier("sidekick.stop")
-                        .help("Stop")
-                    } else {
-                    Button(action: send) {
-                        // Solid accent disc (the composer itself is the glass; no glass-on-glass).
-                        Image(systemName: "arrow.up").font(.title3.weight(.semibold))
-                            .foregroundStyle(canSend ? .white : .white.opacity(0.30))
-                            .frame(width: 36, height: 36)
-                            .background(canSend ? Theme.accent : .white.opacity(0.055), in: Circle())
-                            .overlay(Circle().strokeBorder(.white.opacity(canSend ? 0.18 : 0.09)))
-                            .animation(.easeOut(duration: 0.18), value: canSend)
-                    }
-                    .buttonStyle(SidekickPressStyle()).disabled(!canSend)
-                    .accessibilityLabel(answering ? "Send answer" : "Send message")
-                    .accessibilityIdentifier("sidekick.send")
-                    .help("Send (Return)")
-                    }
-                }
-                if answering {
-                HStack(spacing: 7) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .foregroundStyle(SidekickStyle.accent.opacity(0.8))
-                    Text("Your answer continues this task")
-                        .lineLimit(1)
-                    Spacer()
-                    if coordinator.run.isRunning {
-                        Button(action: coordinator.stop) { Label("Stop", systemImage: "stop.fill") }
-                            .buttonStyle(.plain).foregroundStyle(SidekickStyle.ink)
-                            .accessibilityIdentifier("sidekick.stop")
-                    } else if answering {
-                        Button("Dismiss") { recovery.cancel() }.buttonStyle(.plain)
-                    }
-                }
-                .font(.subheadline).foregroundStyle(SidekickStyle.secondary)
-                }
+                    .padding(.horizontal, Space.l)
             }
-            .padding(17)
-            .sidekickGlass(radius: 18, prominent: true)
-            .shadow(color: .white.opacity(focused ? 0.035 : 0), radius: 22, y: 2)
-            .shadow(color: .black.opacity(0.13), radius: 18, y: 12)
         }
         .disabled(coordinator.run.isClearingChat)
         .onChange(of: coordinator.run.isClearingChat) { _, clearing in
             if clearing { focused = false; presentation.composerFocused = false; submissionError = nil }
         }
         .onChange(of: conversation.generation) { _, _ in submissionError = nil }
-        .animation(SidekickStyle.motion(reduced), value: recovery.content?.id)
-        .animation(.easeInOut(duration: 0.35), value: focused)
+        .animation(Motion.gated(Motion.standard, reduceMotion: reduced), value: recovery.content?.id)
         .defaultFocus($focused, isPresented && !answering && !notchHasKeyboard)
         .onChange(of: notchHasKeyboard) { _, ownsKeyboard in
             if ownsKeyboard { focused = false; presentation.composerFocused = false }
@@ -143,37 +76,50 @@ struct SidekickComposer: View {
         .onDisappear { presentation.composerFocused = false }
     }
 
-    private func recoveryHeader(_ content: SidekickRecoveryContent) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(spacing: 7) {
-                Image(systemName: content.question == nil ? "arrow.clockwise" : "bubble.left.and.text.bubble.right")
-                Text(content.upgradeOffer != nil ? "ChatGPT needs your attention" : (content.question == nil ? "A little guidance?" : "A quick question"))
-                    .fontWeight(.semibold)
-            }.font(.subheadline).foregroundStyle(SidekickStyle.accent)
-            Text(content.question?.question ?? content.error ?? "")
-                .font(.body).foregroundStyle(SidekickStyle.ink).lineLimit(4)
-            if content.upgradeOffer != nil {
-                SidekickUpgradeActions(recovery: recovery, content: content)
-            }
-            if let question = content.question {
-                HStack(spacing: 8) {
-                    ForEach(Array(question.answers.enumerated()), id: \.offset) { index, answer in
-                        Button {
-                            recovery.answer(id: question.id, choice: index)
-                            if recovery.content?.id != question.id {
-                                Self.didAccept(conversation: conversation, presentation: presentation)
-                                onAccepted(); focused = true
-                            }
-                        } label: {
-                            Text(answer).font(.callout.weight(.medium)).lineLimit(3)
-                                .frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.vertical, 10)
-                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 11))
-                                .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(.white.opacity(0.13)))
-                        }.buttonStyle(SidekickPressStyle())
-                    }
+    /// The Messages / Apple Intelligence compose field: a floating glass capsule with a multi-line
+    /// field and a circular Send that turns into Stop while a task runs. System focus ring only.
+    private var askField: some View {
+        HStack(alignment: .bottom, spacing: Space.s) {
+            TextField(answering ? "Add your answer…" : "Ask Sentient", text: text, axis: .vertical)
+                .textFieldStyle(.plain).font(.body)
+                .lineLimit(1...6).focused($focused).onSubmit(handleReturn)
+                .padding(.vertical, 7)
+                .accessibilityLabel(answering ? "Answer Sidekick" : "Message Sidekick")
+                .accessibilityIdentifier("sidekick.composer")
+                .help("Return to send. Shift-Return for a new line.")
+                .onGeometryChange(for: Bool.self) { $0.size.height > 30 } action: { multiline = $0 }
+            if coordinator.run.isRunning && !answering {
+                Button(action: coordinator.stop) {
+                    Image(systemName: "stop.fill").frame(width: 28, height: 28)
                 }
+                .glassButtonStyle()
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("Stop current task")
+                .accessibilityIdentifier("sidekick.stop")
+                .help("Stop")
+            } else {
+                Button(action: send) {
+                    Image(systemName: "arrow.up").font(.body.weight(.semibold)).frame(width: 28, height: 28)
+                }
+                .glassButtonStyle(prominent: true)
+                .buttonBorderShape(.circle)
+                .disabled(!canSend)
+                .accessibilityLabel(answering ? "Send answer" : "Send message")
+                .accessibilityIdentifier("sidekick.send")
+                .help("Send (Return)")
             }
-            Rectangle().fill(.quaternary).frame(height: 1)
+        }
+        .padding(.leading, Space.l).padding(.trailing, Space.xs).padding(.vertical, Space.xs)
+        .frame(minHeight: 36)
+        .modifier(AskFieldShape(multiline: multiline))
+    }
+
+    /// Body moved verbatim from the old in-field recovery header.
+    private func choose(question: SidekickQuestion, index: Int) {
+        recovery.answer(id: question.id, choice: index)
+        if recovery.content?.id != question.id {
+            Self.didAccept(conversation: conversation, presentation: presentation)
+            onAccepted(); focused = true
         }
     }
 
@@ -198,7 +144,7 @@ struct SidekickComposer: View {
 
     private func send() {
         guard isPresented, canSend else { return }
-        let accepted = withAnimation(SidekickStyle.motion(reduced)) {
+        let accepted = withAnimation(Motion.gated(Motion.standard, reduceMotion: reduced)) {
             Self.sendDraft(coordinator: coordinator, presentation: presentation)
         }
         if accepted { onAccepted(); focused = true }
@@ -233,5 +179,107 @@ struct SidekickComposer: View {
         presentation.sendPulse &+= 1
         presentation.surface = .conversation
         conversation.requestNavigation()
+    }
+}
+
+/// The Ask field's glass shape: a capsule at one line, a continuous rounded rectangle once the
+/// draft wraps (as Messages does).
+private struct AskFieldShape: ViewModifier {
+    let multiline: Bool
+    func body(content: Content) -> some View {
+        if multiline {
+            content.floatingGlass(in: RoundedRectangle(cornerRadius: 18, style: .continuous), interactive: true)
+        } else {
+            content.floatingGlass(in: Capsule(), interactive: true)
+        }
+    }
+}
+
+/// Siri's clarification card on macOS 26, built like an inset grouped section: what Sidekick
+/// needs, suggested answers, and the consequence. The typed answer goes in the Ask field below.
+private struct RecoveryCard: View {
+    let content: SidekickRecoveryContent
+    let recovery: SidekickRecovery
+    let running: Bool
+    let stop: () -> Void
+    let choose: (_ question: SidekickQuestion, _ index: Int) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.m) {
+            header.font(.subheadline.weight(.semibold))
+            Text(content.question?.question ?? content.error ?? "")
+                .font(.headline).lineLimit(4).textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            if content.upgradeOffer != nil {
+                SidekickUpgradeActions(recovery: recovery, content: content)
+            }
+            if let question = content.question {
+                HStack(spacing: Space.s) {
+                    ForEach(Array(question.answers.enumerated()), id: \.offset) { index, answer in
+                        Button { choose(question, index) } label: {
+                            Text(answer).lineLimit(3).frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+            HStack {
+                Label("Your answer continues this task", systemImage: "arrow.turn.down.right")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                // Stop ends the task (the only `sidekick.stop` while answering); Dismiss
+                // withdraws the question when nothing is running.
+                if running {
+                    Button("Stop", systemImage: "stop.fill", action: stop)
+                        .accessibilityIdentifier("sidekick.stop")
+                } else {
+                    Button("Dismiss") { recovery.cancel() }
+                }
+            }
+            .buttonStyle(.borderless).controlSize(.small)
+        }
+        .padding(Space.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: Radius.group, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.group, style: .continuous)
+            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+    }
+
+    @ViewBuilder private var header: some View {
+        if content.upgradeOffer != nil {
+            Label("ChatGPT Needs Your Attention", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+        } else {
+            Label(content.question == nil ? "A Little Guidance?" : "A Quick Question", systemImage: "questionmark.bubble.fill")
+                .foregroundStyle(Color.accentColor)
+        }
+    }
+}
+
+/// The Messages inline-reply preview above the compose field.
+private struct ReplyChip: View {
+    let preview: AttributedString
+    let show: () -> Void
+    let remove: () -> Void
+
+    var body: some View {
+        HStack(spacing: Space.s) {
+            Image(systemName: "arrowshape.turn.up.left").foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Replying to a Message").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(preview).font(.callout).lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: show) { Image(systemName: "arrow.up.right") }
+                .help("Show Original Message").accessibilityLabel("Show original message")
+            Button(action: remove) { Image(systemName: "xmark.circle.fill") }
+                .help("Remove Reply").accessibilityLabel("Remove reply")
+        }
+        .buttonStyle(.borderless).controlSize(.small)
+        .padding(.horizontal, Space.m).padding(.vertical, Space.s)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: Radius.bubble, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.bubble, style: .continuous)
+            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+        .fixedSize(horizontal: false, vertical: true)
     }
 }

@@ -2,17 +2,16 @@
 //  KnowledgeView.swift
 //  Sentient OS macOS
 //
-//  The Knowledge page — a minimal Obsidian-style reader / editor / manager over the real markdown
-//  vault (~/Sentient OS - Knowledge Base/). Two-pane split: a folder outline (pinned "Overview" = the
-//  root README, search, disclosure folders; create via the footer "+" or right-click) and a
-//  rendered-markdown reader on the right. [[Wikilinks]] jump between notes (Back walks the trail);
-//  the window toolbar carries Back / Reader–Constellation / Edit / Delete (→ Trash) / Reveal in Finder. Every edit/create/delete commits
-//  locally and DEBOUNCE-syncs to the cloud MCP (VaultActivity.markChanged → the sidebar status line).
-//  The toolbar's segmented switch swaps the reader for the "Constellation View" graph
-//  (Graph/NightSkyView.swift) (⇧⌘G). Click a star to read that note; Back (or Esc) returns to the sky where you left it.
+//  The Knowledge page, shaped like Notes: a notes list (KnowledgeNotesList: the pinned "Overview" =
+//  the root README, disclosure folders, a sync/count strip) beside a document reader on the text
+//  background, with a Note Info inspector (KnowledgeNoteInfo.swift). The toolbar carries the list
+//  toggle, Back, the Reader | Graph switch (⇧⌘G), New Note…/New Folder…, Edit/Done, More (Reveal
+//  in Finder, Move to Trash), Search Notes and Note Info. [[Wikilinks]] jump between notes (Back
+//  walks the trail). Every edit/create/delete commits locally and DEBOUNCE-syncs to the cloud MCP
+//  (VaultActivity.markChanged → the list's sync strip). Graph mode swaps the page for the node map
+//  (Graph/NightSkyView.swift); click a node to read it, and Back (or Esc) returns to the graph.
 //
-//  Replaced the old DatabaseView (a dev CycleStore-summaries inspector, still in Dev Tools via
-//  SummariesView). Data: VaultTree.swift · rendering: MarkdownView.swift.
+//  Data: VaultTree.swift · rendering: MarkdownView.swift.
 //  Doc: Views/Knowledge/Documentation - Knowledge Window (Constellation & Reader).md
 //
 
@@ -48,23 +47,34 @@ struct KnowledgeView: View {
     @State private var pendingNav: PendingNav?
     @State private var showDiscardPrompt = false
     @FocusState private var editorFocused: Bool
-    @FocusState private var searchFocused: Bool
     @FocusState private var createFieldFocused: Bool
+    /// Bumped to focus the toolbar's Search Notes field (an NSSearchField, not a SwiftUI focusable).
+    @State private var searchFocusTick = 0
 
-    // The new-note / new-folder name prompt (raised by the right-click menus).
+    // Note Info: the inspector's visibility, and the open note's facts (folder, edited date, linked
+    // notes). Rebuilt by `refreshNoteInfo()` on selection, save and graph changes; never in `body`.
+    @State private var showInfo = false
+    @State private var noteInfo: KnowledgeNoteInfo?
+
+    @Environment(\.accessibilityReduceMotion) private var systemReduced
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
+    private var reduce: Bool { motionOverride ?? systemReduced }
+
+    // The new-note / new-folder name prompt (raised by the New menu and the right-click menus).
     @State private var showCreatePrompt = false
     @State private var createIsFolder = false
     @State private var createParent: URL?     // nil = the vault root
     @State private var createName = ""
 
-    // The Night Sky graph view — the toolbar's Reader / Constellation switch leads to it; the page
-    // opens on the Reader. The model outlives toggles, so the sky keeps its camera and star
-    // positions across reader trips; `cameFromSky` makes Back return to the sky after a star click.
+    // The graph — the toolbar's Reader / Graph switch leads to it; the page opens on the Reader.
+    // The model outlives toggles, so the graph keeps its camera and node positions across reader
+    // trips; `cameFromSky` makes Back return to the graph after a node click. The reader also reads
+    // the model's graph for each note's linked notes.
     @State private var mode: Mode = .reader
     @StateObject private var skyModel = NightSkyModel()
     @State private var cameFromSky = false
 
-    /// Reader (the split view) or the Night Sky (the full-window galaxy).
+    /// Reader (the list + document split) or the Graph (the full-page node map).
     private enum Mode: Hashable { case reader, sky }
 
     /// A navigation parked behind the unsaved-edits prompt.
@@ -75,12 +85,12 @@ struct KnowledgeView: View {
             if mode == .sky {
                 skyPane
             } else {
-                splitView
+                readerSplit
             }
         }
         .frame(minWidth: 680, minHeight: 480)
-        .background(Theme.bg)
         .toolbar { knowledgeToolbar }
+        .pageSubtitle(vault == nil ? "No notes yet" : countText, page: .knowledge)
         .allowsHitTesting(isPresented)
         .disabled(!isPresented)
         .accessibilityHidden(!isPresented)
@@ -95,18 +105,26 @@ struct KnowledgeView: View {
         .onChange(of: ProcessingCoordinator.shared.knowledgeRevision) { _, _ in
             if isPresented && !editing { Task { await loadVault() } }
         }
+        .onChange(of: graphShape) { _, _ in refreshNoteInfo() }
+        .onChange(of: search) { _, query in
+            // Results are listed in the Reader's notes list, so typing in Graph mode switches to it.
+            if !query.isEmpty && mode == .sky { requestMode(.reader) }
+        }
         .onDisappear(perform: deactivate)
-        .alert("You have unsaved edits", isPresented: $showDiscardPrompt) {
+        .alert("Do you want to save the changes you made to “\(note?.title ?? "this note")”?",
+               isPresented: $showDiscardPrompt) {
             Button("Save") { promptSave() }
-            Button("Discard", role: .destructive) { promptDiscard() }
+                .keyboardShortcut(.defaultAction)
+            Button("Don’t Save", role: .destructive) { promptDiscard() }
             Button("Cancel", role: .cancel) { cancelPendingNavigation() }
         } message: {
-            Text("Save your changes to this note, or discard them?")
+            Text("Your changes will be lost if you don’t save them.")
         }
-        .alert(createIsFolder ? "New folder" : "New note", isPresented: $showCreatePrompt) {
+        .alert(createIsFolder ? "New Folder" : "New Note", isPresented: $showCreatePrompt) {
             TextField(createIsFolder ? "Folder name" : "Note name", text: $createName)
                 .focused($createFieldFocused)
             Button("Create") { performCreate() }
+                .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) {}
         }
         .onChange(of: showCreatePrompt) { _, shown in
@@ -117,31 +135,51 @@ struct KnowledgeView: View {
         }
     }
 
-    /// The reader half: the familiar sidebar + rendered-markdown split.
-    private var splitView: some View {
+    /// Reader mode: the notes list beside the document, with the Note Info inspector.
+    /// Without a knowledge base the page is one empty state, with no empty list beside it.
+    private var readerSplit: some View {
         HSplitView {
-            if sidebarVisible { sidebar.frame(minWidth: 220, idealWidth: 260, maxWidth: 380) }
-            reader.frame(minWidth: 420)
+            if sidebarVisible && !(loaded && vault == nil) {
+                KnowledgeNotesList(vault: vault, selection: selection, search: search, expanded: $expanded,
+                                   mirrorEnabled: mirrorEnabled, onOpen: requestOpen,
+                                   onCreate: { folder, parent in promptCreate(folder: folder, in: parent) },
+                                   onTrash: deleteItem,
+                                   onReveal: { NSWorkspace.shared.activateFileViewerSelecting([$0]) })
+                    .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
+            }
+            readerPane
+                .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor))
         }
-        // Window-open focus lands in the search box, not the sidebar's "+" button. defaultFocus
-        // declares it; the delayed onAppear claim backs it up (AppKit assigns the initial key
-        // view a beat after SwiftUI's appear — same pattern as PromptBar's launch focus).
-        .defaultFocus($searchFocused, isPresented)
+        .inspector(isPresented: Binding(get: { isPresented && showInfo && mode == .reader && selection != nil },
+                                        set: { showInfo = $0 })) {
+            KnowledgeNoteInspector(info: noteInfo, onOpen: requestFollow,
+                                   onReveal: { NSWorkspace.shared.activateFileViewerSelecting([$0]) })
+                .inspectorColumnWidth(min: 260, ideal: 300, max: 380)
+        }
+        // Window-open focus lands in Search Notes. AppKit assigns the initial key view a beat after
+        // SwiftUI's appear, so the request waits 100 ms. Only in Reader mode: the graph keeps the
+        // keyboard for Esc.
         .task(id: isPresented) {
             guard isPresented else { return }
             do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
             guard !Task.isCancelled else { return }
-            searchFocused = true
+            searchFocusTick += 1
         }
     }
 
-    /// The Constellation View takes the whole page. The toolbar switch, Esc, and ⇧⌘G lead back.
+    /// Graph mode takes the whole page. The toolbar switch, Esc and ⇧⌘G lead back.
     private var skyPane: some View {
         NightSkyView(vault: vault, vaultLoaded: loaded, model: skyModel,
                      entranceReady: entranceReady, isActive: isPresented,
                      onOpen: { openFromSky($0) },
                      onExit: { requestMode(.reader) })
+    }
 
+    /// Changes when the graph is rebuilt with different notes or links, so Note Info follows it.
+    private var graphShape: [Int] {
+        guard let g = skyModel.graph else { return [] }
+        return [g.nodes.count, g.edges.count]
     }
 
     private func loadVault() async {
@@ -156,19 +194,31 @@ struct KnowledgeView: View {
         // when it still exists, refresh its content, and recover to Overview when it vanished.
         if let selection, v?.allNotes.contains(where: { $0.url == selection }) == true || selection == v?.readme {
             if !editing { note = KnowledgeVault.read(selection) }
-            return
+        } else {
+            history = []; historyIndex = -1
+            selection = nil; note = nil
+            if let r = v?.readme { open(r) }                          // greet with the portrait
+            else if let first = v?.allNotes.first { open(first.url) }
         }
-        history = []; historyIndex = -1
-        selection = nil; note = nil
-        if let r = v?.readme { open(r) }                          // greet with the portrait
-        else if let first = v?.allNotes.first { open(first.url) }
+        // The reader's linked notes and link counts come from the graph, so build it here too
+        // (idempotent; the graph view reloads on entry exactly as before).
+        await skyModel.load(vault: v)
+        refreshNoteInfo()
+    }
+
+    /// Rebuild the open note's facts for the metadata line and Note Info.
+    private func refreshNoteInfo() {
+        guard let url = selection, let v = vault else { noteInfo = nil; return }
+        let title = note?.title ?? url.deletingPathExtension().lastPathComponent
+        noteInfo = KnowledgeNoteInfo.make(url: url, title: title, vault: v, graph: skyModel.graph)
     }
 
     /// The retained page cannot rely on disappearance for cleanup. Keep its draft/camera,
     /// but release transient focus, sheets, hover, and the app-wide editing/navigation gates.
     private func deactivate() {
         showCreatePrompt = false; showDiscardPrompt = false
-        editorFocused = false; searchFocused = false; createFieldFocused = false
+        editorFocused = false; createFieldFocused = false
+        searchFocusTick = 0       // the field is rebuilt on return; it takes focus only when asked
         cancelPendingNavigation()
         MainNavigation.shared.leaveKnowledge = nil
         VaultActivity.shared.editorBusy = false
@@ -188,9 +238,9 @@ struct KnowledgeView: View {
         select(url)
     }
 
-    // MARK: The Night Sky (mode switching + the star → reader → back-to-sky loop)
+    // MARK: The graph (mode switching + the node → reader → back-to-graph loop)
 
-    /// Switch reader ⟷ sky. Entering the sky funnels through the same unsaved-edits guard as
+    /// Switch reader ⟷ graph. Entering the sky funnels through the same unsaved-edits guard as
     /// every other navigation.
     private func requestMode(_ new: Mode) {
         guard new != mode else { return }
@@ -198,18 +248,18 @@ struct KnowledgeView: View {
             if editing { if isDirty { pendingNav = .sky; showDiscardPrompt = true; return }; exitEdit() }
             enterSky()
         } else {
-            withAnimation(.easeInOut(duration: 0.3)) { mode = .reader }
+            withAnimation(Motion.gated(Motion.standard, reduceMotion: reduce)) { mode = .reader }
         }
     }
 
     private func enterSky() {
         if cameFromSky, let sel = selection { skyModel.highlight(sel) }   // "you were just here"
-        withAnimation(.easeInOut(duration: 0.3)) { mode = .sky }
+        withAnimation(Motion.gated(Motion.standard, reduceMotion: reduce)) { mode = .sky }
     }
 
-    /// A star was clicked: land in the reader on that note, and let Back lead home to the sky.
+    /// A node was clicked: land in the reader on that note, and let Back lead home to the graph.
     private func openFromSky(_ url: URL) {
-        withAnimation(.easeInOut(duration: 0.3)) { mode = .reader }
+        withAnimation(Motion.gated(Motion.standard, reduceMotion: reduce)) { mode = .reader }
         open(url)
         cameFromSky = true
     }
@@ -227,6 +277,7 @@ struct KnowledgeView: View {
         selection = url
         note = KnowledgeVault.read(url)
         if let v = vault { expanded.formUnion(v.ancestors(of: url)) }
+        refreshNoteInfo()
     }
 
     private func goBack() { guard canGoBack else { return }; historyIndex -= 1; select(history[historyIndex]) }
@@ -265,7 +316,7 @@ struct KnowledgeView: View {
         pendingNav = nil
     }
 
-    /// Back walks the wikilink trail; with the trail exhausted, it returns to the Night Sky if
+    /// Back walks the wikilink trail; with the trail exhausted, it returns to the graph if
     /// that's where this reading trip began.
     private func backAction() {
         if canGoBack { goBack() } else if cameFromSky { enterSky() }
@@ -298,8 +349,8 @@ struct KnowledgeView: View {
         if isDirty { pendingNav = nil; showDiscardPrompt = true } else { exitEdit() }
     }
 
-    /// Commit the buffer to disk and leave edit mode. Cloud sync is DEBOUNCED (markChanged), so Save
-    /// is instant locally — no per-note spinner; the sidebar's status line shows the sync. No changes
+    /// Commit the buffer to disk and leave edit mode. Cloud sync is DEBOUNCED (markChanged), so Done
+    /// is instant locally — no per-note spinner; the notes list's sync strip shows the sync. No changes
     /// → just leave. `completion` continues a parked note-switch from the unsaved-edits prompt.
     private func save(then completion: (() -> Void)? = nil) {
         guard editing, let url = selection else { completion?(); return }
@@ -314,6 +365,7 @@ struct KnowledgeView: View {
         }
         savedText = editText
         note = KnowledgeVault.read(url)            // refresh the rendered view behind us
+        refreshNoteInfo()                          // the edited date moved
         exitEdit()
         VaultActivity.shared.markChanged()         // schedules the debounced mirror sync
         completion?()
@@ -375,7 +427,7 @@ struct KnowledgeView: View {
     /// presentation (same delayed-claim pattern as PromptBar's launch focus): the FocusState
     /// claim for when SwiftUI honors `.focused` inside alert content, and an AppKit
     /// first-responder walk as the backstop — matched by the field's placeholder, so it can
-    /// never grab the sidebar's search box or any other field.
+    /// never grab the toolbar's search field or any other field.
     private func claimCreateFieldFocus() {
         let placeholder = createIsFolder ? "Folder name" : "Note name"
         for delay: TimeInterval in [0.1, 0.35] {
@@ -468,313 +520,182 @@ struct KnowledgeView: View {
         return v.allNotes.filter { $0.name.localizedCaseInsensitiveContains(search) }
     }
 
-    // MARK: Sidebar
-
-    private var sidebar: some View {
-        VStack(spacing: 0) {
-            searchField
-                .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
-            sidebarList
-            Divider()
-            sidebarFooter
-        }
-        .background(Theme.panel)
-    }
-
-    /// The tree's foot, Finder-style: the create menu, then the note count and sync state.
-    private var sidebarFooter: some View {
-        HStack(spacing: 10) {
-            newMenu
-            VStack(alignment: .leading, spacing: 2) {
-                Text(countText).font(.caption.weight(.medium))
-                statusLine
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-    }
-
+    /// "12 notes" — the window subtitle and the notes list's strip.
     private var countText: String {
         let n = vault?.titleIndex.count ?? 0
         return "\(n) note\(n == 1 ? "" : "s")"
     }
 
-    /// Creates at the vault root; folders and empty list space offer the same via right-click.
-    private var newMenu: some View {
-        Menu {
-            Button { promptCreate(folder: false, in: nil) } label: { Label("New Note", systemImage: "doc.badge.plus") }
-            Button { promptCreate(folder: true, in: nil) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
-        } label: {
-            Image(systemName: "plus")
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("New note or folder")
+    /// Where New Note… and New Folder… create: the open note's folder, or the vault root.
+    private var createParentForSelection: URL? {
+        selection.flatMap { $0 == vault?.readme ? nil : $0.deletingLastPathComponent() }
     }
 
-    /// "On this Mac" (mirror off) or the live cloud-MCP sync state. @Observable → live.
-    /// AES-256-GCM seals the vault on this Mac before upload; the relay stores ciphertext and
-    /// decrypts in memory for authorised requests.
-    private var statusLine: some View {
-        Group {
-            if mirrorEnabled {
-                switch VaultActivity.shared.syncState {
-                case .synced:  Label("Synced", systemImage: "lock.icloud")
-                        .help("Synced to your encrypted cloud MCP copy")
-                case .pending: Label("Sync pending", systemImage: "icloud")
-                        .help("Changes will sync to your encrypted cloud MCP copy soon")
-                case .syncing: Label("Syncing…", systemImage: "arrow.clockwise.icloud")
-                        .help("Syncing to your encrypted cloud MCP copy")
+    // MARK: Toolbar
+
+    /// Knowledge's window-toolbar items. Empty while another page is showing: the page stays
+    /// mounted behind the others, and its items must not leak into their toolbars.
+    @ToolbarContentBuilder private var knowledgeToolbar: some ToolbarContent {
+        if isPresented {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    withAnimation(Motion.gated(Motion.standard, reduceMotion: reduce)) { sidebarVisible.toggle() }
+                } label: {
+                    Label(sidebarVisible ? "Hide Notes List" : "Show Notes List", systemImage: "sidebar.left")
                 }
-            } else {
-                Label("On this Mac", systemImage: "internaldrive")
-                    .help("Saved on this Mac only")
+                .help(sidebarVisible ? "Hide Notes List" : "Show Notes List")
+                .disabled(mode == .sky)
             }
-        }
-        .labelStyle(.titleAndIcon)
-        .lineLimit(1)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-
-    private var searchField: some View {
-        TextField("Search", text: $search, prompt: Text("Search notes"))
-            .textFieldStyle(.roundedBorder)
-            .focused($searchFocused)
-    }
-
-    /// The folder tree as a native outline. Selecting a note goes through `requestOpen`, so
-    /// unsaved edits still prompt before the switch.
-    private var sidebarList: some View {
-        List(selection: Binding(get: { selection }, set: { url in
-            if let url, url != selection { requestOpen(url) }
-        })) {
-            if search.isEmpty {
-                if let readme = vault?.readme {
-                    Label("Overview", systemImage: "text.book.closed").tag(readme)
-                }
-                ForEach(vault?.nodes ?? []) { node in
-                    KnowledgeTreeNode(node: node, expanded: $expanded,
-                                      onCreate: { promptCreate(folder: $1, in: $0) },
-                                      onDelete: { deleteItem($0) })
-                }
-            } else if searchResults.isEmpty {
-                Text("No Matches").foregroundStyle(.secondary)
-            } else {
-                ForEach(searchResults) { node in
-                    KnowledgeTreeNode(node: node, expanded: $expanded,
-                                      onCreate: { promptCreate(folder: $1, in: $0) },
-                                      onDelete: { deleteItem($0) })
+            if mode == .reader && (canGoBack || cameFromSky) {
+                ToolbarItem(placement: .navigation) {
+                    Button(action: requestBack) { Label("Back", systemImage: "chevron.left") }
+                        .help(canGoBack ? "Previous Note" : "Back to Graph")
                 }
             }
-        }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .contextMenu {   // right-click empty list space → create at the vault ROOT
-            Button { promptCreate(folder: false, in: nil) } label: { Label("New Note", systemImage: "doc.badge.plus") }
-            Button { promptCreate(folder: true, in: nil) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
+            ToolbarItem(placement: .principal) {
+                Picker("View", selection: Binding(get: { mode }, set: { requestMode($0) })) {
+                    Text("Reader").tag(Mode.reader)
+                    Text("Graph").tag(Mode.sky)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .help("Switch Views (⇧⌘G)")
+                .background {
+                    Button("Switch View") { requestMode(mode == .reader ? .sky : .reader) }
+                        .keyboardShortcut("g", modifiers: [.command, .shift])
+                        .hidden()
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button("New Note…") { promptCreate(folder: false, in: createParentForSelection) }
+                    Button("New Folder…") { promptCreate(folder: true, in: createParentForSelection) }
+                } label: {
+                    Label("New", systemImage: "square.and.pencil")
+                }
+                .help("New Note or Folder")
+                .disabled(vault == nil || editing)
+            }
+            if mode == .reader, let sel = selection {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(editing ? "Done" : "Edit") { if editing { save() } else { beginEdit() } }
+                        .help(editing ? "Save Changes" : "Edit This Note")
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([sel]) }
+                        Divider()
+                        Button("Move to Trash", role: .destructive) { deleteItem(sel) }
+                            .disabled(editing || sel == vault?.readme)
+                    } label: {
+                        Label("More", systemImage: "ellipsis.circle")
+                    }
+                    .help("More")
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                ToolbarSearchField(text: $search, prompt: "Search Notes", identifier: "knowledge.search",
+                                   width: 200, focusRequest: searchFocusTick,
+                                   onSubmit: { if let first = searchResults.first { requestOpen(first.url) } })
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button { showInfo.toggle() } label: {
+                    Label("Note Info", systemImage: "info.circle")
+                }
+                .help(showInfo ? "Hide Note Info" : "Show Note Info")
+                .disabled(mode == .sky || selection == nil)
+            }
         }
     }
 
     // MARK: Reader
 
-    private var reader: some View {
-        readerContent
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.bg)
-    }
-
-    /// Knowledge's window-toolbar items. Empty while another page is showing: the page stays
-    /// mounted behind the others, and its items must not leak into their toolbars.
-    @ToolbarContentBuilder private var knowledgeToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .navigation) {
-            if isPresented && mode == .reader {
-                Button { sidebarVisible.toggle() } label: {
-                    Label(sidebarVisible ? "Hide Notes List" : "Show Notes List", systemImage: "list.bullet.indent")
-                }
-                .help(sidebarVisible ? "Hide notes list" : "Show notes list")
-                if canGoBack || cameFromSky {
-                    Button(action: requestBack) { Label("Back", systemImage: "chevron.left") }
-                        .help(canGoBack ? "Previous note" : "Back to the constellation")
-                }
-            }
-        }
-        ToolbarItem(placement: .principal) {
-            if isPresented {
-                Picker("View", selection: Binding(get: { mode }, set: { requestMode($0) })) {
-                    Text("Reader").tag(Mode.reader)
-                    Text("Constellation").tag(Mode.sky)
-                }
-                .pickerStyle(.segmented)
-                .fixedSize()
-                .help("Switch views (⇧⌘G)")
-                .background {
-                    Button("Switch View") { requestMode(mode == .sky ? .reader : .sky) }
-                        .keyboardShortcut("g", modifiers: [.command, .shift])
-                        .hidden()
-                }
-            }
-        }
-        ToolbarItemGroup(placement: .primaryAction) {
-            if isPresented && mode == .reader && selection != nil {
-                editToolbarItem
-                if !editing { deleteToolbarButton }
-                revealToolbarButton
-            }
-        }
-    }
-
-    /// Move the open note to the macOS Trash (icon-only, between Edit and Reveal — reading mode only).
-    /// Hidden for the README/Overview — the vault's index shouldn't be one misclick from gone.
     @ViewBuilder
-    private var deleteToolbarButton: some View {
-        if let url = selection, url != vault?.readme {
-            Button(role: .destructive) { deleteItem(url) } label: {
-                Label("Move to Trash", systemImage: "trash")
-            }
-            .labelStyle(.iconOnly)
-            .help("Move to Trash")
-        }
-    }
-
-    @ViewBuilder
-    private var revealToolbarButton: some View {
-        if let url = selection {
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([url])
-            } label: {
-                Label("Reveal in Finder", systemImage: "folder")
-            }
-            .labelStyle(.iconOnly)
-            .help("Reveal in Finder")
-        }
-    }
-
-    /// The Edit ⟷ Save toggle in the titlebar. Save commits locally; the mirror sync is DEBOUNCED
-    /// (see the sidebar's status line), so there's no per-note spinner here.
-    @ViewBuilder
-    private var editToolbarItem: some View {
-        if editing {
-            Button { save() } label: { Label("Save", systemImage: "checkmark") }
-                .labelStyle(.titleAndIcon)
-        } else {
-            Button { beginEdit() } label: { Label("Edit", systemImage: "square.and.pencil") }
-                .labelStyle(.titleAndIcon)
-                .help("Edit this note")
-        }
-    }
-
-    @ViewBuilder
-    private var readerContent: some View {
+    private var readerPane: some View {
         if editing, let url = selection {
             editorView(url)
         } else if let note, let url = selection {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Color.clear.frame(height: 0).id("top")
-                        MonoCaps(url.lastPathComponent, size: 9, tracking: 2, color: Theme.Ink.deepMuted)
-                            .lineLimit(1).truncationMode(.middle)
-                            .padding(.bottom, 11)
-                        Text(note.title)
-                            .font(.largeTitle.weight(.bold)).foregroundStyle(.primary)
-                            .textSelection(.enabled)
-                            .padding(.bottom, 22)
-                        MarkdownView(markdown: note.markdown,
-                                     exists: { vault?.resolve($0) != nil },
-                                     onNavigate: { title in if let u = vault?.resolve(title) { requestFollow(u) } },
-                                     onExternal: { NSWorkspace.shared.open($0) })
-                    }
-                    .frame(maxWidth: 720, alignment: .leading)
-                    .padding(.horizontal, 46).padding(.top, 18).padding(.bottom, 90)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-                .onChange(of: selection) { _, _ in proxy.scrollTo("top", anchor: .top) }
-            }
+            readerDocument(url, note)
         } else if loaded && vault == nil {
-            emptyState(title: "No knowledge base yet",
-                       subtitle: "Your knowledge will appear here after analysis. You can use Sidekick while it is being built.")
+            ContentUnavailableView("No Knowledge Base Yet", systemImage: "books.vertical",
+                                   description: Text("Your knowledge will appear here after analysis. You can use Sidekick while it’s being built."))
         } else if loaded {
-            emptyState(title: "Select a note", subtitle: nil)
+            ContentUnavailableView("No Note Selected", systemImage: "doc.text",
+                                   description: Text("Choose a note from the list."))
         } else {
             Color.clear   // pre-load: no flash
         }
     }
 
-    /// Edit mode — a plain-text editor over the raw markdown, in the same reading column so the swap
-    /// feels in place. Wikilinks/headers show as their literal source here (you're editing the file).
-    /// Esc cancels (prompting if there are unsaved changes).
-    private func editorView(_ url: URL) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MonoCaps(url.lastPathComponent, size: 9, tracking: 2, color: Theme.Ink.deepMuted)
-                .lineLimit(1).truncationMode(.middle)
-                .padding(.bottom, 12)
-            TextEditor(text: $editText)
-                .font(.body)
-                .lineSpacing(5)
-                .scrollContentBackground(.hidden)
-                .focused($editorFocused)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .frame(maxWidth: 760, alignment: .leading)
-        .padding(.horizontal, 44).padding(.top, 18).padding(.bottom, 18)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onAppear { if isPresented { editorFocused = true } }
-        .onExitCommand { cancelEdit() }
-    }
-
-    private func emptyState(title: String, subtitle: String?) -> some View {
-        ContentUnavailableView {
-            Label(title, systemImage: "books.vertical")
-        } description: {
-            if let subtitle { Text(subtitle) }
-        }
-    }
-}
-
-// MARK: - Sidebar rows
-
-/// One outline node: a folder disclosing its children, or a selectable note (tagged by URL).
-private struct KnowledgeTreeNode: View {
-    let node: VaultNode
-    @Binding var expanded: Set<URL>
-    let onCreate: (URL, Bool) -> Void   // (parent folder, isFolder)
-    let onDelete: (URL) -> Void
-
-    var body: some View {
-        if node.isFolder {
-            DisclosureGroup(isExpanded: Binding(
-                get: { expanded.contains(node.url) },
-                set: { open in if open { expanded.insert(node.url) } else { expanded.remove(node.url) } }
-            )) {
-                ForEach(node.children) { child in
-                    KnowledgeTreeNode(node: child, expanded: $expanded, onCreate: onCreate, onDelete: onDelete)
-                }
-            } label: {
-                Label(node.name, systemImage: "folder")
-                    .contextMenu {   // create INSIDE this folder
-                        Button { onCreate(node.url, false) } label: { Label("New Note", systemImage: "doc.badge.plus") }
-                        Button { onCreate(node.url, true) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
-                        Divider()
-                        revealAndTrash
+    /// The open note as a document: title, a metadata line, the Markdown body, then the notes it
+    /// links with.
+    private func readerDocument(_ url: URL, _ note: (title: String, markdown: String)) -> some View {
+        let info = noteInfo?.url == url ? noteInfo : nil      // cached; never built in body
+        return ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.m) {
+                    Color.clear.frame(height: 0).id("top")
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Text(note.title)
+                            .font(.title.bold())
+                            .textSelection(.enabled)
+                            .accessibilityAddTraits(.isHeader)
+                        if let info, !info.metadataLine.isEmpty {
+                            Text(info.metadataLine)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    MarkdownView(markdown: note.markdown,
+                                 exists: { vault?.resolve($0) != nil },
+                                 onNavigate: { title in if let u = vault?.resolve(title) { requestFollow(u) } },
+                                 onExternal: { NSWorkspace.shared.open($0) })
+                    if let links = info?.linked, !links.isEmpty {
+                        Divider().padding(.vertical, Space.l)
+                        Text("Linked Notes")
+                            .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            ForEach(links) { link in
+                                Button(link.title) { requestFollow(link.url) }
+                                    .buttonStyle(.link)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Space.xxl)
+                .padding(.vertical, Space.xl)
+                .centeredColumn(maxWidth: PageMetrics.documentColumn)
             }
-        } else {
-            Label(node.name, systemImage: "doc.text")
-                .lineLimit(1)
-                .tag(node.url)
-                .contextMenu { revealAndTrash }
+            .onChange(of: selection) { _, _ in proxy.scrollTo("top", anchor: .top) }
         }
     }
 
-    @ViewBuilder private var revealAndTrash: some View {
-        Button { NSWorkspace.shared.activateFileViewerSelecting([node.url]) } label: { Label("Reveal in Finder", systemImage: "folder") }
-        Divider()
-        Button(role: .destructive) { onDelete(node.url) } label: { Label("Move to Trash", systemImage: "trash") }
+    /// Edit mode: a plain-text editor over the raw Markdown, in the same reading column so the swap
+    /// happens in place. Wikilinks and headers show as their literal source here (you're editing the
+    /// file). Esc cancels (prompting if there are unsaved changes).
+    private func editorView(_ url: URL) -> some View {
+        TextEditor(text: $editText)
+            .font(.body)
+            .lineSpacing(3)
+            .scrollContentBackground(.hidden)
+            .focused($editorFocused)
+            .onExitCommand { cancelEdit() }
+            .onAppear { if isPresented { editorFocused = true } }
+            .padding(.horizontal, Space.xxl)
+            .padding(.vertical, Space.xl)
+            .centeredColumn(maxWidth: PageMetrics.documentColumn)
+            .accessibilityLabel("Note Text")
     }
 }
 
 #Preview("Knowledge") {
-    KnowledgeView().frame(width: 1100, height: 720).preferredColorScheme(.dark)
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            KnowledgeView().frame(width: 1000, height: 680)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }

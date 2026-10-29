@@ -1,5 +1,7 @@
 // An explicit analysis choice. Only the overnight choice presents wake/login setup;
 // neither choosing now nor opening Home asks for those optional capabilities.
+// A window-attached form sheet like Time Machine's schedule choice: a radio choice, the
+// requirement rows revealed for the scheduled option, and Back / Continue at the bottom right.
 import SwiftUI
 
 struct AnalysisTimingSheet: View {
@@ -12,64 +14,74 @@ struct AnalysisTimingSheet: View {
     @State private var nextOvernight = OvernightScheduler.nextOccurrence(minutesSinceMidnight: OvernightScheduler.configuredMinutes)
     private var canContinue: Bool { sourcesReady && (timing == .now || overnightReady) }
 
+    private let nowFooter = "Progress is saved as it runs. You can close the analysis window and keep using Sentient."
+    private let overnightFooter = "Keep Sentient open in your menu bar. Plug in your Mac overnight or leave at least 50% battery."
+
     var body: some View {
         VStack(spacing: 0) {
-            GeometryReader { viewport in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            MonoCaps("Your first analysis", size: 9, tracking: 2, color: Theme.faint)
-                            Text("When should analysis run?").display(27).foregroundStyle(.primary)
+            Form {
+                Section {
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        Text("When Should Analysis Run?")
+                            .font(.title2.bold())
+                            .accessibilityAddTraits(.isHeader)
+                        Group {
                             Text("Your first analysis can take over an hour to understand your sources and build your knowledge base.")
-                                .font(.body).foregroundStyle(Theme.secondary).lineSpacing(3)
                             Text(CodexAuth.knowledgeBaseOnly
                                  ? "You can explore Sentient while it runs. Double Tap becomes available after your knowledge is ready."
                                  : "Keep using Sidekick while it runs. Personal context and Double Tap become available after your knowledge is ready.")
-                                .font(.body).foregroundStyle(Theme.secondary).lineSpacing(3)
                         }
-                        .fixedSize(horizontal: false, vertical: true)
-                        VStack(spacing: 12) {
-                            choice(.now, title: "Run processing now", icon: "sparkles",
-                                   detail: "Build your knowledge in the background while you use Sentient.")
-                            choice(.overnight, title: "Run processing overnight", icon: "moon.stars",
-                                   detail: "Next run: \(ProcessingCoordinator.scheduleLabel(nextOvernight)).")
-                        }
-                        if timing == .overnight {
-                            OvernightSetupRequirements { overnightReady = $0 }
-                            Text("Keep Sentient open in your menu bar. Plug in your Mac overnight or leave at least 50% battery.")
-                                .font(.callout).foregroundStyle(Theme.secondary).lineSpacing(3)
-                        } else {
-                            Text("Progress is saved as it runs. You can close the analysis window and keep using Sentient.")
-                                .font(.callout).foregroundStyle(Theme.secondary).lineSpacing(3)
-                        }
-                        if !sourcesReady {
-                            Text("Some sources are no longer available. Go back and choose three available sources.")
-                                .font(.callout).foregroundStyle(Theme.Ink.amber)
-                        }
+                        .foregroundStyle(.secondary)
                     }
-                    .padding(28)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
-                .scrollBounceBehavior(.basedOnSize)
-                .frame(width: viewport.size.width, height: viewport.size.height)
+                Section {
+                    radioRow(.now, "Now", "Build your knowledge in the background while you use Sentient.")
+                    radioRow(.overnight, "Overnight", "Next run: \(ProcessingCoordinator.scheduleLabel(nextOvernight)).")
+                } header: {
+                    Text("Run Analysis")
+                } footer: {
+                    Text(timing == .now ? nowFooter : overnightFooter)
+                }
+                if timing == .overnight {
+                    Section("For Overnight Analysis") {
+                        OvernightSetupRequirements { overnightReady = $0 }
+                    }
+                }
+                if !sourcesReady {
+                    Section {
+                        StatusLabel("Some sources are no longer available. Go back and choose three available sources.",
+                                    tone: .warning)
+                    }
+                }
             }
+            .formStyle(.grouped)
+            .scrollBounceBehavior(.basedOnSize)
+
+            // The footer never scrolls: a sheet gets a finite viewport from its owner, so the
+            // overnight requirements scroll inside the form instead of growing the window.
             HStack {
-                Button("Back") { dismiss() }.buttonStyle(BackButtonStyle()).keyboardShortcut(.cancelAction)
+                Button("Back") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .keyboardShortcut(.cancelAction)
                 Spacer()
-                OnboardingNextButton(title: timing == .now ? "Start analysis" : "Schedule analysis",
-                                     enabled: canContinue, glow: 0.25) {
+                Button(timing == .now ? "Start Analysis" : "Schedule Analysis") {
                     guard canContinue else { return }
                     onChoose(timing)
                 }
-                .accessibilityIdentifier("analysis.timing.continue")
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
+                .disabled(!canContinue)
+                .accessibilityIdentifier("analysis.timing.continue")
             }
-            .padding(.horizontal, 28).padding(.vertical, 20)
+            .padding(.horizontal, Space.xl)
+            .padding(.vertical, Space.l)
             .fixedSize(horizontal: false, vertical: true)
         }
-        // A sheet gets a finite viewport from its owner; overnight requirements scroll inside
-        // it instead of increasing the native window's minimum past a small display.
         .frame(width: 560, height: viewportHeight)
-        .background(Theme.bg).preferredColorScheme(.dark)
+        .presentationSizing(.fitted)
         .task {
             while !Task.isCancelled {
                 nextOvernight = OvernightScheduler.nextOccurrence(minutesSinceMidnight: OvernightScheduler.configuredMinutes)
@@ -79,25 +91,34 @@ struct AnalysisTimingSheet: View {
         }
     }
 
-    private func choice(_ value: ProcessingCoordinator.Timing, title: String, icon: String, detail: String) -> some View {
+    /// A real Button (the lab asserts AXButton + enabled for both ids), drawn as a radio row.
+    /// `Picker(.radioGroup)` would expose AXRadioButtons with no per-option identifiers.
+    private func radioRow(_ value: ProcessingCoordinator.Timing, _ title: String, _ detail: String) -> some View {
         Button { timing = value } label: {
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: icon).font(.title.weight(.light)).frame(width: 25)
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(title).font(.title3.weight(.medium))
-                    Text(detail).font(.callout).foregroundStyle(Theme.secondary).lineSpacing(3)
+            HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+                Image(systemName: timing == value ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(timing == value ? Color.accentColor : Color.secondary)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundStyle(.primary)
+                    Text(detail).font(.subheadline).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: timing == value ? "checkmark.circle.fill" : "circle")
-                    .font(.title2).foregroundStyle(timing == value ? .white : Theme.faint)
             }
-            .foregroundStyle(.primary).padding(18).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white.opacity(timing == value ? 0.07 : 0.025), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(timing == value ? 0.38 : 0.1)))
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).accessibilityIdentifier("analysis.timing.\(value.rawValue)")
+        .buttonStyle(.borderless)
+        .accessibilityIdentifier("analysis.timing.\(value.rawValue)")
         .accessibilityAddTraits(timing == value ? .isSelected : [])
     }
 }
 
-#Preview { AnalysisTimingSheet(onChoose: { _ in }) }
+#Preview {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            AnalysisTimingSheet(onChoose: { _ in })
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
+    }
+}

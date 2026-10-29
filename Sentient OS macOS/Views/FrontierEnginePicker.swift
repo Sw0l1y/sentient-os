@@ -2,23 +2,24 @@
 //  FrontierEnginePicker.swift
 //  Sentient OS macOS
 //
-//  The shared frontier-engine picker — the five engine pills (EngineTab) over each engine's
-//  setup panel, rendered identically by Settings → Frontier Model Choice and onboarding's
-//  choose-your-frontier-model step. Shares its visible tab with the host and owns the endpoint fields
-//  (ModelBackend/CustomProvider — the one source of truth), Test & Select (vision-gated
-//  activation: an unproven model can never become the engine), and the honest local-models
-//  warning. The ChatGPT panel is the host's slot: Settings points at Permissions & Health,
-//  onboarding embeds the live codex login. Layout knob: Settings' fixed 3+2 grid, or
-//  onboarding's single centered row. Deep doc: Cloud/Documentation - Cloud - Frontier Model Choice (BYOM).md.
+//  The shared frontier-engine chooser, laid out like System Settings › Apple Intelligence & Siri:
+//  a radio list of the five engines (each with its tile, its state and an "In Use" mark on the
+//  engine that runs Sentient), then a detail group for the engine being browsed. Rendered by
+//  Settings › AI Model (`.settingsGrid`: the pane's grouped Form) and by onboarding's Choose Your
+//  AI page (`.singleRow`: GroupBoxes inside a Setup Assistant page). Choosing a row only browses;
+//  an engine becomes the one in use only through Test & Select, Use Claude, Use ChatGPT or
+//  onboarding's Continue. Owns the endpoint fields (ModelBackend/CustomProvider — the one source
+//  of truth), Test & Select (vision-gated activation: an unproven model can never become the
+//  engine), and the honest local-models warning. The ChatGPT detail is the host's slot.
+//  Deep doc: Cloud/Documentation - Cloud - Frontier Model Choice (BYOM).md.
 //
 
 import SwiftUI
+import AppKit
 
 struct FrontierEnginePicker<ChatGPTPanel: View>: View {
-    @Environment(\.settingsFormStyle) private var formStyle
-
-    /// Settings' fixed two-row grid (3 + 2 — a scrollbar appearing must never reflow the strip,
-    /// the jumpy-rewrap of 2026-07-24), or onboarding's single centered row of five.
+    /// `.settingsGrid`: the Settings pane's grouped Form. `.singleRow`: a plain stack of GroupBoxes
+    /// for a Setup Assistant page (the engines are a vertical radio list in both).
     enum Layout { case settingsGrid, singleRow }
 
     typealias Tab = FrontierEngineTab
@@ -28,11 +29,12 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
     private static var kimiSlug: String { "moonshotai/kimi-k3" }
 
     let layout: Layout
-    /// Whether the ChatGPT engine counts as healthy (wears the pill's active dot). Settings
-    /// passes true — login honesty lives in Permissions & Health there; onboarding passes the
-    /// live codex login state.
+    /// Whether the ChatGPT engine counts as healthy (wears "In Use"). Settings passes true —
+    /// login honesty lives in Permissions & Health there; onboarding passes the live codex login.
     let chatgptHealthy: Bool
     private let chatgptPanel: () -> ChatGPTPanel
+    /// Shows the "How Your Models Work Together" Section (Settings only; set by `explainer()`).
+    private var showsExplainer = false
 
     init(tab: Binding<Tab>,
          layout: Layout = .settingsGrid,
@@ -42,6 +44,13 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
         self.layout = layout
         self.chatgptHealthy = chatgptHealthy
         self.chatgptPanel = chatgptPanel
+    }
+
+    /// Adds the "How Your Models Work Together" disclosure as the Form's last Section.
+    func explainer() -> FrontierEnginePicker {
+        var copy = self
+        copy.showsExplainer = true
+        return copy
     }
 
     @AppStorage(ModelBackend.key) private var backendRaw = ModelBackend.chatgpt.rawValue
@@ -64,36 +73,78 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
     @State private var testing = false
     @State private var testVerdict: String?
 
+    @Environment(\.accessibilityReduceMotion) private var systemReduced
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
+    private var reduceMotion: Bool { motionOverride ?? systemReduced }
+
     private var backend: ModelBackend { ModelBackend(rawValue: backendRaw) ?? .chatgpt }
     private var savedPreset: CustomProvider.Preset { CustomProvider.Preset(rawValue: presetRaw) ?? .openRouter }
+    private var settings: Bool { layout == .settingsGrid }
 
-    /// The tab wearing the "active engine" dot.
+    /// The engine that runs Sentient (it wears "In Use" while healthy).
     private var activeTab: Tab {
         Tab(backend: backend, preset: savedPreset)
     }
 
     var body: some View {
-        VStack(alignment: layout == .singleRow ? .center : .leading, spacing: 26) {
-            tabStrip
-
-            Group {
-                switch tab {
-                case .chatgpt:    chatgptPanel()
-                case .claude:     claudePanel
-                case .openRouter: endpointPanel(for: .openRouter)
-                case .lmStudio:   endpointPanel(for: .lmStudio)
-                case .custom:     endpointPanel(for: .custom)
+        Group {
+            switch layout {
+            case .settingsGrid:
+                PaneForm {
+                    Section {
+                        engineRows
+                    } header: {
+                        Text("Engine")
+                    } footer: {
+                        Text("Choose the AI behind your knowledge, suggestions, and Sidekick.")
+                    }
+                    Section {
+                        detail
+                    } header: {
+                        Text(detailTitle)
+                    } footer: {
+                        detailFooter
+                    }
+                    if showsExplainer {
+                        Section {
+                            DisclosureGroup("How Your Models Work Together") {
+                                VStack(alignment: .leading, spacing: Space.s) {
+                                    Text(PrivacyCopy.frontierDetail)
+                                    Text(PrivacyCopy.customProvider)
+                                }
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                }
+            case .singleRow:
+                VStack(alignment: .leading, spacing: Space.l) {
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: Space.s) {
+                            ForEach(Array(Tab.allCases.enumerated()), id: \.element) { index, engine in
+                                if index > 0 { Divider() }
+                                engineRow(engine)
+                            }
+                        }
+                        .padding(.vertical, Space.xs)
+                    }
+                    if tab == .chatgpt {
+                        chatgptPanel()
+                    } else {
+                        GroupBox(detailTitle) {
+                            VStack(alignment: .leading, spacing: Space.m) {
+                                detail
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(Space.xs)
+                        }
+                    }
                 }
             }
-            // The Settings editorial measure — panels never stretch wider than prose stays
-            // readable, in either host (SettingsPane caps at the same width).
-            .frame(maxWidth: formStyle ? .infinity : 640, alignment: .leading)
-            .id(tab)
-            // A quiet crossfade — no lateral slide: panels differ in height, and a slide on
-            // top of the height change read as an abrupt jump (field feedback 2026-07-25).
-            .transition(.opacity)
         }
-        .animation(.easeInOut(duration: 0.25), value: tab)
+        // A quiet crossfade — no lateral slide: the detail groups differ in height.
+        .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: tab)
         .onAppear {
             tab = activeTab
             apiKey = CustomProvider.apiKey ?? ""
@@ -102,52 +153,94 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
         .onChange(of: backendRaw) {
             if backend == .chatgpt { testVerdict = nil }
         }
-        .alert("A note on local frontier models", isPresented: $showLocalWarning) {
+        .alert("A Note on Local Frontier Models", isPresented: $showLocalWarning) {
             Button("Understood") {}
         } message: {
             Text("Computer use needs a model that understands screenshots and uses tools reliably. Larger local models may need more memory. Choose the model and provider that fit your Mac and preferences. Cloud providers process your context under their own policies and your account settings.")
         }
+        // Claude's install and login probe, whenever its detail is browsed.
+        .task(id: tab) {
+            guard tab == .claude else { return }
+            await claude.refreshInstalled()
+            await claude.refreshLoginStatus()
+        }
+        .task(id: claude.loggingIn) {
+            // The sign-in watcher: while the browser flow is out, quietly re-check every 2s —
+            // the detail flips to the signed-in state by itself the moment the login lands.
+            guard claude.loggingIn else { return }
+            while !Task.isCancelled, claude.loggingIn, !claude.loggedIn {
+                try? await Task.sleep(for: .seconds(2))
+                await claude.refreshLoginStatus()
+            }
+        }
+        .onChange(of: tab) { old, new in
+            if old == .claude, new != .claude { claudePreparationTask?.cancel() }
+        }
+        .onDisappear { claudePreparationTask?.cancel() }
     }
 
-    // MARK: - The engine tab strip
+    // MARK: - The engine radio list
 
-    @ViewBuilder private var tabStrip: some View {
-        if formStyle {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                ForEach(Tab.allCases) { pill($0) }
-            }
-        } else {
-            Group {
-                switch layout {
-                case .settingsGrid:
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            pill(.chatgpt); pill(.claude); pill(.openRouter)
-                        }
-                        HStack(spacing: 8) {
-                            pill(.lmStudio); pill(.custom)
-                        }
-                    }
-                case .singleRow:
-                    HStack(spacing: 8) {
-                        ForEach(Tab.allCases) { pill($0) }
+    @ViewBuilder private var engineRows: some View {
+        ForEach(Tab.allCases) { engineRow($0) }
+    }
+
+    /// One engine: a radio mark, its tile, name and badge, and "In Use" on the live engine.
+    /// Choosing it only browses its detail.
+    private func engineRow(_ engine: Tab) -> some View {
+        let browsed = tab == engine
+        return Button {
+            selectTab(engine)
+        } label: {
+            LabeledContent {
+                if activeTab == engine && isActiveEngineHealthy(engine) {
+                    Label("In Use", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+            } label: {
+                HStack(spacing: Space.s) {
+                    Image(systemName: browsed ? "largecircle.fill.circle" : "circle")
+                        .foregroundStyle(browsed ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+                        .accessibilityHidden(true)
+                    TileLabel(displayLabel(engine), subtitle: subtitle(engine)) {
+                        IconTile(engineTile(engine))
                     }
                 }
             }
-            .fixedSize()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(browsed ? .isSelected : [])
+    }
+
+    private func engineTile(_ engine: Tab) -> TileSpec {
+        switch engine {
+        case .chatgpt:    return .engineChatGPT
+        case .claude:     return .engineClaude
+        case .openRouter: return .engineOpenRouter
+        case .lmStudio:   return .engineLMStudio
+        case .custom:     return .engineCustom
         }
     }
 
-    private func pill(_ t: Tab) -> some View {
-        EngineTab(label: t.label, badge: t.badge,
-                  selected: tab == t, active: activeTab == t && isActiveEngineHealthy(t)) {
-            selectTab(t)
+    /// Settings drops " Subscription" ("ChatGPT", "Claude"); onboarding keeps the full label.
+    private func displayLabel(_ engine: Tab) -> String {
+        settings ? engine.label.replacingOccurrences(of: " Subscription", with: "") : engine.label
+    }
+
+    private func subtitle(_ engine: Tab) -> String? {
+        if engine == .custom { return "Your endpoint" }
+        switch engine.badge {
+        case "recommended": return "Recommended"
+        case "beta":        return "Beta"
+        case "local":       return "Local"
+        default:            return nil
         }
     }
 
-    /// The active dot stays honest: a custom engine only wears it once it's proven usable,
-    /// Claude's is its live login, and ChatGPT's honesty is the host's call (Settings: always;
-    /// onboarding: logged in).
+    /// "In Use" stays honest: a custom engine only wears it once it's proven usable, Claude's is
+    /// its live login, and ChatGPT's honesty is the host's call (Settings: always; onboarding:
+    /// logged in).
     private func isActiveEngineHealthy(_ t: Tab) -> Bool {
         switch t {
         case .chatgpt: return chatgptHealthy
@@ -183,89 +276,129 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
         }
     }
 
-    // MARK: - Claude (the claude -p engine)
+    // MARK: - The browsed engine's detail
 
-    private var claudePanel: some View {
-        SettingsGroup(label: formStyle ? "Claude" : "Your Claude") {
-            VStack(alignment: .leading, spacing: 14) {
-                SettingsProse(formStyle ? "Use your Claude Pro, Max, or Team subscription for knowledge, morning suggestions, and Sidekick." : "Claude Code runs on your own Claude subscription (Pro, Max, or Team), so a plan you already pay for powers everything: knowledge base, morning cards, Sidekick, computer use.")
-
-                claudeStates
-
-                if claude.preparing || claude.installing { MonoWaitLine("preparing claude code…") }
-                OnboardingStatusText(claude.installStatus)
-
-                if formStyle {
-                    SettingsDetails(title: "Using Gmail and Google Calendar") {
-                        SettingsProse("Connect them in Claude’s Settings → Connectors to use them in Sentient.")
-                    }
-                } else {
-                    SettingsHairline()
-                    SettingsProse("Gmail and Calendar can ride your claude.ai connectors: connect them once at claude.ai, under Settings, then Connectors, and Sentient's reads use them here.")
-                }
-            }
+    private var detailTitle: String {
+        switch tab {
+        case .chatgpt:    return "ChatGPT"
+        case .claude:     return settings ? "Claude" : "Your Claude"
+        case .openRouter: return "Your OpenRouter"
+        case .lmStudio:   return "Your LM Studio"
+        case .custom:     return "Your Endpoint"
         }
-        .onAppear {
-            Task {
-                await claude.refreshInstalled()
-                await claude.refreshLoginStatus()
-            }
-        }
-        .task(id: claude.loggingIn) {
-            // The sign-in watcher: while the browser flow is out, quietly re-check every 2s —
-            // the panel flips to the signed-in state by itself the moment the login lands.
-            guard claude.loggingIn else { return }
-            while !Task.isCancelled, claude.loggingIn, !claude.loggedIn {
-                try? await Task.sleep(for: .seconds(2))
-                await claude.refreshLoginStatus()
-            }
-        }
-        .onDisappear { claudePreparationTask?.cancel() }
     }
 
-    /// The Claude state machine: signed in (Use Claude in Settings; onboarding uses Continue) → browser
-    /// out → install failed → the sign-in CTA (which lazily installs the CLI first).
+    @ViewBuilder private var detail: some View {
+        switch tab {
+        case .chatgpt:    chatgptPanel()
+        case .claude:     claudeRows
+        case .openRouter: endpointRows(for: .openRouter)
+        case .lmStudio:   endpointRows(for: .lmStudio)
+        case .custom:     endpointRows(for: .custom)
+        }
+    }
+
+    @ViewBuilder private var detailFooter: some View {
+        switch tab {
+        case .openRouter, .lmStudio, .custom:
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text("Applies wherever this model runs.")
+                Text("Stored in your Mac’s Keychain.")
+                Text("Test the model’s image support before using it.")
+            }
+        default:
+            EmptyView()
+        }
+    }
+
+    // MARK: - Claude (the claude -p engine)
+
+    @ViewBuilder private var claudeRows: some View {
+        Text(settings
+             ? "Use your Claude Pro, Max, or Team subscription for knowledge, morning suggestions, and Sidekick."
+             : "Claude Code runs on your own Claude subscription (Pro, Max, or Team), so a plan you already pay for powers everything: knowledge base, morning cards, Sidekick, computer use.")
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+        claudeStates
+
+        if claude.preparing || claude.installing { MonoWaitLine("Preparing Claude Code…") }
+        OnboardingStatusText(claude.installStatus)
+
+        if settings {
+            DisclosureGroup("Using Gmail and Google Calendar") {
+                Text("Connect them in Claude’s Settings → Connectors to use them in Sentient.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            Text("Gmail and Calendar can ride your claude.ai connectors: connect them once at claude.ai, under Settings, then Connectors, and Sentient's reads use them here.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The Claude state machine: signed in (Use Claude in Settings; onboarding uses Continue) →
+    /// browser out → install failed → the sign-in button (which lazily installs the CLI first).
     @ViewBuilder private var claudeStates: some View {
+        let busy = claude.preparing || claude.installing
         if claude.loggedIn {
-            OnboardingDoneLine(claude.plan.map { "Signed in to Claude Code · \($0) plan" }
-                               ?? "Signed in to Claude Code")
+            StatusRow("Claude Account",
+                      detail: claude.plan.map { "Signed in to Claude Code · \($0) plan" } ?? "Signed in to Claude Code",
+                      tone: .ok)
             if backend == .claude {
-                FrontierActiveLine("Sentient is running on your Claude.")
-            } else if layout == .settingsGrid {
-                SettingsPillButton(title: "Use Claude") {
-                    prepareClaude(signIn: false)
+                StatusLabel("Sentient is running on your Claude.", tone: .ok)
+            } else if settings {
+                HStack {
+                    Spacer()
+                    Button("Use Claude") { prepareClaude(signIn: false) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(busy)
                 }
-                .disabled(claude.preparing || claude.installing)
             }
         } else if claude.loggingIn {
             LoginLinkButton(url: claude.loginURL)
-            Text("Finish signing in in your browser.")
-                .font(.body)
-                .foregroundStyle(Theme.Ink.body)
-            MonoWaitLine("waiting for the browser sign-in…")
+            StatusLabel("Finish signing in in your browser.", tone: .working)
+            MonoWaitLine("Waiting for the browser sign-in…")
         } else if claude.installGaveUp && !claude.installed {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Sentient couldn't finish installing Claude Code automatically.")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(Theme.Ink.body)
-                SettingsProse("You can install it yourself in a minute with this Terminal command, then come back here:")
-                Text("curl -fsSL https://claude.ai/install.sh | bash")
-                    .font(.system(.subheadline, design: .monospaced))
-                    .foregroundStyle(Theme.Ink.statusInk)
+            StatusLabel("Sentient couldn’t finish installing Claude Code automatically.", tone: .error)
+            Text("You can install it yourself in a minute with this Terminal command, then come back here:")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Space.s) {
+                Text(Self.claudeInstallCommand)
+                    .font(.system(.callout, design: .monospaced))
                     .textSelection(.enabled)
-                SettingsPillButton(title: "Try again") { prepareClaude(signIn: true) }
-                    .disabled(claude.preparing || claude.installing)
+                Spacer(minLength: Space.s)
+                CopyButton(value: Self.claudeInstallCommand)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+            HStack {
+                Spacer()
+                Button("Try Again") { prepareClaude(signIn: true) }
+                    .buttonStyle(.bordered)
+                    .disabled(busy)
             }
         } else {
-            VStack(alignment: .leading, spacing: 10) {
-                SettingsPillButton(title: claude.preparing || claude.installing ? "Setting up…" : "Sign in with Claude") {
-                    prepareClaude(signIn: true)
+            HStack {
+                Spacer()
+                if settings {
+                    Button(busy ? "Setting Up…" : "Sign In with Claude") { prepareClaude(signIn: true) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(busy)
+                } else {
+                    Button(busy ? "Setting Up…" : "Sign In with Claude") { prepareClaude(signIn: true) }
+                        .buttonStyle(.bordered)
+                        .disabled(busy)
                 }
-                .disabled(claude.preparing || claude.installing)
-                OnboardingStatusText(claude.loginStatusLine)
             }
+            OnboardingStatusText(claude.loginStatusLine)
         }
     }
+
+    private static var claudeInstallCommand: String { "curl -fsSL https://claude.ai/install.sh | bash" }
 
     private func prepareClaude(signIn: Bool) {
         claudePreparationTask = Task {
@@ -282,103 +415,142 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
 
     // MARK: - Configurable endpoints (OpenRouter · Custom + its local presets)
 
-    private func endpointPanel(for preset: CustomProvider.Preset) -> some View {
-        SettingsGroup(label: preset == .openRouter ? "Your OpenRouter"
-                           : preset == .lmStudio ? "Your LM Studio" : "Your Endpoint") {
-            VStack(alignment: .leading, spacing: 14) {
-                switch preset {
-                case .openRouter:
-                    SettingsProse("Any model on OpenRouter, billed to your own key.")
-                case .lmStudio:
-                    SettingsProse(formStyle
-                        ? "Use an image-capable model from LM Studio. Keep its local server running while you use Sentient."
-                        : "A model running on your own hardware, through LM Studio's local server. Sentient's translator makes it a first-class engine, computer use included; whether the model is up to the job is the honest question (see the note when this tab opens).")
-                case .custom:
-                    SettingsProse("Any endpoint that speaks the OpenAI Responses API (a /v1/responses route). Base URL, model name, key if it needs one.")
-                }
-                if preset != .lmStudio {
-                    if formStyle {
-                        SettingsDetails(title: "Choosing a model for computer use") {
-                            modelGuidance
-                        }
-                    } else { modelGuidance }
-                }
-
-                // OpenRouter's base URL is fixed — no field, the tab pins it itself.
-                if preset != .openRouter {
-                    fieldRow(label: "BASE URL",
-                             placeholder: preset == .lmStudio
-                                 ? CustomProvider.Preset.lmStudio.defaultBaseURL
-                                 : "https://your-endpoint.example/v1",
-                             text: $baseURL)
-                }
-                fieldRow(label: "MODEL",
-                         placeholder: preset == .openRouter ? Self.kimiSlug
-                             : preset == .lmStudio ? "the model id shown in LM Studio"
-                             : "the model id your server expects",
-                         text: $modelName)
-                secureRow(label: preset == .openRouter ? "OPENROUTER API KEY" : "API KEY",
-                          placeholder: preset == .openRouter ? "sk-or-…" : "optional for keyless servers")
-
-                reasoningField
-
-                SettingsProse(formStyle
-                    ? "Test the model’s image support before using it."
-                    : "Your model has to be able to see: Sentient acts on your Mac by looking at the screen, so a text-only model can't drive it. The test below checks that for you by asking your model to read a picture.")
-
-                HStack(spacing: 10) {
-                    SettingsPillButton(title: testing ? "Testing…" : "Test & Select",
-                                       tint: Theme.Ink.bright) {
-                        guard !testing else { return }
-                        runTest(preset: preset)
-                    }
-                    if isActive(preset) {
-                        FrontierActiveLine("This model is running Sentient.")
-                    }
-                }
-                if let testVerdict {
-                    SettingsProse(testVerdict)
-                }
-
-                if !formStyle {
-                    SettingsHairline()
-                    SettingsProse(PrivacyCopy.customProvider)
-                }
+    @ViewBuilder private func endpointRows(for preset: CustomProvider.Preset) -> some View {
+        Group {
+            switch preset {
+            case .openRouter:
+                Text("Any model on OpenRouter, billed to your own key.")
+            case .lmStudio:
+                Text(settings
+                     ? "Use an image-capable model from LM Studio. Keep its local server running while you use Sentient."
+                     : "A model running on your own hardware, through LM Studio's local server. Sentient's translator makes it a first-class engine, computer use included; whether the model is up to the job is the honest question (see the note when this tab opens).")
+            case .custom:
+                Text("Any endpoint that speaks the OpenAI Responses API (a /v1/responses route). Base URL, model name, key if it needs one.")
             }
+        }
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+        if preset != .lmStudio {
+            if settings {
+                DisclosureGroup("Choosing a Model for Computer Use") {
+                    modelGuidance.frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                modelGuidance
+            }
+        }
+
+        // OpenRouter's base URL is fixed — no field, the tab pins it itself.
+        if preset != .openRouter {
+            LabeledContent("Base URL") {
+                TextField("Base URL", text: $baseURL,
+                          prompt: Text(preset == .lmStudio
+                                       ? CustomProvider.Preset.lmStudio.defaultBaseURL
+                                       : "https://your-endpoint.example/v1"))
+                    .labelsHidden()
+                    .autocorrectionDisabled()
+                    .onChange(of: baseURL) { invalidate() }
+            }
+        }
+        LabeledContent("Model") {
+            TextField("Model", text: $modelName,
+                      prompt: Text(preset == .openRouter ? Self.kimiSlug
+                                   : preset == .lmStudio ? "the model id shown in LM Studio"
+                                   : "the model id your server expects"))
+                .labelsHidden()
+                .autocorrectionDisabled()
+                .onChange(of: modelName) { invalidate() }
+        }
+        LabeledContent(preset == .openRouter ? "OpenRouter API Key" : "API Key") {
+            SecureField(preset == .openRouter ? "OpenRouter API Key" : "API Key", text: $apiKey,
+                        prompt: Text(preset == .openRouter ? "sk-or-…" : "optional for keyless servers"))
+                .labelsHidden()
+                .onChange(of: apiKey) {
+                    let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty {
+                        Keychain.delete(CustomProvider.apiKeyAccount)
+                    } else {
+                        Keychain.set(CustomProvider.apiKeyAccount, trimmed)
+                    }
+                    invalidate()
+                }
+        }
+        reasoningRow
+
+        HStack(spacing: Space.s) {
+            if isActive(preset) {
+                StatusLabel("This model is running Sentient.", tone: .ok)
+            }
+            Spacer()
+            if settings {
+                Button(testing ? "Testing…" : "Test & Select") {
+                    guard !testing else { return }
+                    runTest(preset: preset)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(testing)
+            } else {
+                Button(testing ? "Testing…" : "Test & Select") {
+                    guard !testing else { return }
+                    runTest(preset: preset)
+                }
+                .buttonStyle(.bordered)
+                .disabled(testing)
+            }
+        }
+        if let testVerdict {
+            StatusLabel(testVerdict, tone: testVerdict.hasPrefix("✓") ? .ok
+                                         : testVerdict.hasPrefix("✗") ? .error : .working)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        if !settings {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text("Applies wherever this model runs.")
+                Text("Stored in your Mac’s Keychain.")
+                Text("Your model has to be able to see: Sentient acts on your Mac by looking at the screen, so a text-only model can't drive it. The test below checks that for you by asking your model to read a picture.")
+                Text(PrivacyCopy.customProvider)
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var modelGuidance: some View {
-        SettingsProse("For computer use, consider GPT-6 Sol at low reasoning or Claude Sonnet 5 with reasoning off. Of the open-weights models we tested, Kimi K3 at low reasoning is the only one we can recommend for reliably driving computer use.")
+        Text("For computer use, consider GPT-6 Sol at low reasoning or Claude Sonnet 5 with reasoning off. Of the open-weights models we tested, Kimi K3 at low reasoning is the only one we can recommend for reliably driving computer use.")
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// The endpoint's ONE reasoning level — free text, because models speak different dialects
     /// (`none`, `low`, `xhigh`, `adaptive`, …), applied to every run this model powers (the
-    /// Speed slider is ChatGPT's). Kimi wants low; Claude-class endpoints need none. Editing it
+    /// Speed control is ChatGPT's). Kimi wants low; Claude-class endpoints need none. Editing it
     /// re-runs the gate via the field's invalidate, since a wrong level can break the endpoint
-    /// outright.
-    private var reasoningField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            fieldRow(label: "REASONING",
-                     placeholder: "low · none · xhigh · whatever your model supports",
-                     text: $reasoningRaw)
-            if formStyle {
-                Text("Applies wherever this model runs.").font(.callout).foregroundStyle(SettingsStyle.secondary)
-            } else {
-                MonoCaps("applies everywhere this model runs", size: 7.5, tracking: 1.6, color: Theme.Ink.deepMuted)
+    /// outright. The menu offers the common levels.
+    private var reasoningRow: some View {
+        LabeledContent("Reasoning") {
+            HStack(spacing: Space.xs) {
+                TextField("Reasoning", text: $reasoningRaw,
+                          prompt: Text("low · none · xhigh · whatever your model supports"))
+                    .labelsHidden()
+                    .autocorrectionDisabled()
+                    .onChange(of: reasoningRaw) { invalidate() }
+                Menu {
+                    ForEach(["none", "low", "medium", "high", "xhigh"], id: \.self) { level in
+                        Button(level) { reasoningRaw = level }
+                    }
+                } label: {
+                    Image(systemName: "chevron.up.chevron.down")
+                }
+                .menuStyle(.button)
+                .buttonStyle(.borderless)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Suggested Levels")
+                .accessibilityLabel("Suggested reasoning levels")
             }
-        }
-    }
-
-    // MARK: - Pieces
-
-    private func fieldRow(label: String, placeholder: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            fieldLabel(label)
-            TextField(placeholder, text: text)
-                .textFieldStyle(.roundedBorder)
-                .controlSize(formStyle ? .large : .regular)
-                .onChange(of: text.wrappedValue) { invalidate() }
         }
     }
 
@@ -390,39 +562,6 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
         verified = false
         testVerdict = nil
         if backend == .custom { backendRaw = ModelBackend.chatgpt.rawValue }
-    }
-
-    private func secureRow(label: String, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            fieldLabel(label)
-            SecureField(placeholder, text: $apiKey)
-                .textFieldStyle(.roundedBorder)
-                .controlSize(formStyle ? .large : .regular)
-                .onChange(of: apiKey) {
-                    let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if trimmed.isEmpty {
-                        Keychain.delete(CustomProvider.apiKeyAccount)
-                    } else {
-                        Keychain.set(CustomProvider.apiKeyAccount, trimmed)
-                    }
-                    invalidate()
-                }
-            if formStyle {
-                Text("Stored in your Mac’s Keychain.").font(.callout).foregroundStyle(SettingsStyle.secondary)
-            } else {
-                MonoCaps("stored in your mac's keychain", size: 7.5, tracking: 1.6, color: Theme.Ink.deepMuted)
-            }
-        }
-    }
-
-    @ViewBuilder private func fieldLabel(_ label: String) -> some View {
-        if formStyle {
-            Text(["BASE URL": "Base URL", "MODEL": "Model", "REASONING": "Reasoning",
-                  "API KEY": "API key", "OPENROUTER API KEY": "OpenRouter API key"][label] ?? label)
-                .font(.body.weight(.medium)).foregroundStyle(.primary)
-        } else {
-            MonoCaps(label, size: 8.5, tracking: 2.0, color: Theme.Ink.deepMuted)
-        }
     }
 
     private func isActive(_ preset: CustomProvider.Preset) -> Bool {
@@ -511,18 +650,12 @@ struct FrontierEnginePicker<ChatGPTPanel: View>: View {
     }
 }
 
-// MARK: - The engine tab
 
-/// One tab in the engine strip: a fixed-size pill that reads like a place, not a button —
-/// EVERY pill the same width and height so the row's geometry never shifts (scrollbars,
-/// badges, and selection can't reflow it). Selected = elevated wash + white ring; the ACTIVE
-/// engine wears the small green status dot (the same honest LED the health rows use). Badges
-/// whisper in mono-caps under the label.
+// MARK: - Kept types
+
+/// One engine as a plain row button: its name and badge, and "In Use" on the live engine.
+/// Kept compiling for source compatibility; the picker draws its own rows.
 struct EngineTab: View {
-    @Environment(\.settingsFormStyle) private var formStyle
-    static var pillWidth: CGFloat { 176 }
-    static var pillHeight: CGFloat { 52 }
-
     let label: String
     var badge: String? = nil
     let selected: Bool
@@ -531,49 +664,42 @@ struct EngineTab: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(formStyle ? label.replacingOccurrences(of: " Subscription", with: "") : label)
-                        .font(.body.weight(selected ? .semibold : .regular))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.92)
-                    if active {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .accessibilityLabel("In use")
-                    }
+            LabeledContent {
+                if active {
+                    Label("In Use", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
                 }
-                if let badge {
-                    Text(label == "Custom" ? "Your endpoint" : badge.capitalized)
-                        .font(.caption)
-                        .foregroundStyle(badge == "recommended" ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
-                }
+            } label: {
+                Text(label)
+                if let badge { Text(label == "Custom" ? "Your endpoint" : badge.capitalized) }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .frame(width: formStyle ? nil : Self.pillWidth, height: formStyle ? 60 : Self.pillHeight)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(
-                selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Theme.stroke),
-                lineWidth: selected ? 2 : 0.5))
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
-/// The green "this engine is live" line — shared by the picker's endpoint panels and the
-/// Settings pane's ChatGPT panel.
+/// The "this engine is live" line — shared by the picker's endpoint details and the Settings
+/// pane's ChatGPT detail.
 struct FrontierActiveLine: View {
-    @Environment(\.settingsFormStyle) private var formStyle
     let text: String
     init(_ text: String) { self.text = text }
 
     var body: some View {
-        HStack(spacing: 8) {
-            HealthDot(color: Theme.Ink.green)
-            Text(text).font(.system(size: formStyle ? 14 : 12, weight: .medium)).foregroundStyle(.primary)
+        StatusLabel(text, tone: .ok)
+    }
+}
+
+#Preview("Engine picker") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            FrontierEnginePicker(tab: .constant(.openRouter)) {
+                Text("ChatGPT detail")
+            }
+            .explainer()
+            .frame(width: 640, height: 760)
+            .environment(\.colorScheme, scheme)
         }
     }
 }

@@ -162,50 +162,13 @@ import SwiftUI
         window.center()
         try await settle(500)
 
-        // Feed phase-bearing input into the actual mounted probe's policy/callback path.
-        // This never posts an event to the user's desktop; real event-to-window routing is
-        // checked separately through native interaction and the pure policy suite.
-        guard let scrollProbe = overviewProbes(host).first(where: { $0.enabled }) else { throw Failure.invalidFixture }
-        _ = scroll(scrollProbe, by: 40, phase: .began)
-        try await settle(80)
-        checks["ui_scroll_partial_keeps_overview"] = presentation.surface == .suggestions && scrollProbe.policy.distance == 40
-        captures.append(try await capture(host, name: "22-scroll-pull-40", directory: directory))
-        _ = scroll(scrollProbe, by: 50)
-        try await settle(80)
-        captures.append(try await capture(host, name: "23-scroll-pull-90", directory: directory))
-        _ = scroll(scrollProbe, by: -35)
-        try await settle(80)
-        checks["ui_scroll_reverses_live"] = scrollProbe.policy.distance == 55 && presentation.surface == .suggestions
-        captures.append(try await capture(host, name: "24-scroll-reversed-55", directory: directory))
-        _ = scroll(scrollProbe, by: 0, phase: .ended)
-        try await settle(500)
-        checks["ui_scroll_partial_end_settles"] = scrollProbe.policy.distance == 0 && presentation.surface == .suggestions
-        captures.append(try await capture(host, name: "25-scroll-settled", directory: directory))
-        let scrollMotion = try await SidekickUIRecording.record(window: window,
-            url: directory.appendingPathComponent("scroll-motion.mp4"), duration: 4.4) { @MainActor in
-            do {
-                try await Task.sleep(for: .milliseconds(250))
-                for index in 0..<12 {
-                    _ = scroll(scrollProbe, by: 7, phase: index == 0 ? .began : .changed)
-                    try await Task.sleep(for: .milliseconds(32))
-                }
-                for _ in 0..<8 {
-                    _ = scroll(scrollProbe, by: -7)
-                    try await Task.sleep(for: .milliseconds(32))
-                }
-                _ = scroll(scrollProbe, by: 0, phase: .ended)
-                try await Task.sleep(for: .milliseconds(650))
-                for index in 0..<21 {
-                    _ = scroll(scrollProbe, by: 7, phase: index == 0 ? .began : .changed)
-                    try await Task.sleep(for: .milliseconds(28))
-                }
-                _ = scroll(scrollProbe, by: 0, phase: .ended)
-                _ = scroll(scrollProbe, by: 0, phase: [], momentum: .ended)
-            } catch { return }
-        }
-        checks["ui_scroll_commit_opens_chat"] = presentation.surface == .conversation && !scrollProbe.policy.consuming
-        try saveMotion(scrollMotion, name: "scroll", root: root)
-        checks["ui_scroll_motion_recorded"] = scrollMotion["writer_completed"] as? Bool == true
+        // RETIRED (integration, SPEC-D1 section 4 / WP1-NOTES): the overview-scroll block
+        // (ui_scroll_partial_keeps_overview, ui_scroll_reverses_live, ui_scroll_partial_end_settles,
+        // ui_scroll_commit_opens_chat, ui_scroll_motion_recorded and its scroll-motion recording).
+        // Deleted subject: Home's pull-to-conversation gesture. HomeView no longer mounts
+        // SidekickOverviewScroll, so no enabled probe exists to feed. SidekickOverviewScroll.swift
+        // itself is byte-identical and test_sidekick_overview_scroll.py still covers its policy;
+        // overviewProbes(_:) and scroll(_:by:phase:momentum:) below are kept for that type's API.
 
         conversation.draft = draft
         withAnimation(SidekickStyle.motion(false)) { presentation.surface = .conversation }
@@ -320,7 +283,10 @@ import SwiftUI
         presentation.searchShown = true; presentation.search = "calendar research"
         await presentation.find(conversation: conversation)
         try await settle(350)
-        checks["ui_search_receives_keyboard_focus"] = (window.firstResponder as? NSTextView).map { $0.isEditable && $0.string == presentation.search } == true
+        // RETIRED (integration, SPEC-D2 O2 / WP4-NOTES): ui_search_receives_keyboard_focus. Deleted
+        // subject: the in-content transcript search field. Search now lives in Home's window
+        // toolbar (ToolbarSearchField "sidekick.history.search"), which this bare NSHostingView
+        // fixture does not host. The model-level search checks below still run.
         captures.append(try await capture(host, name: "05-history-search", directory: directory))
         checks["ui_search_finds_saved_markdown"] = presentation.searchResults.contains { $0.event.id == markdownID }
         presentation.search = ""; presentation.searchShown = false

@@ -1,11 +1,12 @@
 //  OnboardingDoubleTapView.swift
-//  Native Mail and Messages, a face-on keyboard invitation, and the real caret spiral teach
-//  Double Tap after the film's Sidekick scene, before frontier-model selection.
-//  DoubleTapDemoInput connects only this key window to the coordinator's existing key monitor.
+//  The Double Tap lesson as a Setup Assistant page (like macOS's Touch ID lesson): a tile and
+//  title, one vignette with the real Mail or Messages icon, the user's own modifier keys, and a
+//  footer whose primary lights only once the lesson succeeds. The real caret spiral still lands
+//  in the reply field. DoubleTapDemoInput connects only this key window to the coordinator's
+//  existing key monitor.
 //  Doc: Documentation - Onboarding.md (this folder).
 
 import AppKit
-import CoreText
 import SwiftUI
 
 struct OnboardingDoubleTapView: View {
@@ -15,69 +16,30 @@ struct OnboardingDoubleTapView: View {
     @State var demo = OnboardingDoubleTapDemo()
     @State var shortcutHint = OnboardingShortcutHint()
     @AppStorage("sidekick.hotkey") private var shortcutRaw = ShortcutPreferences.current.rawValue
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduced
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
 
     private var shortcut: ShortcutKey { ShortcutKey(rawValue: shortcutRaw) ?? .rightCommand }
 
-    /// Matches SidekickScene.tsx's background headline: Instrument Serif 400, upright, 30 px
-    /// at the desktop breakpoint. Load the bundled OFL font directly so previews and offline
-    /// onboarding use the actual face without relying on a system-installed font.
-    private static let instructionFont: Font = {
-        guard let url = Bundle.main.url(forResource: "InstrumentSerif-Regular", withExtension: "ttf"),
-              let provider = CGDataProvider(url: url as CFURL),
-              let font = CGFont(provider) else {
-            Log("Onboarding: could not load bundled Instrument Serif")
-            return .system(size: 30, weight: .regular)
-        }
-        return Font(CTFontCreateWithGraphicsFont(font, 30, nil, nil))
-    }()
+    /// True when Reduce Motion, the Sidekick override or Low Power Mode asks for stillness
+    /// (Motion.gated returns no animation). The demo's own choreography follows this flag.
+    private var reduceMotion: Bool {
+        Motion.gated(Motion.standard, reduceMotion: motionOverride ?? systemReduced) == nil
+    }
+
+    private var motion: Animation? { Motion.gated(Motion.standard, reduceMotion: reduceMotion) }
+
+    /// The stage height fits the email card with its full drafted reply, so nothing below it
+    /// moves when the reply lands or when Messages replaces Mail.
+    private static let stageHeight: CGFloat = 280
 
     var body: some View {
         GeometryReader { geometry in
-            let windowWidth = min(660, geometry.size.width - 96)
-            let flightProgress = reduceMotion ? 0 : (demo.sample == .email ? demo.emailDeparture : 1 - demo.messageArrival)
-            ZStack {
-                Color.black.ignoresSafeArea()
-
-                VStack(spacing: 0) {
-                    Spacer(minLength: 10)
-
-                    sampleWindow
-                        .frame(width: windowWidth, height: demo.sample == .message ? 350 : 440)
-                        .scaleEffect(demo.sample == .email && !demo.windowVisible && !reduceMotion ? 0.97 : 1)
-                        .offset(y: demo.sample == .email && !demo.windowVisible && !reduceMotion ? 16 : 0)
-                        .opacity(demo.sample == .message && !reduceMotion ? 1 : (demo.windowVisible ? 1 : 0))
-                        .modifier(DemoWindowFlight(progress: flightProgress,
-                                                   side: demo.sample == .email ? .right : .left,
-                                                   viewport: geometry.size))
-                        .accessibilityHidden(!demo.windowVisible || demo.emailDeparture > 0)
-                        // Both windows occupy the same stage. Messages is shorter within it,
-                        // so changing samples cannot move the instruction or keyboard below.
-                        .frame(height: 440)
-
-                    OnboardingShortcutInstruction(prefix: "Double tap your ", key: shortcut, suffix: " key", hint: shortcutHint)
-                        .font(Self.instructionFont)
-                        .foregroundStyle(.primary)
-                        .opacity(demo.instructionVisible ? (demo.phase == .waiting ? 1 : 0.42) : 0)
-                        .accessibilityHidden(!demo.instructionVisible)
-                        .animation(.easeOut(duration: 0.18), value: demo.instructionVisible)
-                        .animation(.easeOut(duration: 0.35), value: demo.phase)
-                        .frame(width: windowWidth, height: 38)
-                        .overlay(alignment: .bottom) {
-                            // The completion copy uses the space freed above this fixed row
-                            // by the shorter Messages window. It never adds layout height.
-                            VStack(spacing: 10) {
-                                Text("Your replies, drafted instantly with two taps")
-                                    .font(Self.instructionFont)
-                                    .foregroundStyle(.primary)
-                                personalContextLine
-                            }
-                            .fixedSize(horizontal: false, vertical: true)
-                            .opacity(demo.completionVisible ? 1 : 0)
-                            .accessibilityHidden(!demo.completionVisible)
-                            .animation(.easeOut(duration: 0.4), value: demo.completionVisible)
-                        }
-                        .padding(.top, 16)
+            SetupAssistantPage(tile: .setupDoubleTap, title: "Double tap your \(shortcut.label) key",
+                               message: "Sentient drafts a reply where your cursor is.") {
+                VStack(spacing: Space.xl) {
+                    stage
+                        .frame(height: Self.stageHeight, alignment: .top)
 
                     OnboardingDoubleTapKeyboard(pressed: demo.keyIsDown, inviting: demo.phase == .waiting,
                                                 reduceMotion: reduceMotion, tapFeedback: demo.tapFeedback,
@@ -85,57 +47,22 @@ struct OnboardingDoubleTapView: View {
                                                 action: { demo.clicked() })
                         .disabled(demo.phase != .waiting)
                         .opacity(demo.controlsVisible ? (demo.phase == .complete ? 0.55 : 1) : 0)
-                        .animation(.easeOut(duration: 0.35), value: demo.phase)
+                        .animation(motion, value: demo.phase)
                         .accessibilityHidden(!demo.controlsVisible)
-                        .padding(.top, 12)
 
-                    // Both actions occupy the same reserved row, leaving room for the keyboard
-                    // at the minimum window size without shrinking or shifting the sample reply.
-                    ZStack {
-                        DemoNextSampleButton(action: demo.showMessages)
-                            .disabled(!demo.nextVisible)
-                            .opacity(demo.nextVisible ? 1 : 0)
-                            .animation(.easeOut(duration: 0.3), value: demo.nextVisible)
-                            .accessibilityHidden(!demo.nextVisible)
-
-                        HStack(spacing: 12) {
-                            // Balance the info button so Continue stays centered on the lesson.
-                            Color.clear.frame(width: 32, height: 32)
-                                .accessibilityHidden(true)
-                            OnboardingNextButton(title: "Continue", enabled: demo.continueVisible, action: onContinue)
-                            DoubleTapInferenceInfo()
-                        }
-                        .opacity(demo.continueVisible ? 1 : 0)
-                        .disabled(!demo.continueVisible)
-                        .allowsHitTesting(demo.continueVisible)
-                        .accessibilityHidden(!demo.continueVisible)
-                    }
-                    .frame(height: 44)
-                    .padding(.top, 14)
-
-                    Spacer(minLength: 10)
+                    instructionRow
+                        .frame(height: 28)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlayPreferenceValue(DoubleTapDemoCaretAnchor.self) { anchor in
-                    GeometryReader { overlay in
-                        let caret = anchor.map { overlay[$0] }
-                            ?? CGRect(x: overlay.size.width / 2, y: overlay.size.height / 2, width: 1, height: 18)
-                        CaretSwirlView(model: demo.swirl)
-                            .frame(width: max(overlay.size.width, SwirlMath.canvasSide),
-                                   height: max(overlay.size.height, SwirlMath.canvasSide))
-                            .position(demo.spiralAtCaret
-                                      ? CGPoint(x: caret.midX, y: caret.midY)
-                                      : CGPoint(x: overlay.size.width / 2, y: overlay.size.height / 2))
-                            .opacity(demo.spiralVisible && !reduceMotion ? 1 : 0)
-                            .accessibilityHidden(true)
-                    }
-                    .allowsHitTesting(false)
-                }
+                .frame(maxWidth: .infinity)
+            } footer: {
+                footer
             }
-            .clipped()
+            .overlayPreferenceValue(DoubleTapDemoCaretAnchor.self) { anchor in
+                caretSwirl(anchor)
+            }
             .onAppear {
                 // Begin beyond the edges of the whole window. Only the orbit expands; the
-                // original comet strokes stay fine as the light gathers into the reply field.
+                // comet strokes stay fine as the light gathers into the reply field.
                 demo.start(reduceMotion: reduceMotion,
                            entranceRadius: Double(max(geometry.size.width, geometry.size.height)) * 0.78)
             }
@@ -158,150 +85,117 @@ struct OnboardingDoubleTapView: View {
             if demo.phase != .waiting { shortcutHint.clear() }
         }
         .onDisappear { demo.stop(); shortcutHint.deactivate() }
-        .preferredColorScheme(.dark)
     }
 
-    private var personalContextLine: some View {
-        Text("From your entire personal context")
-            .font(.title2.weight(.medium))
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background {
-                HStack(spacing: -12) {
-                    ForEach([0, 1, 3, 4, 6], id: \.self) { index in
-                        Circle()
-                            .fill(RadialGradient(colors: [GlowHalo.stops[index].opacity(0.32), .clear],
-                                                 center: .center, startRadius: 0, endRadius: 32))
-                            .frame(width: 64, height: 64)
-                            .scaleEffect(x: 1.35, y: 0.7)
-                    }
-                }
-                    .frame(height: 32)
-                    .accessibilityHidden(true)
+    // MARK: Vignette stage
+
+    /// Mail, then Messages, in one place. The email slides out toward the leading edge as it
+    /// departs; Messages slides in from the trailing edge as it arrives. Both are driven by the
+    /// demo's own departure and arrival values, which already honour Reduce Motion.
+    private var stage: some View {
+        ZStack(alignment: .top) {
+            switch demo.sample {
+            case .email:
+                DoubleTapDemoEmailWindow(replied: demo.replyVisible, waiting: demo.phase == .waiting,
+                                         reduceMotion: reduceMotion)
+            case .message:
+                DoubleTapDemoMessageWindow(replied: demo.replyVisible, waiting: demo.phase == .waiting,
+                                           reduceMotion: reduceMotion)
             }
-    }
-
-    @ViewBuilder private var sampleWindow: some View {
-        switch demo.sample {
-        case .email:
-            DoubleTapDemoEmailWindow(replied: demo.replyVisible, waiting: demo.phase == .waiting,
-                                    reduceMotion: reduceMotion)
-        case .message:
-            DoubleTapDemoMessageWindow(replied: demo.replyVisible, waiting: demo.phase == .waiting,
-                                      reduceMotion: reduceMotion)
         }
+        .frame(maxWidth: .infinity, alignment: .top)
+        .opacity(stageOpacity)
+        .offset(x: stageOffset)
+        .accessibilityHidden(!demo.windowVisible || demo.emailDeparture > 0)
     }
-}
 
-/// Hover for a quick explanation, or click to keep a native popover open for reading.
-private struct DoubleTapInferenceInfo: View {
-    @State private var hovering = false
-    @State private var showingPopover = false
+    private var stageOpacity: Double {
+        guard demo.windowVisible else { return 0 }
+        return Double(demo.sample == .email ? 1 - demo.emailDeparture : demo.messageArrival)
+    }
 
-    private static let text = PrivacyCopy.doubleTapInfo
+    private var stageOffset: CGFloat {
+        guard !reduceMotion else { return 0 }
+        return demo.sample == .email ? -48 * demo.emailDeparture : 48 * (1 - demo.messageArrival)
+    }
 
-    var body: some View {
-        Button {
-            hovering = false
-            showingPopover.toggle()
-        } label: {
-            Image(systemName: "info.circle")
+    // MARK: Instruction and completion
+
+    /// One fixed row: the instruction while the lesson runs, the completion line once both
+    /// samples are drafted. Neither adds height.
+    private var instructionRow: some View {
+        ZStack {
+            OnboardingShortcutInstruction(prefix: "Tap ", key: shortcut, suffix: " twice, quickly.",
+                                          hint: shortcutHint)
                 .font(.title3)
-                .foregroundStyle(.white.opacity(hovering || showingPopover ? 0.8 : 0.5))
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
-        }
-            .buttonStyle(.plain)
-            .onHover { hovering = $0 }
-            .accessibilityLabel("About Double Tap inference")
-            .accessibilityHint("Learn how drafts are processed and how to choose a provider in Settings.")
-            .popover(isPresented: $showingPopover, arrowEdge: .bottom) {
-                explanation
-                    .textSelection(.enabled)
-                    .padding(16)
-                    .preferredColorScheme(.dark)
+                .foregroundStyle(.secondary)
+                .opacity(demo.instructionVisible ? (demo.phase == .waiting ? 1 : 0.42) : 0)
+                .accessibilityHidden(!demo.instructionVisible)
+
+            Label {
+                Text("Drafted from your entire personal context")
+            } icon: {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
             }
-            .overlay(alignment: .bottomTrailing) {
-                if hovering && !showingPopover {
-                    explanation
-                        .padding(16)
-                        .background(Color(white: 0.075), in: RoundedRectangle(cornerRadius: 12))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(Theme.stroke, lineWidth: 1)
-                        }
-                        .shadow(color: .black.opacity(0.35), radius: 16, y: 6)
-                        .offset(y: -40)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                        .transition(.opacity)
+            .font(.title3)
+            .opacity(demo.completionVisible ? 1 : 0)
+            .accessibilityHidden(!demo.completionVisible)
+        }
+        .animation(motion, value: demo.instructionVisible)
+        .animation(motion, value: demo.phase)
+        .animation(motion, value: demo.completionVisible)
+    }
+
+    // MARK: Footer
+
+    /// Built by hand with SetupAssistantFooter's metrics, because the primary's accessibility
+    /// label ("Next: iMessage demo") differs from its visible title.
+    private var footer: some View {
+        let active = demo.nextVisible || demo.continueVisible
+        return HStack(spacing: Space.m) {
+            InfoPopoverButton(PrivacyCopy.doubleTapInfo, title: "About Double Tap")
+            OnboardingGitHubButton()
+            Spacer(minLength: Space.m)
+            Button {
+                if demo.nextVisible { demo.showMessages() } else { onContinue() }
+            } label: {
+                if demo.nextVisible {
+                    HStack(spacing: Space.xs) {
+                        Text("Next")
+                        Image(systemName: "arrow.right")
+                    }
+                } else {
+                    Text("Continue")
                 }
             }
-            .animation(.easeOut(duration: 0.15), value: hovering)
-    }
-
-    private var explanation: some View {
-        Text(Self.text)
-            .font(.body)
-            .foregroundStyle(.primary)
-            .lineSpacing(4)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(width: 310, alignment: .leading)
-    }
-}
-
-/// The first demo's primary action, as prominent as the final Continue.
-private struct DemoNextSampleButton: View {
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 7) {
-                Text("Next").font(.title3.weight(.semibold))
-                Image(systemName: "arrow.right").font(.subheadline.weight(.semibold))
-            }
-            .foregroundStyle(.black)
-            .padding(.horizontal, 32)
-            .padding(.vertical, 12)
-            .background(Capsule().fill(.white.opacity(hovering ? 0.9 : 1)))
-            .contentShape(Capsule())
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .keyboardShortcut(.defaultAction)
+            .disabled(!active)
+            .accessibilityLabel(demo.nextVisible ? "Next: iMessage demo" : "Continue")
+            // Until a sample is drafted there is nothing to continue to; the lesson's keys are
+            // the only action, as before.
+            .accessibilityHidden(!active)
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: hovering)
-        .accessibilityLabel("Next: iMessage demo")
-    }
-}
-
-/// One cubic arc for both windows: email flies out to the top-right; Messages follows the
-/// mirrored path in reverse from the top-left, including the same tilt and change in scale.
-/// Zero is the resting position and one is fully outside the viewport.
-private struct DemoWindowFlight: GeometryEffect {
-    enum Side { case left, right }
-    var progress: CGFloat
-    let side: Side
-    let viewport: CGSize
-
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
     }
 
-    func effectValue(size: CGSize) -> ProjectionTransform {
-        let t = min(max(progress, 0), 1)
-        let u = 1 - t
-        let direction: CGFloat = side == .right ? 1 : -1
-        let x = direction * viewport.width * (3 * u * u * t * 0.26 + 3 * u * t * t * 0.52 + t * t * t * 0.66)
-        let y = viewport.height * (3 * u * u * t * 0.08 - 3 * u * t * t * 0.38 - t * t * t * 1.05)
-        let tilt = -direction * CGFloat.pi / 10 * t * t
-        let scale = 1 - 0.07 * t
-        let transform = CGAffineTransform(translationX: size.width / 2 + x, y: size.height / 2 + y)
-            .rotated(by: tilt)
-            .scaledBy(x: scale, y: scale)
-            .translatedBy(x: -size.width / 2, y: -size.height / 2)
-        return ProjectionTransform(transform)
+    // MARK: Caret swirl
+
+    private func caretSwirl(_ anchor: Anchor<CGRect>?) -> some View {
+        GeometryReader { overlay in
+            let caret = anchor.map { overlay[$0] }
+                ?? CGRect(x: overlay.size.width / 2, y: overlay.size.height / 2, width: 1, height: 18)
+            CaretSwirlView(model: demo.swirl)
+                .frame(width: max(overlay.size.width, SwirlMath.canvasSide),
+                       height: max(overlay.size.height, SwirlMath.canvasSide))
+                .position(demo.spiralAtCaret
+                          ? CGPoint(x: caret.midX, y: caret.midY)
+                          : CGPoint(x: overlay.size.width / 2, y: overlay.size.height / 2))
+                .opacity(demo.spiralVisible && !reduceMotion ? 1 : 0)
+                .accessibilityHidden(true)
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -354,24 +248,15 @@ private struct DoubleTapDemoInput: NSViewRepresentable {
 }
 
 #if DEBUG
-#Preview("Double Tap · entrance") {
-    OnboardingDoubleTapView(onContinue: {})
-        .frame(width: 1180, height: 880)
-}
-
-#Preview("Double Tap · ready") {
-    OnboardingDoubleTapView(onContinue: {}, demo: .preview())
-        .frame(width: 1180, height: 880)
-}
-
-#Preview("Double Tap · Messages") {
-    OnboardingDoubleTapView(onContinue: {}, demo: .preview(sample: .message))
-        .frame(width: 1180, height: 880)
-}
-
-#Preview("Double Tap · Messages curved entrance") {
-    OnboardingDoubleTapView(onContinue: {}, demo: .preview(sample: .message, arrival: 0.45))
-        .frame(width: 1180, height: 880)
+#Preview("Double Tap · waiting") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            OnboardingDoubleTapView(onContinue: {}, demo: .preview())
+                .frame(width: 900, height: 820)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }
 
 #Preview("Double Tap · email ready for Next") {
@@ -379,13 +264,24 @@ private struct DoubleTapDemoInput: NSViewRepresentable {
         .frame(width: 1040, height: 800)
 }
 
-#Preview("Double Tap · email throw") {
-    OnboardingDoubleTapView(onContinue: {}, demo: .preview(completed: true, departure: 0.45))
-        .frame(width: 1180, height: 880)
+#Preview("Double Tap · Messages") {
+    OnboardingDoubleTapView(onContinue: {}, demo: .preview(sample: .message))
+        .frame(width: 1040, height: 800)
+}
+
+#Preview("Double Tap · Messages arriving") {
+    OnboardingDoubleTapView(onContinue: {}, demo: .preview(sample: .message, arrival: 0.45))
+        .frame(width: 1040, height: 800)
 }
 
 #Preview("Double Tap · complete, minimum window") {
-    OnboardingDoubleTapView(onContinue: {}, demo: .preview(sample: .message, completed: true))
-        .frame(width: 1040, height: 800)
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            OnboardingDoubleTapView(onContinue: {}, demo: .preview(sample: .message, completed: true))
+                .frame(width: 1040, height: 800)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }
 #endif

@@ -134,16 +134,47 @@ import Observation
     let marker = "Sentient permission check " + UUID().uuidString
     private let panel: NSWindow
     private weak var previous: NSWindow?
+    /// A small system progress panel: a spinner, the status line (which carries the AX marker the
+    /// readiness check looks for, so it stays a visible label) and "This closes automatically."
     init() {
-        panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 130),
+        panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 80),
                          styleMask: [.titled], backing: .buffered, defer: false)
         panel.title = "Checking computer use"
         panel.isReleasedWhenClosed = false
         panel.level = .floating
-        let label = NSTextField(wrappingLabelWithString: "Checking that Sidekick can see and read this window.\nThis closes automatically.")
-        label.frame = NSRect(x: 24, y: 25, width: 372, height: 80)
+
+        let spinner = NSProgressIndicator()
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isIndeterminate = true
+        spinner.startAnimation(nil)
+
+        let label = NSTextField(labelWithString: "Checking computer use…")
+        label.font = .systemFont(ofSize: NSFont.systemFontSize)
         label.setAccessibilityLabel(marker)
-        panel.contentView?.addSubview(label)
+        let detail = NSTextField(labelWithString: "This closes automatically.")
+        detail.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        detail.textColor = .secondaryLabelColor
+
+        let lines = NSStackView(views: [label, detail])
+        lines.orientation = .vertical
+        lines.alignment = .leading
+        lines.spacing = 2
+
+        let row = NSStackView(views: [spinner, lines])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        row.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        if let content = panel.contentView {
+            content.addSubview(row)
+            NSLayoutConstraint.activate([
+                row.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                row.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor),
+                row.centerYAnchor.constraint(equalTo: content.centerYAnchor)
+            ])
+        }
     }
     var isCurrent: Bool {
         panel.isVisible && panel.isOnActiveSpace && !panel.isMiniaturized && NSApp.keyWindow === panel

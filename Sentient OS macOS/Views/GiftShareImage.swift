@@ -2,21 +2,23 @@
 //  GiftShareImage.swift
 //  Sentient OS macOS  ·  Views/
 //
-//  The gift letter as a keepsake — a poster-framed PNG of the welcome letter, saved to the Desktop
-//  from the letter's "Save to Desktop" button. The composition: the letter on OLED black inside the
-//  welcome-gradient hairline, and a quiet branding footer below it (the orb + wordmark, the one-line
-//  pitch, sentient-os.ai) so a shared screenshot carries its own attribution. The body renders
-//  through the SAME LetterBody as the on-screen letter, so what you read is exactly what you save.
+//  The gift letter as a keepsake: a PNG poster of the welcome letter, saved to the Desktop from the
+//  letter's "Save to Desktop" button. The composition is a white card, like a shared Apple Card or
+//  Fitness award image: a gift tile header, the kicker and title, the letter, and a brand footer
+//  (the mark, the wordmark, sentient-os.ai and the one-line pitch) so a shared image carries its
+//  own attribution. The body renders through the SAME LetterBody as the on-screen letter, so what
+//  you read is what you save. The poster is always light: it is an exported image (SPEC-00 1.10).
 //
 //  Key pieces:
-//   - GiftShareView                        (the export composition; #Preview'd for design work)
-//   - GiftShareImage.save(letter:) → URL   (ImageRenderer @2x → PNG on the Desktop, never overwrites)
+//   - GiftShareView                          (the export composition; #Preview'd for design work)
+//   - GiftShareImage.save(briefing:) → URL   (ImageRenderer @2x → PNG on the Desktop, never overwrites)
 //
 
 import SwiftUI
+import AppKit
 
-/// The export composition: the gift letter card + the branding footer, on true black.
-/// Takes the built Briefing (not raw markdown) — the gift init promotes `# Title` out of the letter
+/// The export composition: a white card with the gift header, the letter, and the brand footer.
+/// Takes the built Briefing (not raw markdown): the gift init promotes `# Title` out of the letter
 /// text, so the briefing is the only faithful carrier of both.
 struct GiftShareView: View {
     let briefing: Briefing
@@ -24,44 +26,51 @@ struct GiftShareView: View {
     /// The export's point width; the PNG renders at 2x (1520 px) for retina-crisp sharing.
     static let width: CGFloat = 760
 
-    var body: some View {
-        VStack(spacing: 26) {
-            // The letter card — the same frame the expanded letter wears in the app.
-            VStack(alignment: .leading, spacing: 0) {
-                MonoCaps(briefing.kicker, size: 10, tracking: 2.2, color: briefing.accent)
-                Text(briefing.title)
-                    .font(.system(size: 30, weight: .semibold)).foregroundStyle(.white)
-                    .padding(.top, 8)
-                LetterBody(text: briefing.letter ?? briefing.body, accent: briefing.accent)
-                    .padding(.top, 18)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(34)
-            .background(Theme.Ink.cardBG, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(BriefingCard.welcomeGradient, lineWidth: 1))
+    /// The brand indigo, fixed so the exported image looks the same whatever the viewer's accent.
+    private static let brandIndigo = Color(red: 0x58 / 255, green: 0x56 / 255, blue: 0xD6 / 255)
 
-            // The branding colophon — left-aligned flush with the card, one shared edge (wordmark,
-            // tagline, and URL all start together), so a shared screenshot carries its attribution
-            // like a poster credit, not a greeting card.
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 9) {
-                    OrbMark(size: 16)
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.l) {
+            HStack(spacing: Space.m) {
+                IconTile(.giftLetter, size: 40)
+                Text("A gift from Sentient")
+                    .font(.title2.bold())
+            }
+
+            VStack(alignment: .leading, spacing: Space.s) {
+                Text(briefing.kicker)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(briefing.accent)
+                Text(briefing.title)
+                    .font(.title.bold())
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            LetterBody(text: briefing.letter ?? briefing.body, accent: briefing.accent)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: Space.xs) {
+                HStack(spacing: Space.s) {
+                    BrandMarkView(size: 16, tint: Self.brandIndigo)
                     Text("Sentient OS")
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                        .font(.headline)
+                    Spacer(minLength: Space.l)
+                    Text("sentient-os.ai")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Self.brandIndigo)
                 }
                 Text("On-device intelligence that understands your entire life to proactively help you. Open-source & free.")
-                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.55))
-                MonoCaps("sentient-os.ai", size: 10, tracking: 2.4, color: .white.opacity(0.4))
-                    .padding(.top, 1)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 40).padding(.top, 40).padding(.bottom, 34)
-        .frame(width: Self.width)
+        .padding(40)
+        .frame(width: Self.width, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .background(Color.black)
-        .environment(\.colorScheme, .dark)
+        .background(Color.white)
+        .environment(\.colorScheme, .light)
     }
 }
 
@@ -69,7 +78,7 @@ enum GiftShareImage {
 
     enum ShareError: LocalizedError {
         case renderFailed
-        var errorDescription: String? { "Couldn't render the gift image." }
+        var errorDescription: String? { "Couldn’t render the gift image." }
     }
 
     /// Render the letter as a @2x PNG and save it to the Desktop as "Gift from Sentient.png"
@@ -79,7 +88,12 @@ enum GiftShareImage {
         let renderer = ImageRenderer(content: GiftShareView(briefing: briefing))
         renderer.scale = 2
         renderer.proposedSize = ProposedViewSize(width: GiftShareView.width, height: nil)
-        guard let cg = renderer.cgImage,
+        // Resolve NSColor-backed colors (separator, label) as light even while the app runs dark.
+        var cgImage: CGImage?
+        NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
+            cgImage = renderer.cgImage
+        }
+        guard let cg = cgImage,
               let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])
         else { throw ShareError.renderFailed }
 

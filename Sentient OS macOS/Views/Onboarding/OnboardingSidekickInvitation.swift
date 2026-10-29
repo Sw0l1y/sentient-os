@@ -1,5 +1,6 @@
-// The film's interactive pause: a readable native instruction and a pointer to the
-// real camera cutout. The pointer is a passive window, never a second click target.
+// The film's interactive pause: a coach-mark callout under the notch and a thin accent leader
+// line to the real camera cutout. The leader line is a passive window, never a second click
+// target. (SPEC-D6 S5, S6: a material bubble with an up arrow and the real keycap.)
 import AppKit
 import SwiftUI
 
@@ -14,34 +15,15 @@ struct OnboardingSidekickInvitation: View {
 
     private var key: ShortcutKey { ShortcutKey(rawValue: shortcut) ?? .rightCommand }
     // A mistaken key press expresses a preference for the keyboard door. Keep
-    // that instruction visible afterward, while the color itself lasts one second.
+    // that instruction visible afterward, while the highlight itself lasts one second.
     private var showsKeyboard: Bool { !pointsToNotch || shortcutHint.pulseCount > 0 }
 
     var body: some View {
         VStack(spacing: 0) {
             Button(action: onOpen) {
-                HStack(spacing: 12) {
-                    if showsKeyboard {
-                        Text(String(key.label.suffix(1)))
-                            .font(.title2.weight(.medium))
-                            .frame(width: 30, height: 28)
-                            .background(.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.black.opacity(0.14)))
-                    }
-                    if showsKeyboard {
-                        OnboardingShortcutInstruction(prefix: "Press ", key: key, hint: shortcutHint, onLight: true)
-                            .font(.title.weight(.semibold))
-                    } else {
-                        Text("Click your notch").font(.title.weight(.semibold))
-                    }
-                }
-                .foregroundStyle(Color(white: 0.08))
-                .padding(.horizontal, 22).padding(.vertical, 12)
-                .background(.white, in: Capsule())
-                .shadow(color: .black.opacity(0.55), radius: 14, y: 4)
-                .contentShape(Capsule())
+                callout
             }
-            .buttonStyle(PressScaleStyle())
+            .buttonStyle(.plain)
             .background(OnboardingNotchPointer(scale: canvasScale, prefersKeyboard: shortcutHint.pulseCount > 0) { target, offset, inset in
                 pointsToNotch = target; horizontalOffset = offset; topInset = inset
             })
@@ -59,9 +41,53 @@ struct OnboardingSidekickInvitation: View {
         .onChange(of: shortcut) { shortcutHint.clear() }
         .onDisappear { shortcutHint.deactivate() }
     }
+
+    /// The coach mark: an up arrow toward the notch, then the instruction (with the real keycap
+    /// when the keyboard is the door), on popover material.
+    private var callout: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.group, style: .continuous)
+        return VStack(spacing: Space.s) {
+            Image(systemName: "arrow.up")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                if showsKeyboard {
+                    KeyCap(key: key, highlighted: true)
+                    OnboardingShortcutInstruction(prefix: "Press ", key: key, hint: shortcutHint)
+                } else {
+                    Text("Click your notch")
+                }
+            }
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, Space.m)
+        .background { PopoverMaterial() }
+        .overlay(shape.strokeBorder(Color(nsColor: .separatorColor)))
+        .contentShape(shape)
+    }
 }
 
-/// A vertical line joins the CTA to the hardware, even when onboarding is windowed.
+/// The popover's own material behind the coach mark. SwiftUI has no `.popover` Material and
+/// `background(_:in:)` takes only a ShapeStyle, so the effect view rounds its own layer.
+private struct PopoverMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .popover
+        view.blendingMode = .withinWindow
+        view.state = .active
+        view.wantsLayer = true
+        view.layer?.cornerRadius = Radius.group
+        view.layer?.cornerCurve = .continuous
+        view.layer?.masksToBounds = true
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+/// A vertical leader line joins the callout to the hardware, even when onboarding is windowed.
 /// It ignores every mouse event and cannot become key, so the actual notch owns the click.
 struct OnboardingNotchPointer: NSViewRepresentable {
     var scale: CGFloat = 1
@@ -186,7 +212,8 @@ struct OnboardingNotchPointer: NSViewRepresentable {
                 panel.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllApplications, .ignoresCycle]
                 panel.setAccessibilityElement(false)
                 panel.title = "Sidekick onboarding notch pointer"
-                panel.contentView = NSHostingView(rootView: NotchPointerDrawing().preferredColorScheme(.dark))
+                // Follows the app's appearance: the leader line is the accent colour.
+                panel.contentView = NSHostingView(rootView: NotchPointerDrawing())
                 pointer = panel
             }
             pointer?.setFrame(frame, display: true)
@@ -208,8 +235,10 @@ struct OnboardingNotchPointer: NSViewRepresentable {
     }
 }
 
+/// The coach-mark leader line: a 3 pt accent stem with an arrowhead at the notch. No shadow.
 private struct NotchPointerDrawing: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
     @State private var appeared = false
 
     var body: some View {
@@ -220,17 +249,20 @@ private struct NotchPointerDrawing: View {
                 path.addLine(to: CGPoint(x: center, y: 8))
             }
             .trim(from: 0, to: appeared ? 1 : 0)
-            .stroke(.white.opacity(0.95), style: StrokeStyle(lineWidth: 5, lineCap: .round))
-            .shadow(color: .black.opacity(0.9), radius: 3, y: 1)
+            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
             Path { path in
-                path.move(to: CGPoint(x: center - 8, y: 20))
+                path.move(to: CGPoint(x: center - 7, y: 18))
                 path.addLine(to: CGPoint(x: center, y: 8))
-                path.addLine(to: CGPoint(x: center + 8, y: 20))
+                path.addLine(to: CGPoint(x: center + 7, y: 18))
             }
-            .stroke(.white.opacity(0.95), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
             .opacity(appeared ? 1 : 0)
         }
         .allowsHitTesting(false).accessibilityHidden(true)
-        .onAppear { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.4)) { appeared = true } }
+        .onAppear {
+            withAnimation(Motion.gated(Motion.standard, reduceMotion: motionOverride ?? systemReduceMotion)) {
+                appeared = true
+            }
+        }
     }
 }

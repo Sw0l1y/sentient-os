@@ -1,6 +1,7 @@
 // InviteBanner.swift
-// The once-only invitation offer in the home's banner slot. Waits for an active,
-// idle home, verifies the code, then retires after 20 seconds or dismissal.
+// The once-only invitation offer, shown as the invite notice row in Home's one notice slot
+// (InviteBannerView draws the NoticeBar). Waits for an active, idle home, verifies the code,
+// then retires after 20 seconds or dismissal.
 // Doc: Views/Documentation - Views - Home, Processing & Shared UI.md
 
 import SwiftUI
@@ -12,17 +13,21 @@ struct InviteBanner: View {
     @State private var program = InviteProgram.shared
     @State private var code: String?
     @State private var nextAttempt = Date.distantPast
+    @Environment(\.accessibilityReduceMotion) private var systemReducedMotion
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
+
+    private var reducedMotion: Bool { motionOverride ?? systemReducedMotion }
 
     var body: some View {
-        // Keep a container mounted while empty so its eligibility task can start.
+        // Keep a container mounted while empty so its eligibility task can start. The notice
+        // takes the column's width and carries its own insertion transition (NoticeBar).
         ZStack {
             if canPresent, let code, program.snapshot?.canShare == true {
                 InviteBannerView(code: code) { self.code = nil }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .frame(width: 380)
-        .animation(.easeInOut(duration: 0.25), value: code)
+        .frame(maxWidth: .infinity)
+        .animation(Motion.gated(Motion.standard, reduceMotion: reducedMotion), value: code)
         .task(id: canPresent) { await presentWhenReady() }
         .onDisappear { code = nil }
     }

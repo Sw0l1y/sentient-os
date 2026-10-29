@@ -1,5 +1,7 @@
-// Optional personal-context setup is a page in the main window. Home stays mounted behind it,
-// so the notch and a live Sidekick conversation keep their lifetime while sources are chosen.
+// Finish Setup: an ordinary Settings-style page in the main window's sidebar, titled by the
+// window. Home stays mounted behind it, so the notch and a live Sidekick conversation keep their
+// lifetime while sources are chosen. OnboardingReadyView is the page's form and its pinned
+// Start Analysis footer; this view adds only the problem line.
 import SwiftUI
 
 struct PersonalSetupView: View {
@@ -7,24 +9,24 @@ struct PersonalSetupView: View {
     @State private var problem: String?
 
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 0) {
-                if let problem {
-                    Text(problem).font(.callout).foregroundStyle(.orange)
-                        .padding(.horizontal, 30).padding(.top, 12)
-                        .accessibilityIdentifier("personalSetup.problem")
-                }
-                OnboardingReadyView(onStart: { timing in
-                    guard appState.finishPersonalSetup(timing) else {
-                        problem = "Choose three available sources and wait for any current analysis to finish, then try again."
-                        return
-                    }
-                    MainNavigation.shared.show(timing == .now ? .analysis : .home)
-                }, isProcessing: appState.processing.isBusy)
+        VStack(spacing: 0) {
+            if let problem {
+                StatusLabel(problem, tone: .warning)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: PageMetrics.setupPage, alignment: .leading)
+                    .padding(.horizontal, Space.xl)
+                    .padding(.top, Space.m)
+                    .accessibilityIdentifier("personalSetup.problem")
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
+            OnboardingReadyView(onStart: { timing in
+                guard appState.finishPersonalSetup(timing) else {
+                    problem = "Choose three available sources and wait for any current analysis to finish, then try again."
+                    return
+                }
+                MainNavigation.shared.show(timing == .now ? .analysis : .home)
+            }, isProcessing: appState.processing.isBusy)
         }
-        .background(Theme.bg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .accessibilityIdentifier("personalSetup.window")
         .onAppear {
             guard appState.hasCompletedOnboarding else {

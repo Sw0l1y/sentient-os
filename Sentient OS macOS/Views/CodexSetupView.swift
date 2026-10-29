@@ -2,13 +2,13 @@
 //  CodexSetupView.swift
 //  Sentient OS macOS
 //
-//  The single Codex SETUP window — all three setup steps in one place, driven entirely by the
-//  shared `CodexSetup` engine. This view is a pure trigger + status renderer (ZERO setup logic
-//  lives here), so the real onboarding flow can present its own polished screen over the very same
-//  engine without re-implementing anything.
+//  The single Codex setup sheet: all three setup steps in one Components-style form, driven
+//  entirely by the shared `CodexSetup` engine. This view is a pure trigger + status renderer (ZERO
+//  setup logic lives here), so the real onboarding flow can present its own screen over the very
+//  same engine without re-implementing anything.
 //    1. Install the Codex CLI   2. Log in (browser OAuth)   3. Install the computer-use driver
 //
-//  Opened today from the dev tools' CODEX SETUP button.
+//  Opened today from the dev tools' Codex Setup button.
 //
 
 import SwiftUI
@@ -19,28 +19,61 @@ struct CodexSetupView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("CODEX SETUP").font(.caption2.weight(.bold)).foregroundStyle(Theme.faint)
-                Spacer()
-                Button("Done") { dismiss() }.controlSize(.small)
+            ConnectorSheetHeader("Codex Setup",
+                                 message: "Three steps to let Sentient act for you with Codex computer use.") {
+                IconTile(.codex, size: 40)
             }
-            .padding(.horizontal, 18).padding(.vertical, 12)
-
-            ScrollView {
-                VStack(spacing: 16) {
-                    Text("Three steps to let Sentient act for you with Codex computer use. This window just triggers the shared setup engine; onboarding calls the exact same code.")
-                        .font(.caption2).foregroundStyle(Theme.faint.opacity(0.8))
-                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-
-                    installCard
-                    loginCard
-                    computerUseCard
+            Form {
+                Section {
+                    installRow
+                    statusRow(codex.installStatus)
+                } header: {
+                    Text("Codex CLI")
+                } footer: {
+                    Text("Downloads Sentient’s verified Codex package into its own private folder. Repair preserves your login and saved tasks.")
                 }
-                .padding(22)
+                if let loginFooter {
+                    Section {
+                        loginRow
+                        statusRow(codex.loginStatusLine)
+                    } header: {
+                        Text("Sign In")
+                    } footer: {
+                        Text(loginFooter)
+                    }
+                } else {
+                    Section {
+                        loginRow
+                        statusRow(codex.loginStatusLine)
+                    } header: {
+                        Text("Sign In")
+                    }
+                }
+                Section {
+                    driverRow
+                    statusRow(ComputerUseSetup.current.status)
+                } header: {
+                    Text("Computer Use Driver")
+                } footer: {
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        ForEach(driverFooterLines, id: \.self) { Text($0) }
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+            ConnectorSheetFooter {
+                escapeTwin
+            } trailing: {
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
             }
         }
-        .frame(width: 560, height: 640)
-        .background(Theme.bg)
+        .frame(width: 560)
+        .frame(minHeight: 560, idealHeight: 640)
+        .presentationSizing(.form)
         .onAppear {
             ComputerUseSetup.current.refresh()
             Task { await codex.refreshInstalled() }
@@ -50,121 +83,125 @@ struct CodexSetupView: View {
 
     // MARK: Step 1 — install
 
-    private var installCard: some View {
-        stepCard(1, "Install the Codex CLI", done: codex.installed) {
-            Button { Task { await codex.installCodex() } } label: {
-                buttonLabel("arrow.down.circle.fill", codex.installed ? "Repair Codex CLI" : "Install Codex CLI",
-                            busy: codex.installing)
-            }
-            .buttonStyle(GlassButtonStyle(tint: Theme.Ink.green))
-            .disabled(codex.installing)
-
-            statusLine(codex.installStatus)
-            hint("Downloads Sentient’s verified Codex package into its own private folder. Repair preserves your login and saved tasks.")
+    private var installRow: some View {
+        StatusRow("Codex CLI", tile: .codex, detail: codex.installed ? "Installed" : "Not installed",
+                  tone: codex.installing ? .working : (codex.installed ? .ok : .off)) {
+            Button(codex.installed ? "Repair" : "Install") { Task { await codex.installCodex() } }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(codex.installing)
         }
     }
 
-    // MARK: Step 2 — login
+    // MARK: Step 2 — sign in
 
-    private var loginCard: some View {
-        stepCard(2, "Log in to Codex", done: codex.loggedIn) {
-            if codex.loggedIn {
-                hint("Signed in with your OpenAI account. Codex is in every plan, free included, so there's no subscription to check.")
-                Button { Task { await codex.startLogin(force: true) } } label: {
-                    buttonLabel("arrow.triangle.2.circlepath", "Log in again", busy: false)
-                }
-                .buttonStyle(.sentientGlass).controlSize(.small)
-            } else if codex.loggingIn {
-                hint("A browser window opened for you to sign in. Finish there, then tap below.")
-                Button { Task { await codex.confirmLogin() } } label: {
-                    buttonLabel("checkmark.circle.fill", "Finished logging into codex", busy: false)
-                }
-                .buttonStyle(.sentientGlassProminent)
-            } else {
-                Button { Task { await codex.startLogin() } } label: {
-                    buttonLabel("person.crop.circle.badge.checkmark", "Log in to Codex", busy: false)
-                }
-                .buttonStyle(GlassButtonStyle(tint: Theme.Ink.green))
-                .disabled(!codex.installed)
+    @ViewBuilder private var loginRow: some View {
+        if codex.loggedIn {
+            StatusRow("OpenAI Account", tile: TileSpec.codex, detail: "Signed in", tone: .ok) {
+                Button("Log In Again") { Task { await codex.startLogin(force: true) } }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             }
-            statusLine(codex.loginStatusLine)
+        } else if codex.loggingIn {
+            StatusRow("OpenAI Account", tile: TileSpec.codex, detail: "Waiting for the browser", tone: .working) {
+                Button("I’ve Finished Signing In") { Task { await codex.confirmLogin() } }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        } else {
+            StatusRow("OpenAI Account", tile: TileSpec.codex, detail: "Not signed in", tone: .off) {
+                Button("Log In…") { Task { await codex.startLogin() } }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!codex.installed)
+            }
         }
+    }
+
+    private var loginFooter: String? {
+        if codex.loggedIn {
+            return "Signed in with your OpenAI account. Codex is in every plan, free included, so there’s no subscription to check."
+        }
+        if codex.loggingIn {
+            return "A browser window opened for you to sign in. Finish there, then click I’ve Finished Signing In."
+        }
+        return nil
     }
 
     // MARK: Step 3 — the computer-use driver
 
-    private var computerUseCard: some View {
-        stepCard(3, "Install the computer-use driver", done: ComputerUseSetup.current.ready) {
-            if ComputerUseSetup.current.ready {
-                hint("\(ComputerUseBackend.current.name) is installed; Sentient can act inside your apps in the background.")
-                Button { Task { await ComputerUseSetup.current.install(force: true) } } label: {
-                    buttonLabel("arrow.triangle.2.circlepath", "Re-install the driver", busy: ComputerUseSetup.current.isInstalling)
-                }
-                .buttonStyle(.sentientGlass).controlSize(.small)
-                .disabled(ComputerUseSetup.current.isInstalling)
-            } else {
-                Button { Task { await ComputerUseSetup.current.install() } } label: {
-                    buttonLabel("cpu.fill", "Install the driver", busy: ComputerUseSetup.current.isInstalling)
-                }
-                .buttonStyle(GlassButtonStyle(tint: Theme.Ink.green))
-                .disabled(ComputerUseSetup.current.isInstalling)
-            }
-            statusLine(ComputerUseSetup.current.status)
-            hint(ComputerUseBackend.current == .openAI
-                 ? "Downloads the verified, signed computer-use helper from Sentient into its private Codex folder."
-                 : "Downloads the pinned CUA driver, verifies its checksum and signature, and installs it for Sentient.")
+    private var driverRow: some View {
+        let ready = ComputerUseSetup.current.ready
+        return StatusRow(ComputerUseBackend.current.name, tile: .computerUse,
+                         detail: ready ? "Installed" : "Not installed",
+                         tone: ComputerUseSetup.current.isInstalling ? .working : (ready ? .ok : .off)) {
+            driverButton
         }
+    }
+
+    @ViewBuilder private var driverButton: some View {
+        if ComputerUseSetup.current.ready {
+            Button("Reinstall") { Task { await ComputerUseSetup.current.install(force: true) } }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(ComputerUseSetup.current.isInstalling)
+        } else {
+            Button("Install") { Task { await ComputerUseSetup.current.install() } }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(ComputerUseSetup.current.isInstalling)
+        }
+    }
+
+    private var driverFooterLines: [String] {
+        var lines: [String] = []
+        if ComputerUseSetup.current.ready {
+            lines.append("\(ComputerUseBackend.current.name) is installed; Sentient can act inside your apps in the background.")
+        }
+        lines.append(ComputerUseBackend.current == .openAI
+            ? "Downloads the verified, signed computer-use helper from Sentient into its private Codex folder."
+            : "Downloads the pinned CUA driver, verifies its checksum and signature, and installs it for Sentient.")
+        lines.append("This window just triggers the shared setup engine; onboarding calls the exact same code.")
+        return lines
     }
 
     // MARK: Building blocks
 
-    /// A numbered step card: number badge + title + a DONE/PENDING pill, then its controls.
-    private func stepCard<Content: View>(_ number: Int, _ title: String, done: Bool,
-                                         @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Text("\(number)")
-                    .font(.callout.weight(.bold).monospacedDigit())
-                    .frame(width: 26, height: 26)
-                    .background(Circle().fill(done ? Theme.Ink.green.opacity(0.22) : Color.white.opacity(0.06)))
-                    .foregroundStyle(done ? Theme.Ink.green : Theme.secondary)
-                Text(title).font(.callout.weight(.semibold)).foregroundStyle(.primary)
-                Spacer()
-                Text(done ? "DONE" : "PENDING")
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Capsule().fill((done ? Theme.Ink.green : Theme.secondary).opacity(0.22)))
-                    .foregroundStyle(done ? Theme.Ink.green : Theme.secondary)
-            }
-            content()
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.stroke, lineWidth: 1))
-    }
-
-    private func buttonLabel(_ systemImage: String, _ title: String, busy: Bool) -> some View {
-        HStack(spacing: 7) {
-            if busy { ProgressView().controlSize(.small) }
-            else { Image(systemName: systemImage) }
-            Text(title).font(.caption.weight(.semibold))
-        }
-        .frame(maxWidth: .infinity, minHeight: 38)
-    }
-
-    @ViewBuilder private func statusLine(_ s: String?) -> some View {
+    /// A setup engine's ✓/✗ status line: the tone glyph, then selectable monospaced text.
+    @ViewBuilder private func statusRow(_ s: String?) -> some View {
         if let s {
-            Text(s)
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(s.hasPrefix("✓") ? Theme.Ink.green : s.hasPrefix("✗") ? .red : Theme.secondary)
-                .multilineTextAlignment(.leading).textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            let tone: StatusTone = s.hasPrefix("✓") ? .ok : s.hasPrefix("✗") ? .error : .info
+            let stripped = (tone == .info ? s : String(s.dropFirst()))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            Label {
+                Text(stripped)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(tone == .error ? .primary : .secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: tone.symbol ?? "info.circle")
+                    .foregroundStyle(tone.color)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(tone.accessibilityLabel): \(stripped)")
         }
     }
 
-    private func hint(_ s: String) -> some View {
-        Text(s).font(.caption2).foregroundStyle(Theme.faint.opacity(0.8))
-            .fixedSize(horizontal: false, vertical: true)
+    /// Esc closes the sheet too. Nothing here is cancelable, so there is no visible Cancel; this
+    /// invisible twin stays in the hierarchy so its shortcut keeps working.
+    private var escapeTwin: some View {
+        Button("Close") { dismiss() }
+            .keyboardShortcut(.cancelAction)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+    }
+}
+
+#Preview("Codex setup") {
+    HStack(spacing: 0) {
+        CodexSetupView().environment(\.colorScheme, .light)
+        CodexSetupView().environment(\.colorScheme, .dark)
     }
 }

@@ -2,109 +2,92 @@
 //  OnboardingTelemetryConsent.swift
 //  Sentient OS macOS
 //
-//  The frontier-model page’s privacy promise over two
-//  capsules, bottom-left: Read More (the Settings Privacy Policy
-//  sheet, PrivacyPolicyView, reused verbatim) and Configure Telemetry, which blooms a small
-//  anchored card with the two anonymous-telemetry toggles (crash reports → Sentry ·
-//  analytics → TelemetryDeck): the SAME @AppStorage keys as Settings → System, applied live
-//  through CrashReporting/Analytics.applyEnabledChange(), so the choice made here IS the
-//  Settings choice. Click anywhere outside dismisses; the model picker stays undimmed behind it.
+//  Choose Your AI's privacy small print (SPEC-D6 S10), the Setup Assistant "Analytics" footnote:
+//  one line, "Sentient shares crash reports and basic usage. Read More · Configure…". Read More
+//  opens the Settings Privacy Policy sheet (PrivacyPolicyView, reused verbatim); Configure… opens
+//  a popover with the two anonymous-telemetry switches (crash reports → Sentry · analytics →
+//  TelemetryDeck) and the always-on core analytics text. The switches use the SAME @AppStorage
+//  keys as Settings → General, applied live through CrashReporting/Analytics.applyEnabledChange(),
+//  so the choice made here IS the Settings choice.
 //
 
 import SwiftUI
+import AppKit
 
 struct OnboardingTelemetryConsent: View {
-    /// Same keys as Settings → System (SystemPane) — the original `diagnosticsEnabled` name
+    /// Same keys as Settings → General (SystemPane) — the original `diagnosticsEnabled` name
     /// carries existing installs' crash-reports choice; analytics has its own key.
     @AppStorage("diagnosticsEnabled") private var crashReportsEnabled = true
     @AppStorage("analyticsEnabled") private var analyticsEnabled = true
 
-    @State private var open = false
+    @State private var configuring = false
     @State private var showPrivacyPolicy = false
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            // Click-outside dismiss: an invisible catcher over the picker while the card
-            // is up. Sits UNDER the card/pill in this ZStack, so their controls keep
-            // their own clicks.
-            if open {
-                Color.black.opacity(0.001)
-                    .contentShape(Rectangle())
-                    .onTapGesture { setOpen(false) }
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                if open {
-                    card
-                        .transition(.scale(scale: 0.96, anchor: .bottomLeading)
-                            .combined(with: .opacity))
-                }
-                pillBlock
-            }
-            .padding(.leading, 36)
-            .padding(.bottom, 28)
+        HStack(spacing: Space.xs) {
+            Text("Sentient shares crash reports and basic usage.")
+                .foregroundStyle(.secondary)
+            Button("Read More") { showPrivacyPolicy = true }
+                .buttonStyle(.link)
+                .foregroundStyle(Color(nsColor: .linkColor))
+            Text("·")
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+            Button("Configure…") { configuring = true }
+                .buttonStyle(.link)
+                .foregroundStyle(Color(nsColor: .linkColor))
+                .popover(isPresented: $configuring, arrowEdge: .top) { configurePopover }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .font(.footnote)
+        .fixedSize(horizontal: true, vertical: false)
         .onChange(of: crashReportsEnabled) { _, _ in CrashReporting.applyEnabledChange() }
         .onChange(of: analyticsEnabled) { _, _ in Analytics.applyEnabledChange() }
         .sheet(isPresented: $showPrivacyPolicy) { PrivacyPolicyView() }
     }
 
-    // MARK: - The pill block (the Settings protection line over its two doors)
-
-    private var pillBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(PrivacyCopy.headline)
-                .font(.body.weight(.medium)).foregroundStyle(.primary)
-            HStack(spacing: 10) {
-                SettingsPillButton(title: "Read More") { showPrivacyPolicy = true }
-                SettingsPillButton(title: "Configure Telemetry") { setOpen(!open) }
+    /// The two switches, each with its explanation, and the core reporting that always runs.
+    private var configurePopover: some View {
+        VStack(alignment: .leading, spacing: Space.m) {
+            Label(PrivacyCopy.headline, systemImage: "hand.raised.fill")
+                .font(.headline)
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Toggle("Share crash reports", isOn: $crashReportsEnabled)
+                Text(PrivacyCopy.crashReports)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-        }
-    }
-
-    // MARK: - The anchored card (the two toggles, Settings dialect)
-
-    private var card: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            MonoCaps("Privacy-preserving diagnostics", size: 9.5, tracking: 2.4,
-                     color: .white.opacity(0.7), weight: .semibold)
-                .padding(.bottom, 8)
-            SettingToggleLine(title: "Crash reports · Sentry",
-                              sub: PrivacyCopy.crashReports,
-                              isOn: $crashReportsEnabled)
-            SettingsHairline()
-            SettingToggleLine(title: "Extended analytics · TelemetryDeck",
-                              sub: PrivacyCopy.extendedAnalytics,
-                              isOn: $analyticsEnabled)
-            // Always visible: core reporting is independent of this switch.
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Toggle("Share extended analytics", isOn: $analyticsEnabled)
+                Text(PrivacyCopy.extendedAnalytics)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Divider()
+            // Always visible: core reporting is independent of these switches.
             Text(PrivacyCopy.coreAnalytics)
-                .font(.subheadline)
-                .foregroundStyle(Theme.Ink.body)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 4)
         }
-        .animation(.easeInOut(duration: 0.2), value: analyticsEnabled)
-        .padding(18)
-        .frame(width: 330)
-        .background(Theme.Ink.cardBG,
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .strokeBorder(Theme.stroke, lineWidth: 1))
-    }
-
-    private func setOpen(_ value: Bool) {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { open = value }
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        .padding(14)
+        .frame(width: PageMetrics.popover, alignment: .leading)
     }
 }
 
 #if DEBUG
-#Preview("Telemetry consent — pill + card") {
-    ZStack {
-        Theme.bg
-        OnboardingTelemetryConsent()
+#Preview("Telemetry footnote") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            OnboardingTelemetryConsent()
+                .padding(Space.xl)
+                .frame(width: 520, height: 120)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
     }
-    .frame(width: 1180, height: 820)
-    .preferredColorScheme(.dark)
 }
 #endif

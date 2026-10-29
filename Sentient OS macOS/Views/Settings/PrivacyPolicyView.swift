@@ -1,57 +1,68 @@
 // PrivacyPolicyView.swift
-// Scrollable policy shared by Settings and onboarding; PrivacyCopy owns the wording.
-// The title and Done button remain visible while the policy scrolls.
+// The privacy policy as a document sheet (`.presentationSizing(.page)`), shared by Settings ›
+// General and onboarding. PrivacyCopy owns the wording. The text scrolls in a reading column in
+// system text styles; Done stays pinned below a divider. It follows the system appearance.
 // Doc: Documentation - Settings.md
 
 import SwiftUI
 
 struct PrivacyPolicyView: View {
-    @Environment(\.settingsFormStyle) private var formStyle
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Privacy Policy")
-                .display(24).foregroundStyle(.primary)
+        VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: Space.l) {
+                    Text("Privacy Policy")
+                        .font(.title2.bold())
+                        .accessibilityAddTraits(.isHeader)
                     Text(PrivacyCopy.headline)
-                        .font(.title3.weight(.medium)).foregroundStyle(.primary)
-                    prose(PrivacyCopy.summary).padding(.top, 8)
-                    prose(PrivacyCopy.intro).padding(.top, 12)
+                        .font(.title3)
+                    Text(PrivacyCopy.summary)
+                    Text(PrivacyCopy.intro)
                     ForEach(PrivacyCopy.sections) { section in
-                        Text(section.title)
-                            .font(.system(size: formStyle ? 17 : 13, weight: .medium)).foregroundStyle(.primary)
-                            .padding(.top, 22)
-                        ForEach(section.paragraphs, id: \.self) { paragraph in
-                            prose(paragraph).padding(.top, 9)
+                        VStack(alignment: .leading, spacing: Space.s) {
+                            Text(section.title)
+                                .font(.headline)
+                                .accessibilityAddTraits(.isHeader)
+                            ForEach(section.paragraphs, id: \.self) { paragraph in
+                                Text(paragraph)
+                            }
                         }
                     }
-                    Link("OpenAI API data controls", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
-                        .font(.system(size: formStyle ? 14 : 12.5)).padding(.top, 16)
+                    Link("OpenAI API Data Controls",
+                         destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
                 }
+                .font(.body)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Space.xxl)
+                .centeredColumn(maxWidth: PageMetrics.readingColumn)
             }
             .scrollBounceBehavior(.basedOnSize)
-            .padding(.top, 14)
-            SettingsPillButton(title: "Done") { dismiss() }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.top, 22)
-        }
-        .padding(.horizontal, 34).padding(.top, 30).padding(.bottom, 24)
-        .frame(width: formStyle ? 660 : 600, height: 650)
-        .background(Theme.bg)
-        .preferredColorScheme(.dark)
-    }
 
-    private func prose(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: formStyle ? 14 : 12.5)).foregroundStyle(Theme.Ink.body)
-            .lineSpacing(3.5)
-            .fixedSize(horizontal: false, vertical: true)
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(Space.l)
+        }
+        .presentationSizing(.page)
     }
 }
 
 #Preview("Privacy Policy") {
-    PrivacyPolicyView()
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            PrivacyPolicyView()
+                .frame(width: 640, height: 640)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }

@@ -1,82 +1,53 @@
 // ComputerUseUpdateNotice.swift
-// The home's quiet computer-use update: real download progress, verification, retry, and done.
-// Reads the shared installer so a Sidekick command and a launch-time update show the same state.
+// Home's computer-use update as a notice row (SPEC-D1 S4): real download progress, verification,
+// retry, and done. Reads the shared installer so a Sidekick command and a launch-time update show
+// the same state.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
 
 import SwiftUI
 
 struct ComputerUseUpdateNotice: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let state: ComputerUseSetup.UpdateNotice
     let progress: ComputerUseSetup.Progress?
     var onRetry: () -> Void = {}
     var onDismiss: () -> Void = {}
+
+    /// The download fraction, when the installer knows one.
+    private var fraction: Double? {
+        if case .downloading(let f?) = progress { return f }
+        return nil
+    }
 
     var body: some View {
         switch state {
         case .hidden:
             EmptyView()
         case .ready:
-            CautionCapsule(message: "Computer use is up to date.", accent: Theme.Ink.green,
-                           onDismiss: onDismiss)
+            NoticeBar(tile: .noticeUpToDate, title: "Computer Use Is Up to Date",
+                      dismissLabel: "Dismiss notification", onDismiss: onDismiss)
         case .failed:
-            CautionCapsule(message: "Computer use couldn't update. Please try again.",
-                           actionTitle: "Retry", onAction: onRetry,
-                           onDismiss: onDismiss)
-        case .updating:
-            VStack(alignment: .leading, spacing: 11) {
-                HStack(spacing: 10) {
-                    Image(systemName: "arrow.down.circle")
-                        .foregroundStyle(Theme.Ink.label)
-                        .accessibilityHidden(true)
-                    Text("Updating computer use")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(Theme.Ink.statusInk)
-                    Spacer(minLength: 8)
-                    if case .downloading(let fraction) = progress, let fraction {
-                        Text(fraction, format: .percent.precision(.fractionLength(0)))
-                            .font(.system(.subheadline, design: .monospaced))
-                            .foregroundStyle(Theme.Ink.label)
-                    }
-                }
-                if case .downloading(let fraction) = progress, let fraction {
-                    GlowProgressBar(value: fraction)
-                        .accessibilityLabel("Computer-use download progress")
-                        .accessibilityValue("\(Int(fraction * 100)) percent")
-                } else {
-                    TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
-                        GeometryReader { geometry in
-                            let phase = reduceMotion ? 0.5 : (sin(context.date.timeIntervalSinceReferenceDate * 2) + 1) / 2
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(.quaternary)
-                                Capsule().fill(.tertiary)
-                                    .frame(width: geometry.size.width * 0.28)
-                                    .offset(x: geometry.size.width * 0.72 * phase)
-                            }
-                        }
-                    }
-                        .frame(height: 4)
-                        .accessibilityLabel("Updating computer use")
-                }
-                Text(progress?.message ?? "Preparing the update…")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.Ink.label)
+            NoticeBar(tile: .noticeUpdateFailed, title: "Computer Use Couldn’t Update",
+                      message: "Please try again.",
+                      dismissLabel: "Dismiss notification", onDismiss: onDismiss) {
+                Button("Retry", action: onRetry)
             }
-            .padding(.horizontal, 16).padding(.vertical, 13)
-            .frame(width: 330)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Theme.stroke, lineWidth: 1))
+        case .updating:
+            NoticeBar(tile: .noticeUpdating, title: "Updating Computer Use",
+                      message: progress?.message ?? "Preparing the update…",
+                      progress: fraction.map { .fraction($0) } ?? .indeterminate)
+                // NoticeBar's bar carries no label of its own; the row reports the progress.
+                .accessibilityValue(fraction.map { "\(Int($0 * 100)) percent" } ?? "In progress")
         }
     }
 }
 
 #Preview("Computer-use update") {
-    VStack(alignment: .trailing, spacing: 22) {
+    VStack(spacing: Space.m) {
         ComputerUseUpdateNotice(state: .updating, progress: .downloading(0.58))
         ComputerUseUpdateNotice(state: .updating, progress: .checkingSignature)
         ComputerUseUpdateNotice(state: .failed, progress: nil)
         ComputerUseUpdateNotice(state: .ready, progress: .ready)
     }
-    .padding(40).frame(width: 540).background(.black).preferredColorScheme(.dark)
+    .padding(Space.xl)
+    .frame(width: 680)
 }

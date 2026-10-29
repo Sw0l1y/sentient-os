@@ -1,4 +1,5 @@
-// The expanded notch shows an error or a clarification with two answers, plus editable guidance.
+// The expanded notch as an interactive Live Activity: a status-labelled error or a clarification
+// with two choice tiles, plus a Messages-style capsule field for typed guidance.
 // Draft and timing live in SidekickRecovery, so dismissing or moving displays cannot erase them.
 // Doc: Documentation - Sidekick - Notch Window & Visual.md
 import SwiftUI
@@ -89,17 +90,14 @@ struct SidekickRecoveryView: View {
         VStack(alignment: .leading, spacing: SidekickRecoveryLayout.fieldSpacing) {
             ScrollView {
                 VStack(alignment: .leading, spacing: SidekickRecoveryLayout.sectionSpacing) {
+                    // The error block exists only with an error: the layout counts its chrome only then.
                     if let error = content.error {
                         VStack(alignment: .leading, spacing: 6) {
-                            Label(content.question == nil ? "Couldn’t finish this" : "One thing to resolve",
-                                  systemImage: content.question == nil ? "exclamationmark.circle" : "bubble.left.and.bubble.right")
-                                .font(Font(SidekickRecoveryLayout.labelFont))
-                                .frame(height: SidekickRecoveryLayout.labelHeight, alignment: .leading)
-                                .foregroundStyle(.white.opacity(0.78))
+                            statusLabel
                             ScrollView {
                                 Text(error)
                                     .font(Font(SidekickRecoveryLayout.errorFont))
-                                    .foregroundStyle(.white.opacity(0.85))
+                                    .foregroundStyle(NotchTone.errorText)
                                     .textSelection(.enabled)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -113,6 +111,7 @@ struct SidekickRecoveryView: View {
                     }
                     if content.upgradeOffer != nil {
                         SidekickUpgradeActions(recovery: recovery, content: content)
+                            .tint(NotchTone.accent)
                     }
                     if let question = content.question {
                         Text(question.question)
@@ -130,8 +129,7 @@ struct SidekickRecoveryView: View {
                                         .padding(SidekickRecoveryLayout.answerPadding)
                                         .frame(width: layout.answerWidth, alignment: .leading)
                                 }
-                                .buttonStyle(NotchRecoveryChoiceStyle())
-                                .foregroundStyle(.white)
+                                .buttonStyle(NotchControlStyle(kind: .quiet, shape: .tile))
                                 .accessibilityHint("Answer Sidekick and continue this task")
                             }
                         }
@@ -143,47 +141,63 @@ struct SidekickRecoveryView: View {
             .scrollIndicators(.hidden)
             .frame(height: layout.scrollHeight)
             .mask { scrollEdges }
-            HStack(spacing: 12) {
-                TextField(content.question == nil ? "Add a detail, or try again" : "Or type your answer", text: $recovery.draft)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white)
-                    .tint(.white)
-                    .focused($fieldFocused)
-                    .onSubmit(send)
-                    .accessibilityLabel(content.question == nil ? "Guidance for retrying" : "Your answer to Sidekick")
-                Button(action: send) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .frame(width: 24, height: 24)
-                        .background {
-                            Circle().fill(.white.opacity(0.90))
-                        }
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSend)
-                .opacity(canSend ? 1 : 0.4)
-                .accessibilityLabel("Send guidance")
-                .accessibilityHint("Send your reply and continue this task")
-                .help("Send guidance")
-            }
-            .padding(8)
-            .frame(height: SidekickRecoveryLayout.fieldHeight)
-            .background(.white.opacity(fieldFocused ? 0.10 : 0.06), in: RoundedRectangle(cornerRadius: 11))
-            .overlay {
-                RoundedRectangle(cornerRadius: 11)
-                    .strokeBorder(.white.opacity(fieldFocused ? 0.34 : 0.11), lineWidth: 0.75)
-            }
-            .animation(.easeOut(duration: reduceMotion ? 0.1 : 0.18), value: fieldFocused)
+            guidanceRow
         }
         .padding(.top, SidekickRecoveryLayout.topPad)
         .padding(.bottom, SidekickRecoveryLayout.bottomPad)
-        .preferredColorScheme(.dark)
+        // The notch is always dark. An environment value stays inside the notch; a preferred
+        // colour scheme would leak to the hosting window.
+        .environment(\.colorScheme, .dark)
         .accessibilityElement(children: .contain)
     }
+
+    /// A status symbol names the kind of problem before the words do: an accent bubble for a
+    /// question to answer, an orange triangle for a task that could not finish.
+    private var statusLabel: some View {
+        HStack(spacing: 6) {
+            Image(systemName: content.question == nil ? "exclamationmark.triangle.fill" : "questionmark.bubble.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(content.question == nil ? Color.orange : NotchTone.accent)
+                .frame(width: 16, height: 16)
+                .accessibilityHidden(true)
+            Text(content.question == nil ? "Couldn’t finish this" : "One thing to resolve")
+                .font(Font(SidekickRecoveryLayout.labelFont))
+                .foregroundStyle(NotchTone.label)
+        }
+        .frame(height: SidekickRecoveryLayout.labelHeight, alignment: .leading)
+    }
+
+    /// The same capsule compose field as the message preview: caret plus a fill step for focus, no ring.
+    private var guidanceRow: some View {
+        HStack(spacing: 12) {
+            TextField(content.question == nil ? "Add a detail, or try again" : "Or type your answer", text: $recovery.draft)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .foregroundStyle(.white)
+                .tint(NotchTone.accent)
+                .focused($fieldFocused)
+                .onSubmit(send)
+                .accessibilityLabel(content.question == nil ? "Guidance for retrying" : "Your answer to Sidekick")
+            Button(action: send) {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(NotchControlStyle(kind: .primary, shape: .circle))
+            .disabled(!canSend)
+            .accessibilityLabel("Send guidance")
+            .accessibilityHint("Send your reply and continue this task")
+            .help("Send guidance")
+        }
+        .padding(8)
+        .frame(height: SidekickRecoveryLayout.fieldHeight)
+        .background(fieldFocused ? NotchTone.controlFill : NotchTone.fieldFill, in: Capsule())
+        .animation(Motion.gated(.easeOut(duration: 0.18), reduceMotion: reduceMotion), value: fieldFocused)
+    }
+
     // A soft boundary makes partially scrolled lines recede instead of being sliced against
-    // the heading or input. Content padding keeps complete lines outside the fade at either end.
+    // the heading or input. It is an alpha mask, not a visible gradient. Content padding keeps
+    // complete lines outside the fade at either end.
     private var scrollEdges: some View {
         VStack(spacing: 0) {
             LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
@@ -194,6 +208,7 @@ struct SidekickRecoveryView: View {
         }
         .allowsHitTesting(false)
     }
+
     private func send() {
         guard canSend else { return }
         recovery.answer(id: content.id)
@@ -202,6 +217,8 @@ struct SidekickRecoveryView: View {
 
 /// Appears only for an evidence-backed Free/Go provider limit. Every external action is a
 /// deliberate click; opening pricing never buys a subscription or changes provider settings.
+/// Shared by the notch (dark, notch accent via the caller's tint) and Home's RecoveryCard (system
+/// accent): one prominent default and three bordered alternatives, all standard system styles.
 struct SidekickUpgradeActions: View {
     @Bindable var recovery: SidekickRecovery
     let content: SidekickRecoveryContent
@@ -210,8 +227,11 @@ struct SidekickUpgradeActions: View {
     var body: some View {
         if let offer = content.upgradeOffer {
             VStack(alignment: .leading, spacing: 8) {
+                // .callout is 12 pt regular on macOS: the same metrics as SidekickRecoveryLayout.errorFont,
+                // which measures this explanation.
                 Text(offer.explanation)
-                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.85))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
                     Button("Upgrade to Plus") {
@@ -219,6 +239,7 @@ struct SidekickUpgradeActions: View {
                         recovery.dismiss()
                         NSWorkspace.shared.open(CodexAuth.upgradeURL)
                     }
+                    .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("sidekick.recovery.upgradePlus")
                     Button("Change AI") {
                         guard recovery.content?.id == content.id else { return }
@@ -235,37 +256,11 @@ struct SidekickUpgradeActions: View {
                     Button("Stop") { recovery.cancel(id: content.id) }
                         .accessibilityIdentifier("sidekick.recovery.stop")
                 }
+                .buttonStyle(.bordered)   // the three alternatives; Upgrade to Plus sets its own prominent style
                 .frame(height: 28)
             }
-            .buttonStyle(.sentientGlass)
-            .font(.system(size: 11, weight: .medium))
             .controlSize(.small)
+            .buttonBorderShape(.capsule)
         }
-    }
-}
-
-/// Quiet glass buttons retain their measured layout while pointer/press feedback changes.
-private struct NotchRecoveryChoiceStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
-    private var reduceMotion: Bool { motionOverride ?? systemReduceMotion }
-    @State private var hovering = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(.white.opacity(configuration.isPressed ? 0.16 : (hovering ? 0.11 : 0.065)))
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(LinearGradient(colors: [.white.opacity(hovering ? 0.25 : 0.15), .white.opacity(0.07)],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.75)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .scaleEffect(reduceMotion || !configuration.isPressed ? 1 : 0.985)
-            .onHover { hovering = $0 }
-            .animation(.easeOut(duration: reduceMotion ? 0.1 : 0.16), value: hovering)
-            .animation(.easeOut(duration: reduceMotion ? 0.1 : 0.16), value: configuration.isPressed)
     }
 }

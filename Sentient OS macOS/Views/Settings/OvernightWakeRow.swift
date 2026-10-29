@@ -98,34 +98,50 @@ final class OvernightWakeSetup {
     }
 }
 
+/// A Login Items–style status row for the wake helper: tile, state, one fix button while it is not
+/// ready, and the ⓘ explanation. It is Form rows (Health, General, the timing sheet's Section) and
+/// still stacks inside a GroupBox (onboarding). No VStack, so a Form lays out each part as a row.
 struct OvernightWakeRow: View {
     let setup: OvernightWakeSetup
 
+    private static let tip = "Lets Sentient wake your Mac for overnight processing while it is plugged in and Sentient is open in your menu bar. Approve Sentient in System Settings to enable it. macOS may ask you to authenticate."
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            StatusLine(title: "Overnight wake",
-                       health: setup.ready ? .ok : (setup.busy || setup.health == .requiresApproval ? .warn : .bad),
-                       note: note,
-                       tip: "Lets Sentient wake your Mac for overnight processing while it is plugged in and Sentient is open in your menu bar. Approve Sentient in System Settings to enable it. macOS may ask you to authenticate.",
-                       fixTitle: setup.health == .requiresApproval ? "Approve…" : "Set Up…") {
-                Task { await setup.setUp() }
+        Group {
+            StatusRow("Overnight Wake", tile: .overnight, detail: note, tone: tone, info: Self.tip) {
+                if !setup.ready {
+                    Button(requiresApproval ? "Approve…" : "Set Up…") {
+                        Task { await setup.setUp() }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
             }
             .disabled(setup.busy)
+            // On the row itself, not the Group: a .task on a Group runs once per child.
+            .task { await setup.monitor() }
+
             if setup.health == .unavailable && !setup.busy {
-                SettingsProse("The wake helper couldn't start. Try Set Up again. If this continues, move Sentient to Applications and reopen it, or reinstall the app.")
-                    .padding(.bottom, 6)
+                StatusLabel("The wake helper couldn’t start. Try Set Up again. If this continues, move Sentient to Applications and reopen it, or reinstall the app.",
+                            tone: .error)
             }
         }
-        .task { await setup.monitor() }
+    }
+
+    private var requiresApproval: Bool { setup.health == .requiresApproval }
+
+    private var tone: StatusTone {
+        if setup.ready { return .ok }
+        return setup.busy || requiresApproval ? .warning : .error
     }
 
     private var note: String {
-        if setup.busy { return "setting up…" }
+        if setup.busy { return "Setting up…" }
         switch setup.health {
-        case .ready: return "ready"
-        case .requiresApproval: return "approve in system settings"
-        case .notSetUp: return "not set up"
-        case .unavailable: return "needs attention"
+        case .ready: return "Ready"
+        case .requiresApproval: return "Approve in System Settings"
+        case .notSetUp: return "Not set up"
+        case .unavailable: return "Needs attention"
         }
     }
 }

@@ -1,142 +1,117 @@
-// Invitation stationery: the perforated paper ticket, its stamp, and a saved lifetime pass.
-// Shared by onboarding's corner ticket and the gift-opening presentation.
+// Invitation pass: a flat, Wallet-style card that shows a gift code or a saved gift.
+// Shared by onboarding's saved-gift badge and the InviteCelebration sheet. It follows the
+// system appearance: the secondary background fill, a separator hairline, system text styles.
 // Doc: ../Views/Onboarding/Documentation - Onboarding.md
 
 import SwiftUI
+import AppKit
 
+/// The pass's colors. Kept as names because onboarding (WP10) still reads them while it migrates;
+/// every value is a system color now, so a caller that still uses them follows light and dark.
 enum InvitePaper {
-    static let light = Color(red: 0.96, green: 0.94, blue: 0.88)
-    static let shade = Color(red: 0.84, green: 0.81, blue: 0.72)
-    static let ink = Color(red: 0.16, green: 0.17, blue: 0.16)
-    static var spectrum: [Color] { Theme.accentRamp }
+    static let light = Color(nsColor: .textBackgroundColor)
+    static let shade = Color(nsColor: .underPageBackgroundColor)
+    static let ink = Color.primary
 }
 
+/// A flat pass: brand mark and header title, a hairline, the value line, then a footer.
+/// It sets no width or height of its own, and uses only text styles, so a caller can size it
+/// (`.frame(height: 28).scaledToFit()` for onboarding's badge). `compact` drops the footer.
 struct InviteTicketFace: View {
     var claimed = false
     var lateGift = false
+    var compact = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 7) {
-                    if claimed {
-                        Text(lateGift ? "A GIFT FROM US" : "YOUR LIFETIME PASS")
-                            .font(.system(.caption2, design: .monospaced, weight: .medium))
-                            .opacity(0.65)
-                    }
-                    Text(claimed ? (lateGift ? "Enjoy Sidekick." : "Yours. For life.") : "Have a gift code?")
-                        .font(.largeTitle.weight(.medium))
+        VStack(alignment: .leading, spacing: Space.s) {
+            HStack(spacing: Space.s) {
+                BrandMarkView(size: 16)
+                Text(headerTitle).font(.headline)
+                Spacer(minLength: Space.s)
+                InviteStamp(claimed: claimed)
+            }
+            if !compact {
+                InvitePerforation()
+            }
+            Text(valueLine)
+                .font(.title3.weight(.semibold))
+                .lineLimit(1)
+            if !compact {
+                HStack(spacing: Space.s) {
+                    Text(footerText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: Space.s)
+                    Image(systemName: claimed ? "checkmark" : "arrow.up.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
-                Spacer(minLength: 10)
-                InviteStamp(claimed: claimed).frame(width: 40, height: 40)
             }
-            .padding(.horizontal, 22).frame(height: 86)
-
-            InvitePerforation()
-
-            HStack(spacing: 8) {
-                Text(claimed ? (lateGift ? "Your Sidekick gift is saved" : "Sentient OS · Lifetime access") : "Enter your code")
-                    .font(.callout.weight(.medium))
-                Spacer()
-                Image(systemName: claimed ? "checkmark" : "arrow.up.right")
-                    .font(.callout.weight(.semibold))
-                    .accessibilityHidden(true)
-            }
-            .padding(.horizontal, 22).padding(.vertical, 14)
         }
-        .foregroundStyle(InvitePaper.ink)
+        .padding(Space.l)
         .modifier(InviteTicketMaterial())
+        .accessibilityElement(children: .combine)
+    }
+
+    private var headerTitle: String {
+        guard claimed else { return "Gift Code" }
+        return lateGift ? "Sidekick Gift" : "Lifetime Pass"
+    }
+
+    private var valueLine: String {
+        guard claimed else { return "Have a gift code?" }
+        return lateGift ? "Enjoy Sidekick." : "Yours. For life."
+    }
+
+    private var footerText: String {
+        guard claimed else { return "Enter your code" }
+        return lateGift ? "Your Sidekick gift is saved" : "Sentient OS · Lifetime access"
     }
 }
 
+/// The pass's status glyph: a pink gift until claimed, then a green seal.
 struct InviteStamp: View {
     var claimed = false
 
     var body: some View {
-        ZStack {
-            Circle().strokeBorder(InvitePaper.ink.opacity(0.35), lineWidth: 1)
-            Circle().strokeBorder(InvitePaper.ink.opacity(0.12), lineWidth: 1).padding(4)
-            if claimed {
-                Image(systemName: "checkmark").font(.title2.weight(.medium))
-            } else {
-                Image(systemName: "sparkle").font(.title)
-            }
-        }
-        .foregroundStyle(InvitePaper.ink)
-        .rotationEffect(.degrees(-12))
-        .accessibilityHidden(true)
-    }
-}
-
-struct InvitePerforation: View {
-    var body: some View {
-        Rectangle().fill(InvitePaper.ink.opacity(0.25))
-            .frame(height: 1)
-            .mask {
-                Canvas { context, size in
-                    for x in stride(from: 0.0, to: size.width, by: 7) {
-                        context.fill(Path(CGRect(x: x, y: 0, width: 3, height: 1)), with: .color(.white))
-                    }
-                }
-            }
-            .padding(.horizontal, 18)
+        Image(systemName: claimed ? "checkmark.seal.fill" : "gift.fill")
+            .foregroundStyle(claimed ? Color.green : Color.pink)
             .accessibilityHidden(true)
     }
 }
 
-struct InviteTicketMaterial: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .background {
-                InviteTicketShape()
-                    .fill(LinearGradient(colors: [InvitePaper.light, InvitePaper.shade],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .overlay {
-                        Canvas { context, size in
-                            for index in 0..<600 {
-                                let x = CGFloat((index * 73) % 997) / 997 * size.width
-                                let y = CGFloat((index * 131) % 991) / 991 * size.height
-                                context.fill(Path(ellipseIn: CGRect(x: x, y: y, width: 1, height: 1)),
-                                             with: .color(InvitePaper.ink.opacity(0.045)))
-                            }
-                        }
-                        .clipShape(InviteTicketShape())
-                        .allowsHitTesting(false)
-                    }
-            }
-            .clipShape(InviteTicketShape())
-            .overlay { InviteTicketShape().strokeBorder(Theme.stroke, lineWidth: 1).allowsHitTesting(false) }
-            .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 10)
+/// The hairline between the pass header and its value.
+struct InvitePerforation: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(height: 1)
+            .accessibilityHidden(true)
     }
 }
 
-/// Punches sit on the fixed header perforation, so expanding the input keeps the paper continuous.
+/// The pass surface: the system secondary background in the pass shape, with a separator hairline.
+/// No gradient, grain or shadow.
+struct InviteTicketMaterial: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(.background.secondary, in: InviteTicketShape())
+            .overlay {
+                InviteTicketShape()
+                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+    }
+}
+
+/// The pass outline: a continuous rounded rectangle (the old punched notches are gone).
 struct InviteTicketShape: InsettableShape {
     var insetAmount: CGFloat = 0
 
     func path(in rect: CGRect) -> Path {
-        let r = rect.insetBy(dx: insetAmount, dy: insetAmount)
-        let corner = max(0, 15 - insetAmount)
-        let punch = max(0, 7 + insetAmount)
-        let seam = min(r.maxY - corner - punch, r.minY + 87 - insetAmount)
-        var p = Path()
-        p.move(to: CGPoint(x: r.minX + corner, y: r.minY))
-        p.addLine(to: CGPoint(x: r.maxX - corner, y: r.minY))
-        p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY + corner), control: CGPoint(x: r.maxX, y: r.minY))
-        p.addLine(to: CGPoint(x: r.maxX, y: seam - punch))
-        p.addArc(center: CGPoint(x: r.maxX, y: seam), radius: punch,
-                 startAngle: .degrees(-90), endAngle: .degrees(90), clockwise: true)
-        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY - corner))
-        p.addQuadCurve(to: CGPoint(x: r.maxX - corner, y: r.maxY), control: CGPoint(x: r.maxX, y: r.maxY))
-        p.addLine(to: CGPoint(x: r.minX + corner, y: r.maxY))
-        p.addQuadCurve(to: CGPoint(x: r.minX, y: r.maxY - corner), control: CGPoint(x: r.minX, y: r.maxY))
-        p.addLine(to: CGPoint(x: r.minX, y: seam + punch))
-        p.addArc(center: CGPoint(x: r.minX, y: seam), radius: punch,
-                 startAngle: .degrees(90), endAngle: .degrees(-90), clockwise: true)
-        p.addLine(to: CGPoint(x: r.minX, y: r.minY + corner))
-        p.addQuadCurve(to: CGPoint(x: r.minX + corner, y: r.minY), control: CGPoint(x: r.minX, y: r.minY))
-        p.closeSubpath()
-        return p
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .path(in: rect.insetBy(dx: insetAmount, dy: insetAmount))
     }
 
     func inset(by amount: CGFloat) -> Self {
@@ -147,11 +122,20 @@ struct InviteTicketShape: InsettableShape {
 }
 
 #if DEBUG
-#Preview("Invitation ticket") {
-    HStack(spacing: 30) {
-        InviteTicketFace()
-        InviteTicketFace(claimed: true)
+#Preview("Invitation pass") {
+    HStack(spacing: 24) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            VStack(spacing: 16) {
+                InviteTicketFace()
+                InviteTicketFace(claimed: true)
+                InviteTicketFace(claimed: true, lateGift: true)
+                InviteTicketFace(claimed: true, compact: true)
+            }
+            .frame(width: 320)
+            .padding(24)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .environment(\.colorScheme, scheme)
+        }
     }
-    .frame(width: 700).padding(50).background(.black)
 }
 #endif

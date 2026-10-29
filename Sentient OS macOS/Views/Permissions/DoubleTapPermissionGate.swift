@@ -1,6 +1,7 @@
 // Double Tap's first-use setup: Sentient's own Accessibility and Screen Recording grants.
 // intercept() stops a draft before capture; finishSetup() closes setup once both grants are enabled.
-// Reuses the computer-use setup layout and grant rows without depending on its helper or voice setup.
+// A Setup Assistant page that reuses the computer-use gate layout and grant rows, without
+// depending on its helper or voice setup.
 // Doc: Documentation - Permission Gate & Guide.md
 
 import AppKit
@@ -52,10 +53,8 @@ final class DoubleTapPermissionGate {
             let hosting = NSHostingController(rootView: DoubleTapPermissionGateView(gate: self))
             let setupWindow = NSWindow(contentViewController: hosting)
             setupWindow.styleMask = [.titled, .closable, .fullSizeContentView]
-            setupWindow.title = "Set up Double Tap"
-            setupWindow.titlebarAppearsTransparent = true
-            setupWindow.titleVisibility = .hidden
-            setupWindow.backgroundColor = .black
+            setupWindow.title = "Set Up Double Tap"
+            GateWindowStyle.apply(to: setupWindow)   // system window background and appearance
             setupWindow.isReleasedWhenClosed = false
             setupWindow.level = .floating
             setupWindow.isMovableByWindowBackground = true
@@ -86,14 +85,19 @@ private struct DoubleTapPermissionGateView: View {
     let gate: DoubleTapPermissionGate
 
     var body: some View {
-        PermissionSetupView(title: "Set up Double Tap", continueTitle: continueTitle,
-                            canContinue: gate.allGranted, onContinue: gate.finishSetup) {
-            SettingsProse("Allow Sentient OS to read the conversation on your screen and paste a draft for you to review.")
-            SentientAppPermissionRows(accessibility: gate.accessibility, screen: gate.screen,
-                accessibilityTitle: "Accessibility (paste your draft)",
-                accessibilityTip: "Lets Double Tap find the reply field and paste your draft. You review and send it.")
-            SettingsProse("When setup is complete, focus your reply field and double tap again.")
+        PermissionSetupView(tile: .setupDoubleTap, title: "Set Up Double Tap",
+                            message: "Allow Sentient OS to read the conversation on your screen and paste a draft for you to review.",
+                            continueTitle: gate.allGranted ? "Done" : "Grant Permissions to Continue",
+                            canContinue: gate.allGranted, primaryID: "doubleTapGate.done",
+                            onContinue: gate.finishSetup) {
+            GateForm {
+                SentientAppPermissionRows(accessibility: gate.accessibility, screen: gate.screen,
+                                          accessibilityTitle: "Accessibility",
+                                          accessibilityTip: "Lets Double Tap find the reply field and paste your draft. You review and send it.",
+                                          footer: "When setup is complete, focus your reply field and double tap again.")
+            }
         }
+        .frame(width: PageMetrics.setupPage, height: 560)
         .task {
             while !Task.isCancelled {
                 gate.refresh()
@@ -103,10 +107,6 @@ private struct DoubleTapPermissionGateView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             gate.refresh()
         }
-    }
-
-    private var continueTitle: String {
-        gate.allGranted ? "Done" : "Grant permissions to continue"
     }
 }
 

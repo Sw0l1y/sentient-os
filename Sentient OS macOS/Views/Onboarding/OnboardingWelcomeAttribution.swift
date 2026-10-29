@@ -1,4 +1,4 @@
-// The welcome's founder signature: a heart and two quiet, copyable contact cards.
+// The welcome's founder signature: a heart and two small contact boxes, each with a Copy button.
 // Formats the existing optional attribution payload without embedding contact details in the app.
 // Doc: Documentation - Onboarding.md
 
@@ -15,7 +15,7 @@ struct OnboardingWelcomeAttribution: View {
                     Text("Made with")
                     Image(systemName: "heart.fill")
                         .font(.caption)
-                        .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.52))
+                        .foregroundStyle(.red)
                     Text("by")
                 }
                 .accessibilityElement(children: .ignore)
@@ -39,41 +39,37 @@ struct OnboardingWelcomeAttribution: View {
 private struct WelcomeContactButton: View {
     let contact: WelcomeFounderContact
     @State private var copied = false
-    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var systemReduced
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
 
     var body: some View {
-        Button {
-            NSPasteboard.general.clearContents()
-            copied = NSPasteboard.general.setString(contact.phone, forType: .string)
-        } label: {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 5) {
+        GroupBox {
+            HStack(spacing: Space.m) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: contact.name)
                         .font(.callout.weight(.medium))
-                        .foregroundStyle(Theme.Ink.bright)
+                        .foregroundStyle(.primary)
                     Text(verbatim: contact.phone)
                         .font(.subheadline).monospacedDigit()
-                        .foregroundStyle(Theme.secondary)
+                        .foregroundStyle(.secondary)
                 }
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(copied ? Theme.Ink.green : Theme.secondary)
-                    .frame(width: 14)
+                Button {
+                    NSPasteboard.general.clearContents()
+                    copied = NSPasteboard.general.setString(contact.phone, forType: .string)
+                } label: {
+                    Label("Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .animation(Motion.gated(Motion.quick, reduceMotion: motionOverride ?? systemReduced), value: copied)
+                .help(copied ? "Number copied" : "Copy \(contact.name)’s number")
+                .accessibilityLabel("\(contact.name), \(contact.phone)")
+                .accessibilityValue(copied ? "Number copied" : "")
+                .accessibilityHint("Copies the phone number")
             }
-            .padding(.horizontal, 14).padding(.vertical, 11)
-            .background(.white.opacity(hovering ? 0.07 : 0.035), in: RoundedRectangle(cornerRadius: 10))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(.white.opacity(hovering ? 0.14 : 0.07), lineWidth: 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, Space.xs)
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .help(copied ? "Number copied" : "Copy \(contact.name)’s number")
-        .accessibilityLabel("\(contact.name), \(contact.phone)")
-        .accessibilityValue(copied ? "Number copied" : "")
-        .accessibilityHint("Copies the phone number")
         .task(id: copied) {
             guard copied else { return }
             do { try await Task.sleep(for: .seconds(2)) } catch { return }
@@ -103,9 +99,15 @@ struct WelcomeFounderContact {
 
 #if DEBUG
 #Preview("Founder contacts") {
-    OnboardingWelcomeAttribution(line:
-        "Made with love by Alex (+1 (202) 555-0101) and Sam (+1 (202) 555-0102)")
-        .font(.callout).foregroundStyle(Theme.secondary)
-        .padding(40).background(.black).preferredColorScheme(.dark)
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            OnboardingWelcomeAttribution(line:
+                "Made with love by Alex (+1 (202) 555-0101) and Sam (+1 (202) 555-0102)")
+                .font(.callout).foregroundStyle(.secondary)
+                .padding(40)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }
 #endif

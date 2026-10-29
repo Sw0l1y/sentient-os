@@ -2,15 +2,15 @@
 //  NightSkyView.swift
 //  Sentient OS macOS
 //
-//  The Night Sky — the Knowledge window's graph view (user-facing name: "Constellation View";
-//  it's the window's DEFAULT face). Your knowledge base as a private galaxy:
-//  notes are twinkling stars sized by connection count, top-level folders are labeled
-//  constellations, wikilinks are threads that ignite on hover, and the root README is the sun.
-//  TimelineView(.animation) + Canvas render (SkyRenderer); an AppKit event catcher gives real
-//  pan (two-finger scroll) / zoom (pinch, mouse wheel, ⌘-scroll) / star dragging / hover / click
-//  (→ open the note in the reader) / Esc (→ back to the reader).
+//  The Knowledge graph: every note as a node, every wikilink as an edge, laid out once by the
+//  existing simulation and then still. A plain node-and-edge map on the document background
+//  (Freeform, the Xcode dependency graph), with Maps-style floating zoom controls.
+//  An AppKit event catcher gives pan (two-finger scroll), zoom (pinch, mouse wheel, ⌘-scroll),
+//  node dragging, hover (a callout card), click (→ open the note in the reader) and Esc
+//  (→ back to the reader).
 //
-//  Data: SkyGraph · physics: SkySimulation · brain: NightSkyModel · drawing: SkyRenderer.
+//  Data: SkyGraph · layout physics: SkySimulation · interaction: NightSkyModel ·
+//  title placement and palette: SkyRenderer · drawing: KnowledgeGraphPainter (below).
 //  Doc: Views/Knowledge/Documentation - Knowledge Window (Constellation & Reader).md
 //
 
@@ -34,126 +34,263 @@ struct NightSkyView: View {
         let active: Bool
     }
 
+    @Environment(\.accessibilityReduceMotion) private var systemReduced
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
+    private var reduce: Bool { motionOverride ?? systemReduced }
+
     var body: some View {
         GeometryReader { geo in
-            ZStack {
+            ZStack(alignment: .bottomTrailing) {
                 if let graph = model.graph, !graph.nodes.isEmpty {
-                    TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !isActive || !entranceReady || !animationsEnabled)) { tl in
-                        ZStack {
-                            Canvas { ctx, size in
-                                let t = animationsEnabled ? tl.date.timeIntervalSinceReferenceDate : 0
-                                if isActive && entranceReady { model.tick(now: t, size: size) }
-                                SkyRenderer.draw(ctx, size: size, model: model, t: t)
-                            }
-                            // The sun IS the brand mark: the notch's SpinningLogo, slow, riding
-                            // the root star's screen position (the canvas draws its light bed).
-                            if let sun = model.sunOverlay(size: geo.size) {
-                                SpinningLogo(size: sun.diameter, fast: false, paused: !isActive || !entranceReady || !animationsEnabled)
-                                    .position(sun.center)
-                                    .opacity(sun.opacity)
-                            }
-                        }
+                    Canvas { ctx, size in
+                        // The model's static path: the layout settles in one tick and then
+                        // stays put; pan, zoom, drag, hover and highlight redraw on demand.
+                        if isActive && entranceReady { model.tick(now: 0, size: size) }
+                        KnowledgeGraphPainter.draw(ctx, size: size, model: model, graph: graph)
                     }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Knowledge Graph")
+
                     if isActive && entranceReady {
                         SkyEventCatcher(model: model, takesKeyboardFocus: takesKeyboardFocus, onOpen: onOpen, onExit: onExit)
                     }
-                    if showsHUD { hud(graph: graph) }
-                    if model.hoverInfo != nil, let card = model.hoverCardRect(in: geo.size) {
-                        SkyHoverCard(info: model.hoverInfo!, width: card.width)
+                    if let info = model.hoverInfo, let card = model.hoverCardRect(in: geo.size) {
+                        SkyHoverCard(info: info,
+                                     linkCount: graph.nodes.firstIndex { $0.url == info.url }
+                                        .map { graph.adjacency[$0].count } ?? 0,
+                                     width: card.width)
                             .position(x: card.midX, y: card.midY)
-                            .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
+                    if showsHUD {
+                        GraphZoomControls(model: model, size: geo.size)
+                            .padding(Space.l)
                     }
                 } else if entranceReady && (model.graph != nil || (vaultLoaded && vault == nil)) {
                     emptyState
                 } else {
-                    Color.clear      // vault scan / graph build in flight — the entrance covers the gap
+                    Color.clear      // vault scan or graph build in flight: show nothing new
                 }
             }
-            .animation(.easeOut(duration: 0.16), value: model.hoverInfo)
+            .frame(width: geo.size.width, height: geo.size.height)
+            .animation(Motion.gated(Motion.quick, reduceMotion: reduce), value: model.hoverInfo)
         }
-        .background(Theme.bg)
-        .onChange(of: animationsEnabled, initial: true) { _, enabled in model.animates = enabled }
-        // Reruns on every sky entry (silent refresh) AND when the vault first arrives — with the
-        // Constellation View as the window's default, this view mounts before the async vault
-        // scan finishes, so the graph must build the moment the vault lands.
+        .background(Color(nsColor: .textBackgroundColor))
+        .graphBackgroundExtension(showsHUD)
+        // The graph never animates on its own: the model's static path settles the layout once.
+        .onChange(of: animationsEnabled, initial: true) { _, _ in model.animates = false }
+        // Reruns on every Graph entry (silent refresh) AND when the vault first arrives, because
+        // this view can mount before the async vault scan finishes.
         .task(id: LoadKey(root: vault?.root, ready: entranceReady, active: isActive)) {
             guard entranceReady, isActive else { return }
             await model.load(vault: vault)
         }
     }
 
-    // MARK: HUD (whispers — none of it intercepts the cursor)
+    private var emptyState: some View {
+        ContentUnavailableView("No Knowledge Base Yet", systemImage: "books.vertical",
+                               description: Text("Once Sentient has analyzed your sources, every note appears here."))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
 
-    private func hud(graph: SkyGraph) -> some View {
-        ZStack {
-            Color.clear
-            VStack(alignment: .leading, spacing: 5) {
-                MonoCaps("Constellation View", size: 9, tracking: 3, color: Theme.Ink.label)
-                Text("Your life, from above.")
-                    .font(.system(size: 16))
-                    .foregroundStyle(Theme.Ink.statusInk.opacity(0.85))
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(.top, 14).padding(.leading, 22)
+private extension View {
+    /// The live Knowledge page lets the canvas extend under the sidebar and toolbar on macOS 26
+    /// (`extendsBackground()`); the embedded Home showcase (no HUD) sits in a clipped card and
+    /// does not.
+    @ViewBuilder
+    func graphBackgroundExtension(_ enabled: Bool) -> some View {
+        if enabled { self.extendsBackground() } else { self }
+    }
+}
 
-            MonoCaps("\(graph.nodes.count) notes · \(graph.edges.count) threads · \(graph.domains.count) constellations",
-                     size: 9.5, tracking: 2, color: Theme.Ink.label)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                .padding(.bottom, 16).padding(.leading, 22)
+// MARK: - The painter
 
-            HStack(spacing: 8) {
-                Image(systemName: "shield").font(.system(size: 11)).foregroundStyle(Theme.Ink.label)
-                Text("Private by design.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.Ink.label)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            .padding(.bottom, 16)
-        }
-        .allowsHitTesting(false)
+/// Draws the map in painter's order: edges, domain labels, nodes and their rings, note titles.
+private enum KnowledgeGraphPainter {
+    static func draw(_ ctx: GraphicsContext, size: CGSize, model: NightSkyModel, graph: SkyGraph) {
+        guard let sim = model.sim, sim.pos.count == graph.nodes.count else { return }
+        let zf = SkyRenderer.sizeFactor(model)
+        let focusSet: Set<Int> = {
+            guard let f = model.focusIndex else { return [] }
+            return model.focusNeighbors.union([f])
+        }()
+        let accentIndices: Set<Int> = Set([model.hoverIndex, model.highlightIndex].compactMap { $0 })
+        let positions = graph.nodes.indices.map { model.toScreen(sim.pos[$0], size: size) }
+
+        drawEdges(ctx, graph: graph, positions: positions, accentIndices: accentIndices)
+        drawDomainLabels(ctx, model: model, graph: graph, positions: positions)
+        drawNodes(ctx, size: size, model: model, graph: graph, positions: positions, zf: zf, focusSet: focusSet)
+        drawTitles(ctx, size: size, model: model, graph: graph)
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 14) {
-            Orb(size: 92, paused: !isActive || !entranceReady)
-            Text("Your sky is still forming.")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(Theme.Ink.statusInk)
-            Text("Once Sentient has read your life, every note becomes a star.")
-                .font(.system(size: 13)).foregroundStyle(Theme.secondary)
-                .multilineTextAlignment(.center).frame(maxWidth: 340)
+    /// Hairline edges in the separator colour; edges touching the hovered or highlighted note
+    /// switch to the accent at 1 pt.
+    private static func drawEdges(_ ctx: GraphicsContext, graph: SkyGraph, positions: [CGPoint],
+                                  accentIndices: Set<Int>) {
+        var resting = Path()
+        var lit = Path()
+        for e in graph.edges {
+            let a = positions[e.a], b = positions[e.b]
+            if accentIndices.contains(e.a) || accentIndices.contains(e.b) {
+                lit.move(to: a); lit.addLine(to: b)
+            } else {
+                resting.move(to: a); resting.addLine(to: b)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ctx.stroke(resting, with: .color(Color(nsColor: .separatorColor)), lineWidth: 0.5)
+        ctx.stroke(lit, with: .color(Color.accentColor), lineWidth: 1)
+    }
+
+    /// Each domain's name at its nodes' centroid, with a dot in the domain colour. Labels fade as
+    /// you zoom in (titles take over) and while a note is hovered.
+    private static func drawDomainLabels(_ ctx: GraphicsContext, model: NightSkyModel, graph: SkyGraph,
+                                         positions: [CGPoint]) {
+        let zoom = Double(model.camera.zoom)
+        let opacity = max(0, min(1, (1.9 - zoom) / 0.9)) * (1 - 0.5 * model.focusBlend)
+        guard opacity > 0.02, !graph.domains.isEmpty else { return }
+        var sums = [CGPoint](repeating: .zero, count: graph.domains.count)
+        var counts = [Int](repeating: 0, count: graph.domains.count)
+        for (i, n) in graph.nodes.enumerated() where n.domain >= 0 && n.domain < graph.domains.count {
+            sums[n.domain] += positions[i]
+            counts[n.domain] += 1
+        }
+        var layer = ctx
+        layer.opacity = opacity
+        for (d, name) in graph.domains.enumerated() where counts[d] > 0 {
+            let center = sums[d] * (1 / CGFloat(counts[d]))
+            let text = layer.resolve(Text(name).font(.caption.weight(.semibold)).foregroundStyle(.secondary))
+            let sz = text.measure(in: CGSize(width: 320, height: 40))
+            let dot: CGFloat = 6, gap: CGFloat = 5
+            let total = dot + gap + sz.width
+            let left = center.x - total / 2
+            layer.fill(Path(ellipseIn: CGRect(x: left, y: center.y - dot / 2, width: dot, height: dot)),
+                       with: .color(SkyRenderer.domainColor(d)))
+            layer.draw(text, at: CGPoint(x: left + dot + gap, y: center.y), anchor: .leading)
+        }
+    }
+
+    /// Filled circles in the domain colour, sized by degree. Notes outside the hovered
+    /// neighbourhood dim; "Changed last night" notes wear a 1.5 pt accent ring, and the note you
+    /// came back from wears a 2 pt one.
+    private static func drawNodes(_ ctx: GraphicsContext, size: CGSize, model: NightSkyModel, graph: SkyGraph,
+                                  positions: [CGPoint], zf: CGFloat, focusSet: Set<Int>) {
+        let margin: CGFloat = 40
+        let dimmed = 1 - 0.7 * model.focusBlend
+        for (i, n) in graph.nodes.enumerated() {
+            let p = positions[i]
+            guard p.x > -margin, p.x < size.width + margin, p.y > -margin, p.y < size.height + margin
+            else { continue }
+            let r = SkyRenderer.starRadius(n, maxDegree: graph.maxDegree, zf: zf)
+            let opacity = (focusSet.isEmpty || focusSet.contains(i)) ? 1 : dimmed
+            ctx.fill(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2)),
+                     with: .color(SkyRenderer.domainColor(n.domain, alpha: opacity)))
+
+            let ringR = r + 3
+            let ring = Path(ellipseIn: CGRect(x: p.x - ringR, y: p.y - ringR, width: ringR * 2, height: ringR * 2))
+            if i == model.highlightIndex {
+                ctx.stroke(ring, with: .color(Color.accentColor), lineWidth: 2)
+            } else if n.recentlyChanged {
+                ctx.stroke(ring, with: .color(Color.accentColor.opacity(opacity)), lineWidth: 1.5)
+            }
+        }
+    }
+
+    /// Note titles where SkyRenderer's collision-aware placement allows them.
+    private static func drawTitles(_ ctx: GraphicsContext, size: CGSize, model: NightSkyModel, graph: SkyGraph) {
+        var resolved: [Int: GraphicsContext.ResolvedText] = [:]
+        func text(_ i: Int) -> GraphicsContext.ResolvedText {
+            if let t = resolved[i] { return t }
+            let strong = i == model.hoverIndex || i == model.highlightIndex
+            let t = ctx.resolve(Text(graph.nodes[i].title).font(.caption)
+                .foregroundStyle(strong ? Color.primary : Color.secondary))
+            resolved[i] = t
+            return t
+        }
+        let placements = SkyRenderer.titlePlacements(model: model, size: size) { i in
+            text(i).measure(in: CGSize(width: 360, height: 60))
+        }
+        for placement in placements {
+            var layer = ctx
+            layer.opacity = placement.opacity
+            layer.draw(text(placement.index), at: placement.anchor, anchor: .center)
+        }
     }
 }
 
 // MARK: - The hover card
 
+/// A popover-style callout for the hovered note: title, first line, folder, link count. It is
+/// not interactive (it sits above the event catcher); clicking the node opens the note.
 private struct SkyHoverCard: View {
     let info: SkyHoverInfo
+    let linkCount: Int
     var width: CGFloat = 250
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            MonoCaps(info.domainName, size: 8.5, tracking: 2, color: Theme.Ink.label)
-            Text(info.title)
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.Ink.statusInk)
-                .lineLimit(2)
+        VStack(alignment: .leading, spacing: Space.xs) {
+            HStack(spacing: Space.xs) {
+                if info.recentlyChanged {
+                    Circle().fill(Color.accentColor).frame(width: 6, height: 6)
+                        .help("Changed last night")
+                        .accessibilityLabel("Changed last night")
+                }
+                Text(info.title).font(.headline).lineLimit(1)
+            }
             if !info.preview.isEmpty {
-                Text(info.preview)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.Ink.body)
-                    .lineLimit(2)
+                Text(info.preview).font(.callout).foregroundStyle(.secondary).lineLimit(2)
             }
-            if info.recentlyChanged {
-                MonoCaps("Changed last night", size: 7.5, tracking: 1.5, color: Theme.dawnCyan)
+            HStack {
+                Label(info.domainName == "You" ? "Overview" : info.domainName, systemImage: "folder")
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text(linkCount == 1 ? "1 link" : "\(linkCount) links").monospacedDigit()
             }
+            .font(.caption).foregroundStyle(.secondary)
+            Text("Click to Open").font(.caption).foregroundStyle(Color(nsColor: .tertiaryLabelColor))
         }
-        .padding(12)
+        .padding(Space.m)
         .frame(width: width, alignment: .leading)
-        .background(Theme.Ink.cardBG.opacity(0.94), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.stroke, lineWidth: 1))
-        .allowsHitTesting(false)
+        .background(.background, in: RoundedRectangle(cornerRadius: Radius.group, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.group, style: .continuous)
+            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Zoom controls
+
+/// The Maps-style floating zoom group: Zoom Out, Zoom to Fit, Zoom In (⌘−, ⌘0, ⌘=).
+private struct GraphZoomControls: View {
+    let model: NightSkyModel
+    let size: CGSize
+
+    private var center: CGPoint { CGPoint(x: size.width / 2, y: size.height / 2) }
+
+    var body: some View {
+        ControlGroup {
+            Button { model.zoom(by: 1 / 1.25, at: center, size: size) } label: {
+                Label("Zoom Out", systemImage: "minus")
+            }
+            .help("Zoom Out")
+            .keyboardShortcut("-", modifiers: .command)
+            Button { model.fitToContent(in: size) } label: {
+                Label("Zoom to Fit", systemImage: "arrow.up.left.and.down.right.magnifyingglass")
+            }
+            .help("Zoom to Fit")
+            .keyboardShortcut("0", modifiers: .command)
+            Button { model.zoom(by: 1.25, at: center, size: size) } label: {
+                Label("Zoom In", systemImage: "plus")
+            }
+            .help("Zoom In")
+            .keyboardShortcut("=", modifiers: .command)
+        }
+        .labelStyle(.iconOnly)
+        .controlSize(.regular)
+        .fixedSize()
+        .padding(Space.xs)
+        .floatingGlass(in: Capsule())
     }
 }
 
@@ -231,7 +368,7 @@ private final class SkyEventNSView: NSView {
         NSCursor.arrow.set()
     }
 
-    // MARK: Click / drag (a still click opens the note; a drag moves a star or pans the sky)
+    // MARK: Click / drag (a still click opens the note; a drag moves a node or pans the map)
 
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
@@ -292,36 +429,46 @@ private final class SkyEventNSView: NSView {
     }
 }
 
-// MARK: - Previews (SkyRenderer's eyes — the mock galaxy is seeded, so renders are stable)
+// MARK: - Previews (the mock graph is seeded, so renders are stable)
 
-#Preview("Night Sky — settled") {
-    NightSkyView(vault: nil, model: .preview(), onOpen: { _ in }, onExit: {})
-        .frame(width: 1280, height: 800)
-        .preferredColorScheme(.dark)
-}
-
-#Preview("Night Sky — ignited (hover)") {
-    NightSkyView(vault: nil, model: .preview(hovering: 22), onOpen: { _ in }, onExit: {})
-        .frame(width: 1280, height: 800)
-        .preferredColorScheme(.dark)
-}
-
-#Preview("Night Sky — hover card") {
-    ZStack {
-        Color.black
-        SkyHoverCard(info: SkyHoverInfo(url: URL(fileURLWithPath: "/mock/a.md"),
-                                        title: "Sentient OS – Launch Timeline",
-                                        domainName: "Sentient OS",
-                                        preview: "Beta invite waves, the Reddit playbook, and what has to be true before strangers see it.",
-                                        recentlyChanged: true,
-                                        anchor: .zero))
+#Preview("Knowledge Graph") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            NightSkyView(vault: nil, model: .preview(), onOpen: { _ in }, onExit: {})
+                .frame(width: 640, height: 480)
+                .environment(\.colorScheme, scheme)
+        }
     }
-    .frame(width: 400, height: 240)
-    .preferredColorScheme(.dark)
 }
 
-#Preview("Night Sky — real vault") {
-    NightSkyView(vault: KnowledgeVault.load(), model: NightSkyModel(), onOpen: { _ in }, onExit: {})
-        .frame(width: 1280, height: 800)
-        .preferredColorScheme(.dark)
+#Preview("Knowledge Graph — hover") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            NightSkyView(vault: nil, model: .preview(hovering: 22), onOpen: { _ in }, onExit: {})
+                .frame(width: 640, height: 480)
+                .environment(\.colorScheme, scheme)
+        }
+    }
+}
+
+#Preview("Knowledge Graph — hover card") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            SkyHoverCard(info: SkyHoverInfo(url: URL(fileURLWithPath: "/mock/a.md"),
+                                            title: "Sentient OS – Launch Timeline",
+                                            domainName: "Sentient OS",
+                                            preview: "Beta invite waves, the Reddit playbook, and what has to be true before strangers see it.",
+                                            recentlyChanged: true,
+                                            anchor: .zero),
+                         linkCount: 4)
+                .padding(24)
+                .background(Color(nsColor: .textBackgroundColor))
+                .environment(\.colorScheme, scheme)
+        }
+    }
+}
+
+#Preview("Knowledge Graph — empty") {
+    NightSkyView(vault: nil, model: NightSkyModel(), onOpen: { _ in }, onExit: {})
+        .frame(width: 640, height: 480)
 }

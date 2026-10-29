@@ -153,7 +153,9 @@ import WebKit
                 || $0.label.localizedCaseInsensitiveContains("shortcut") || $0.label.contains("Right ⌘")
         }.map { ["identifier": $0.identifier, "label": $0.label, "role": $0.role,
                  "frame": [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height]] }
-        checks["settings_has_open_source_footer"] = settings.contains { $0.label == "Open source on GitHub" }
+        // RETIRED (integration, SPEC-D4 open issue 3 / WP8-NOTES): settings_has_open_source_footer.
+        // Deleted subject: the Settings trust footer with "Open source on GitHub" (WP7 removed it;
+        // the Sidekick pane has no footer link).
         let menu = settings.first(where: {
             ($0.identifier == "settings.menu.Sidekick shortcut" || $0.label == "Sidekick shortcut") && $0.frame.width >= 100
         })
@@ -273,8 +275,8 @@ import WebKit
              "home_active": presentation.windowActive, "window_visible": window.isVisible,
              "app_active": NSApp.isActive, "home_key": window.isKeyWindow,
              "elapsed_ms": Int((ProcessInfo.processInfo.systemUptime - hintObservationStartedAt) * 1000),
-             "key_window": NSApp.keyWindow?.windowNumber ?? -1,
-             "hint_elements": describe(elements(host).filter { $0.identifier == "doubleTap.readyHint" })]
+             // "hint_elements" retired: the doubleTap.readyHint element was deleted (ADDENDUM 12.9.1).
+             "key_window": NSApp.keyWindow?.windowNumber ?? -1]
         }
         func lesson() -> NSView? {
             NSApp.windows.filter { $0.isVisible && $0 !== window }.compactMap(\.contentView)
@@ -308,12 +310,12 @@ import WebKit
         try await settle(800)
         let wide = elements(host)
         diagnostics["wide_header"] = describe(wide.filter { $0.identifier.hasPrefix("navigation.") || $0.identifier.hasPrefix("sidekick.notch") })
-        checks["wide_double_tap_before_analysis"] = {
-            guard let button = find("navigation.doubleTap"), let analysis = find("navigation.analysis") else { return false }
-            return button.frame.maxX < analysis.frame.minX && abs(button.frame.midY - analysis.frame.midY) < 4
-        }()
+        // RETIRED (ADDENDUM 12.9.1): wide_double_tap_before_analysis. Deleted subject: the shared
+        // header row; navigation.doubleTap is a Home toolbar button and navigation.analysis a
+        // sidebar row, so the two controls no longer share a row. No ordering check replaces it.
         checks["wide_proactive_has_notch_cue"] = find("sidekick.notchHint") != nil && find("sidekick.proactive") == nil
-        checks["wide_has_no_ready_hint_before_analysis"] = !wide.contains { $0.identifier == "doubleTap.readyHint" }
+        // RETIRED (ADDENDUM 12.9.1): wide_has_no_ready_hint_before_analysis. Deleted subject: the
+        // doubleTap.readyHint element (the visible ready hint is gone).
         captures.append(try await capture(host, name: "discovery-01-home-wide", directory: directory))
         phase = "waiting_lesson"
         // Change the actual preference while Home stays mounted; the lesson must follow it.
@@ -338,16 +340,17 @@ import WebKit
         window.setContentSize(NSSize(width: 840, height: 820))
         try await settle(700)
         let compact = elements(host)
-        let identifiers = ["sidekick.proactive", "sidekick.search", "sidekick.clearChat", "navigation.doubleTap", "navigation.analysis", "navigation.settings"]
-        var controls = identifiers.compactMap { find($0, in: compact) }
-        if let knowledge = compact.first(where: { $0.label == "Knowledge" && $0.role == NSAccessibility.Role.button.rawValue && $0.frame.width > 0 }) { controls.append(knowledge) }
+        // Retired from this list (ADDENDUM 12.9.1-2): navigation.settings (the Settings toolbar
+        // button was deleted), the Knowledge header button (deleted; Knowledge is a sidebar row),
+        // and sidekick.clearChat (its standalone toolbar button was deleted; the id is on the
+        // More menu's "Clear Chat…" item, which exists only while that menu is open).
+        let identifiers = ["sidekick.proactive", "sidekick.search", "navigation.doubleTap", "navigation.analysis"]
+        let controls = identifiers.compactMap { find($0, in: compact) }
         diagnostics["compact_controls"] = describe(controls)
-        diagnostics["compact_header_candidates"] = describe(compact.filter {
-            identifiers.contains($0.identifier) || $0.label == "Knowledge"
-        })
+        diagnostics["compact_header_candidates"] = describe(compact.filter { identifiers.contains($0.identifier) })
         let contentFrame = window.convertToScreen(host.convert(host.bounds, to: nil))
         diagnostics["compact_content_frame"] = [contentFrame.minX, contentFrame.minY, contentFrame.width, contentFrame.height]
-        checks["compact_chat_keeps_double_tap_and_all_controls"] = controls.count == identifiers.count + 1
+        checks["compact_chat_keeps_double_tap_and_all_controls"] = controls.count == identifiers.count
         checks["compact_chat_has_no_notch_cue"] = !compact.contains { $0.identifier == "sidekick.notchHint" }
         checks["compact_header_controls_do_not_overlap"] = controls.indices.allSatisfy { first in
             contentFrame.contains(controls[first].frame) && controls.indices.allSatisfy { second in
@@ -370,8 +373,9 @@ import WebKit
         recordFocus("analysis_window_after_completion", target: progressWindow)
         checks["analysis_window_case_keeps_home_visible_but_not_key"] = window.isVisible
             && progressWindow.isKeyWindow && NSApp.isActive
-        checks["analysis_window_does_not_consume_ready_hint"] = find("doubleTap.readyHint") == nil
-            && defaults.double(forKey: SidekickDiscovery.readyHintSeenKey) == 0
+        // The doubleTap.readyHint clause is retired (element deleted, ADDENDUM 12.9.1); the
+        // acknowledgement key it guarded is still checked.
+        checks["analysis_window_does_not_consume_ready_hint"] = defaults.double(forKey: SidekickDiscovery.readyHintSeenKey) == 0
         window.orderOut(nil)
         progressWindow.close()
         recordFocus("analysis_window_closed_home_hidden", target: window)
@@ -393,7 +397,8 @@ import WebKit
         let keyWindow = NSApp.keyWindow
         let responder = window.firstResponder
         try await settle(850)
-        checks["reactivation_shows_ready_hint"] = find("doubleTap.readyHint") != nil
+        // RETIRED (ADDENDUM 12.9.1): reactivation_shows_ready_hint. Deleted subject: the
+        // doubleTap.readyHint element.
         checks["ready_hint_does_not_take_focus"] = NSApp.keyWindow === keyWindow && window.firstResponder === responder
         recordFocus("ready_hint_displayed", target: window)
         captures.append(try await capture(host, name: "discovery-04-ready-hint", directory: directory))
@@ -404,7 +409,8 @@ import WebKit
         recordFocus("hint_hidden_before_acknowledgement", target: window)
         try await reveal("home_after_hint_interruption")
         try await settle(1100)
-        checks["interrupted_hint_reappears"] = find("doubleTap.readyHint") != nil
+        // RETIRED (ADDENDUM 12.9.1): interrupted_hint_reappears. Deleted subject: the
+        // doubleTap.readyHint element.
         recordFocus("interrupted_hint_reappeared", target: window)
         try await click("navigation.doubleTap")
         guard let readyLesson = lesson() else { throw Failure.accessibility }
@@ -422,30 +428,31 @@ import WebKit
         host.rootView = home()
         try await reveal("home_remounted")
         try await settle(1100)
-        checks["remount_does_not_repeat_acknowledged_hint"] = find("doubleTap.readyHint") == nil
-            && defaults.double(forKey: SidekickDiscovery.readyHintSeenKey) == completion
+        // The doubleTap.readyHint clause is retired (element deleted, ADDENDUM 12.9.1).
+        checks["remount_does_not_repeat_acknowledged_hint"] = defaults.double(forKey: SidekickDiscovery.readyHintSeenKey) == completion
         phase = "automatic_acknowledgement"
         try await reveal("home_before_automatic_hint")
         let anotherCompletion = completion + 1
         hintObservationStartedAt = ProcessInfo.processInfo.systemUptime
         defaults.set(anotherCompletion, forKey: ProcessingPlan.initialCompletedKey)
         try await settle(1100)
-        checks["new_completion_gets_its_own_hint"] = find("doubleTap.readyHint") != nil
+        // RETIRED (ADDENDUM 12.9.1): new_completion_gets_its_own_hint. Deleted subject: the
+        // doubleTap.readyHint element.
         var automaticSamples: [[String: Any]] = [hintState()]
         // Observe the real acknowledgement with a bounded margin for native presentation.
         // Do not treat a completed animation's lingering AX node as a timer failure.
         for _ in 0..<24 {
             try await settle(300)
             automaticSamples.append(hintState())
-            if defaults.double(forKey: SidekickDiscovery.readyHintSeenKey) == anotherCompletion,
-               find("doubleTap.readyHint") == nil { break }
+            // The doubleTap.readyHint clause is retired (element deleted, ADDENDUM 12.9.1).
+            if defaults.double(forKey: SidekickDiscovery.readyHintSeenKey) == anotherCompletion { break }
         }
         diagnostics["automatic_hint_samples"] = automaticSamples
         checks["automatic_hint_viewing_stays_active"] = automaticSamples.allSatisfy {
             $0["home_active"] as? Bool == true && $0["app_active"] as? Bool == true && $0["home_key"] as? Bool == true
         }
+        // The doubleTap.readyHint clause ("hides") is retired (element deleted, ADDENDUM 12.9.1).
         checks["full_viewing_auto_acknowledges_and_hides"] = defaults.double(forKey: SidekickDiscovery.readyHintSeenKey) == anotherCompletion
-            && find("doubleTap.readyHint") == nil
 
         phase = "notch_action"
         notch.start()

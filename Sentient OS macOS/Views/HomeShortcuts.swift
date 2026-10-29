@@ -1,9 +1,12 @@
-// Home's permanent Double Tap lesson and quiet, temporary notch cue. The ready hint waits
-// for visible Home, never takes focus, and acknowledges only a completed viewing or click.
+// Home's Double Tap toolbar item with its lesson popover, and the Ask bar's one caption line
+// (the notch hint, or "Private by design."). The ready moment waits for a visible, key Home,
+// never takes focus, and acknowledges only a completed viewing or a click.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
 import SwiftUI
 import AppKit
 
+/// The Double Tap toolbar item. A click opens a Control Center-style popover: a tile header, the
+/// user's own keyboard row with the configured key lit, the state and its one action.
 struct HomeDoubleTapButton: View {
     let active: Bool
     @Binding var presented: Bool
@@ -20,10 +23,13 @@ struct HomeDoubleTapButton: View {
     @State private var homeIsKey = false
     @State private var noticeVisible = false
     @State private var highlight = 0.0
+    /// The lesson's key press, driven by the replay loop while the popover shows.
+    @State private var pressed = false
 
     private var key: ShortcutKey { ShortcutKey(rawValue: shortcutRaw) ?? .rightCommand }
     private var reduced: Bool { (motionOverride ?? systemReduced) || lowPower }
     private var ready: Bool { completedAt > 0 && enabled }
+    private var lessonAnimating: Bool { active && presented && !reduced }
     private var offerNotice: Bool {
         active && homeIsKey && ready && !presented
             && SidekickDiscovery.readyHintPending(completedAt: completedAt, seenAt: seenAt)
@@ -41,10 +47,9 @@ struct HomeDoubleTapButton: View {
             Label {
                 Text("Double Tap")
             } icon: {
-                Image(systemName: key.discoverySymbol)
+                Image(systemName: ready ? "hand.tap.fill" : "hand.tap")
                     .foregroundStyle(highlight > 0 || presented ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
             }
-            .labelStyle(.titleAndIcon)
         }
         .accessibilityIdentifier("navigation.doubleTap")
         .accessibilityLabel("Double Tap")
@@ -52,8 +57,11 @@ struct HomeDoubleTapButton: View {
         .help(noticeVisible ? "Double Tap is ready. Draft a reply with two taps of \(key.label)."
               : ready ? "Draft a reply with two taps of \(key.label)."
               : (enabled ? "Double Tap unlocks after your first analysis." : "Double Tap is turned off."))
-        .popover(isPresented: $presented) {
+        .popover(isPresented: $presented, arrowEdge: .bottom) {
             lesson
+                .frame(width: PageMetrics.popover)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("doubleTap.lesson")
         }
         .background(SidekickWindowPresence(requiresKeyWindow: true) { homeIsKey = $0 }
             .allowsHitTesting(false).accessibilityHidden(true))
@@ -69,14 +77,14 @@ struct HomeDoubleTapButton: View {
                 // Let Home's own entrance settle before drawing attention to a new capability.
                 try await Task.sleep(for: .milliseconds(700))
                 try Task.checkCancellation()
-                withAnimation(reduced ? .easeOut(duration: 0.15) : .smooth(duration: 0.45)) {
+                withAnimation(Motion.gated(Motion.standard, reduceMotion: reduced)) {
                     noticeVisible = true; highlight = 1
                 }
-                NSAccessibility.post(element: NSApp, notification: .announcementRequested,
+                NSAccessibility.post(element: NSApplication.shared, notification: .announcementRequested,
                     userInfo: [.announcement: "Double Tap is ready. Tap \(key.spokenLabel) twice in a reply box.",
                                .priority: NSAccessibilityPriorityLevel.low.rawValue])
                 try await Task.sleep(for: .milliseconds(900))
-                withAnimation(.easeOut(duration: reduced ? 0.15 : 1.2)) { highlight = 0.35 }
+                withAnimation(Motion.gated(.easeOut(duration: 1.2), reduceMotion: reduced)) { highlight = 0.35 }
                 try await Task.sleep(for: .seconds(5))
                 try Task.checkCancellation()
                 // Hiding Home cancels this task before acknowledgement, so the hint can wait.
@@ -84,7 +92,7 @@ struct HomeDoubleTapButton: View {
                 #if DEBUG
                 if ProcessInfo.processInfo.environment["LAB_SIDEKICK_STAGE"] == "ui-discovery" { Log("Discovery hint acknowledged") }
                 #endif
-                withAnimation(.easeOut(duration: 0.25)) { noticeVisible = false; highlight = 0 }
+                withAnimation(Motion.gated(Motion.standard, reduceMotion: reduced)) { noticeVisible = false; highlight = 0 }
             } catch {
                 #if DEBUG
                 if ProcessInfo.processInfo.environment["LAB_SIDEKICK_STAGE"] == "ui-discovery" { Log("Discovery hint interrupted") }
@@ -98,135 +106,135 @@ struct HomeDoubleTapButton: View {
     }
 
     private var lesson: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .center, spacing: 17) {
-                DoubleTapKeyLesson(key: key, animating: active && presented && !reduced)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Double Tap").font(.title2.weight(.medium)).foregroundStyle(.primary)
-                    Text("Replies in your voice.")
-                        .font(.callout).foregroundStyle(SidekickStyle.secondary)
-                }
-            }
+        VStack(alignment: .leading, spacing: Space.m) {
+            TileLabel("Double Tap", subtitle: "Replies in your voice.", tile: .featureDoubleTap, size: 30)
+
+            KeyCapRow(highlighting: key, pressed: pressed)
+                .frame(maxWidth: .infinity)
+
             if !enabled {
                 Text("Double Tap is turned off.")
-                    .font(.body).foregroundStyle(SidekickStyle.ink)
+                    .font(.body)
                 Button("Turn On Double Tap") {
                     enabled = true
                     if completedAt > 0 { seenAt = completedAt }
-                }.buttonStyle(.borderedProminent)
+                }
+                .buttonStyle(.borderedProminent)
             } else if completedAt <= 0 {
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: Space.xs) {
                     Text("Ready after your first analysis.")
-                        .font(.body.weight(.medium)).foregroundStyle(SidekickStyle.ink)
+                        .font(.headline)
                         .accessibilityIdentifier("doubleTap.waiting")
                     Text(needsPersonalSetup
                          ? "Finish setup and connect three sources to give Double Tap your personal context. After your first analysis, click a reply box and tap \(key.label) twice."
                          : "Your first analysis gives Double Tap your personal context. Then click a reply box and tap \(key.label) twice.")
-                        .font(.callout).foregroundStyle(SidekickStyle.secondary).lineSpacing(3)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
-                Button {
+                Button(needsPersonalSetup ? "Finish Setup…" : "View analysis") {
                     presented = false
                     if needsPersonalSetup { onFinishSetup() } else { onViewAnalysis() }
-                } label: {
-                    Text(needsPersonalSetup ? "Finish Setup…" : "View Analysis")
-                }.buttonStyle(.bordered)
-                    .accessibilityIdentifier(needsPersonalSetup ? "doubleTap.finishSetup" : "doubleTap.viewAnalysis")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier(needsPersonalSetup ? "doubleTap.finishSetup" : "doubleTap.viewAnalysis")
             } else {
-                VStack(alignment: .leading, spacing: 9) {
+                VStack(alignment: .leading, spacing: Space.xs) {
                     Text("Click a reply box, then tap **\(key.label) twice**.")
-                        .font(.body).foregroundStyle(SidekickStyle.ink).lineSpacing(3)
+                        .font(.body)
                         .accessibilityIdentifier("doubleTap.instructions")
                     Text("Your draft appears right where you’re typing. Review it, then send.")
-                        .font(.callout).foregroundStyle(SidekickStyle.secondary).lineSpacing(3)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
             }
+
             Text("One tap opens Sidekick.")
-                .font(.subheadline).foregroundStyle(SidekickStyle.secondary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .fixedSize(horizontal: false, vertical: true)
-        .padding(22).frame(width: 302)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("doubleTap.lesson")
-    }
-}
-
-private struct DoubleTapKeyLesson: View {
-    let key: ShortcutKey
-    let animating: Bool
-    @State private var pressed = false
-    @State private var taps = 0
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: key.discoverySymbol)
-                .font(.largeTitle.weight(.medium)).foregroundStyle(.primary)
-                .frame(width: 56, height: 50)
-                .background(Color(white: pressed ? 0.15 : 0.10), in: RoundedRectangle(cornerRadius: 11))
-                .overlay(RoundedRectangle(cornerRadius: 11)
-                    .strokeBorder(pressed ? Theme.Ink.gold.opacity(0.6) : .white.opacity(0.16), lineWidth: 0.8))
-                .shadow(color: .black.opacity(0.5), radius: 0, y: pressed ? 1 : 3)
-                .scaleEffect(pressed ? 0.95 : 1).offset(y: pressed ? 2 : 0)
-                .animation(.easeOut(duration: 0.1), value: pressed)
-            HStack(spacing: 5) {
-                ForEach(1...2, id: \.self) { index in
-                    Circle().fill(taps >= index || !animating ? Theme.Ink.gold : .white.opacity(0.18))
-                        .frame(width: 3, height: 3)
-                }
-            }
-        }
-        .accessibilityHidden(true)
-        .task(id: animating) {
-            guard animating else { pressed = false; taps = 0; return }
+        .padding(Space.l)
+        .task(id: lessonAnimating) {
+            // Two presses of 120 ms with 100 ms gaps, then a 2 s pause. KeyCap animates the press
+            // itself through Motion.gated; under Reduce Motion or Low Power the key stays lit and still.
+            guard lessonAnimating else { pressed = false; return }
             do {
                 while !Task.isCancelled {
-                    taps = 0
                     try await Task.sleep(for: .milliseconds(600))
-                    for count in 1...2 {
-                        pressed = true; taps = count
+                    for _ in 1...2 {
+                        pressed = true
                         try await Task.sleep(for: .milliseconds(120))
                         pressed = false
                         try await Task.sleep(for: .milliseconds(100))
                     }
                     try await Task.sleep(for: .seconds(2))
                 }
-            } catch { pressed = false; taps = 0 }
+            } catch { pressed = false }
         }
     }
 }
 
+/// The Ask bar's caption: one secondary line under the field, like Siri's "Type to Siri".
+/// The notch hint while it is still being learned (and allowed here), else "Private by design.".
 struct HomeNotchHint: View {
     let coordinator: CommandCoordinator
+    var allowsHint = true
     @AppStorage(ShortcutPreferences.storageKey) private var shortcutRaw = ShortcutKey.rightCommand.rawValue
     @AppStorage(NotchPreferences.clickEnabledKey) private var clickable = true
     @AppStorage(SidekickDiscovery.notchUsesKey) private var uses = 0
-    @State private var hovered = false
     private var key: ShortcutKey { ShortcutKey(rawValue: shortcutRaw) ?? .rightCommand }
 
+    init(coordinator: CommandCoordinator, allowsHint: Bool = true) {
+        self.coordinator = coordinator
+        self.allowsHint = allowsHint
+    }
+
+    private var showsHint: Bool {
+        allowsHint && uses < SidekickDiscovery.notchLearningUses
+            && !coordinator.run.isRunning && coordinator.phase == .hidden
+    }
+
     var body: some View {
-        if uses < SidekickDiscovery.notchLearningUses && !coordinator.run.isRunning && coordinator.phase == .hidden {
-            Button { coordinator.openNotchFromHome() } label: {
-                HStack(spacing: 5) {
-                    Text(clickable ? "Try the notch" : "Press \(key.label)")
-                    Image(systemName: "arrow.up.right").font(.caption2.weight(.medium))
-                }
-                .font(.callout).foregroundStyle(hovered ? SidekickStyle.ink : SidekickStyle.secondary)
-                .frame(maxWidth: .infinity, minHeight: 34).contentShape(Rectangle())
+        HStack(spacing: Space.xs) {
+            if showsHint {
+                Image(systemName: "rectangle.topthird.inset.filled")
+                    .accessibilityHidden(true)
+                Text("Press \(key.label) to ask from anywhere.")
+                Button("Try It") { coordinator.openNotchFromHome() }
+                    .buttonStyle(.link)
+                    .accessibilityIdentifier("sidekick.notchHint")
+                    .accessibilityLabel("Open Sidekick in the notch")
+                    .help(clickable ? "Sidekick is in your notch, too. Click it or press \(key.label) from any app."
+                          : "Press \(key.label) to open Sidekick from any app.")
+            } else {
+                Label("Private by design.", systemImage: "lock.fill")
             }
-            .buttonStyle(.plain).onHover { hovered = $0 }
-            .accessibilityIdentifier("sidekick.notchHint")
-            .accessibilityLabel("Open Sidekick in the notch")
-            .help(clickable ? "Sidekick is in your notch, too. Click it or press \(key.label) from any app."
-                  : "Press \(key.label) to open Sidekick from any app.")
         }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 }
 
-private extension ShortcutKey {
-    var discoverySymbol: String {
-        switch self {
-        case .rightCommand, .leftCommand: "command"
-        case .rightOption, .leftOption: "option"
-        case .rightControl, .leftControl: "control"
+#if DEBUG
+#Preview("Notch caption") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            VStack(spacing: Space.m) {
+                HStack(spacing: Space.xs) {
+                    Image(systemName: "rectangle.topthird.inset.filled")
+                    Text("Press Right ⌘ to ask from anywhere.")
+                    Button("Try It") {}.buttonStyle(.link)
+                }
+                Label("Private by design.", systemImage: "lock.fill")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(Space.xl)
+            .frame(maxWidth: .infinity)
+            .background(Color(nsColor: .textBackgroundColor))
+            .environment(\.colorScheme, scheme)
         }
     }
+    .frame(width: 720)
 }
+#endif

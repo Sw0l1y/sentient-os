@@ -25,7 +25,7 @@ struct ConnectorSource: Identifiable {
     }
 
     /// Keep registry order, retain each distinct account, and append other connected apps.
-    /// Gmail and Calendar already have permanent pills in the shared Connectors group.
+    /// Gmail and Calendar already have permanent rows in the Email & Calendar section.
     /// Teams is outside Knowledge Sources, including when detected as a connected app.
     static func catalog(with connectors: [ConnectorCensus.DetectedConnector]) -> [Self] {
         let hiddenSlugs = ConnectorCensus.dedicatedSourceSlugs.union(["teams", "microsoft-teams"])
@@ -85,9 +85,8 @@ struct ConnectorSource: Identifiable {
     }
 }
 
-/// Green means included in analysis, just like the folder, chat, and Gmail chips.
-/// A linked account still needs an explicit knowledge opt-in. Task-only apps never look selected.
-/// The parent owns the sheet so discovery cannot dismiss it.
+/// One connector as a source row. A linked account still needs an explicit knowledge opt-in, and
+/// task-only apps never look selected. The parent owns the sheet so discovery cannot dismiss it.
 struct ConnectorPill: View {
     let source: ConnectorSource
     let locked: Bool
@@ -108,16 +107,20 @@ struct ConnectorPill: View {
         knowledgeEnabled && ConnectorRegistry.kbEligible(source.connector?.slug ?? source.serviceSlug)
     }
 
+    private var needsAttention: Bool {
+        knowledgeEnabled && (!selected || source.connector?.isReady != true)
+    }
+
     private var detail: String? {
         guard !locked else { return nil }
-        if knowledgeEnabled && (!selected || source.connector?.isReady != true) { return "Connection needs attention · Manage" }
+        if needsAttention { return "Connection needs attention" }
         if !ConnectorRegistry.kbEligible(source.connector?.slug ?? source.serviceSlug) { return "Tasks only" }
         return nil
     }
 
     private var status: String {
         if locked { return CodexAuth.connectorLockedTip }
-        if knowledgeEnabled && (!selected || source.connector?.isReady != true) { return "Selected, but review this connection before analysis can use it." }
+        if needsAttention { return "Selected, but review this connection before analysis can use it." }
         return selected ? "Selected for analysis and nightly updates."
             : "Open this app to set it up and choose whether to use it for your knowledge base."
     }
@@ -125,17 +128,26 @@ struct ConnectorPill: View {
     var body: some View {
         KnowledgeSourcePill(label: source.displayName, detail: detail,
                             asset: source.logoAsset, iconPath: source.connector?.iconPath,
-                            selected: selected, featured: featured, locked: locked, action: action)
+                            selected: selected, featured: featured, locked: locked, action: action,
+                            needsAttention: !locked && needsAttention)
         .accessibilityValue(status)
         .help(status)
     }
 }
 
-#Preview("Connectors · catalog pills") {
-    ChipFlow {
-        ForEach(ConnectorSource.catalog(with: [])) { source in
-            ConnectorPill(source: source, locked: false, action: {})
+#Preview("Connectors · catalog rows") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            Form {
+                Section("More of Your World") {
+                    ForEach(ConnectorSource.catalog(with: [])) { source in
+                        ConnectorPill(source: source, locked: false, action: {})
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            .frame(width: 520, height: 420)
+            .environment(\.colorScheme, scheme)
         }
     }
-    .padding(38).frame(width: 640).background(Theme.bg)
 }

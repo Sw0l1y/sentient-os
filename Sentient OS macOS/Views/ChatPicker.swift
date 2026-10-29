@@ -2,12 +2,12 @@
 //  ChatPicker.swift
 //  Sentient OS macOS
 //
-//  The opt-in "Choose chats & groups" sheet, shared by the chat sources (WhatsApp + iMessage).
-//  Lists the chats ACTIVE within the scan window (newest first, with message counts), with
-//  search + per-chat checkboxes + bulk All-DMs / All-groups / Clear. "Done" hands the selected
-//  chat ids (JIDs / GUIDs) back to the caller, which persists them and lights up the source chip.
+//  The opt-in "Choose Chats & Groups" picker sheet, shared by the chat sources (WhatsApp + iMessage).
+//  Lists the chats ACTIVE within the scan window (newest first, with message counts) as a checkmark
+//  list, with a native search field and a Select menu (All DMs / All Groups / Clear Selection).
+//  "Done" hands the selected chat ids (JIDs / GUIDs) back to the caller, which persists them.
 //  DMs from numbers not in the user's contacts (ChatInfo.isSaved == false — iMessage only) hide
-//  behind the "Show unsaved numbers" checkbox, off by default; a selected chat is never hidden.
+//  behind the "Show Unsaved Numbers" checkbox, off by default; a selected chat is never hidden.
 //
 
 import SwiftUI
@@ -45,122 +45,111 @@ struct ChatPicker: View {
     }
     private var unsavedCount: Int { chats.count { !$0.isSaved } }
 
+    /// The source's own logo: the real Messages icon for iMessage, WhatsApp's mark, or none.
+    private var logoAsset: String? {
+        switch sourceName {
+        case "WhatsApp": "WhatsAppMark"
+        case "iMessage": "IMessageMark"
+        default: nil
+        }
+    }
+
+    private var countLine: String {
+        "\(selection.count) selected · \(visible.count) active in the last \(ChatWindowing.lookbackDays) days"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            header
+            ConnectorSheetHeader("Choose Chats & Groups", message: "Choose the \(sourceName) chats to include.") {
+                ConnectorSheetLogo(asset: logoAsset)
+            }
             filterBar
-            Divider()
             content
-            Divider()
-            footer
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ConnectorSheetFooter {
+                if loaded {
+                    Text(countLine)
+                        .font(.callout).foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+            } trailing: {
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("connector.cancel")
+                Button("Done") { onDone(selection); dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!loaded)
+                    .accessibilityIdentifier("connector.chats.done")
+            }
         }
         .frame(minWidth: 460, idealWidth: 520, minHeight: 560)
-        .background(Theme.bg)
+        .presentationSizing(.page)
         .task { await load() }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Choose chats & groups").font(.title2.weight(.semibold))
-            Text(loaded
-                 ? "\(selection.count) selected · \(visible.count) active in the last \(ChatWindowing.lookbackDays) days"
-                 : "Reading your chats…")
-                .font(.footnote).foregroundStyle(Theme.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
-    }
-
+    /// Search, the unsaved-numbers filter and the bulk selection, in one bar.
     private var filterBar: some View {
-        VStack(spacing: 10) {
-            TextField("Search chats", text: $search, prompt: Text("Search chats"))
-                .textFieldStyle(.roundedBorder)
-
-            HStack(spacing: 7) {
-                bulk("All DMs")    { for c in filtered where !c.isGroup { selection.insert(c.id) } }
-                bulk("All groups") { for c in filtered where c.isGroup  { selection.insert(c.id) } }
-                bulk("Clear")      { selection.removeAll() }
-                Spacer()
-                if unsavedCount > 0 { unsavedToggle }
+        HStack(spacing: Space.s) {
+            ToolbarSearchField(text: $search, prompt: "Search Chats", identifier: "connector.chats.search", width: 240)
+            Spacer()
+            if unsavedCount > 0 {
+                Toggle("Show Unsaved Numbers (\(unsavedCount))", isOn: $showUnsaved)
+                    .toggleStyle(.checkbox)
             }
+            Menu("Select") {
+                Button("All DMs") { for c in filtered where !c.isGroup { selection.insert(c.id) } }
+                Button("All Groups") { for c in filtered where c.isGroup { selection.insert(c.id) } }
+                Divider()
+                Button("Clear Selection") { selection.removeAll() }
+            }
+            .fixedSize()
         }
-        .padding(.horizontal, 20).padding(.bottom, 12)
-    }
-
-    /// The "show unsaved numbers" checkbox.
-    private var unsavedToggle: some View {
-        Toggle("Show unsaved numbers (\(unsavedCount))", isOn: $showUnsaved)
-            .toggleStyle(.checkbox)
-    }
-
-    private func bulk(_ title: String, _ action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+        .padding(.horizontal, Space.xl)
+        .padding(.bottom, Space.s)
     }
 
     @ViewBuilder private var content: some View {
         if let loadError {
             ContentUnavailableView {
-                Label("Couldn't Read \(sourceName)", systemImage: "exclamationmark.triangle")
+                Label("Couldn’t Read \(sourceName)", systemImage: "exclamationmark.bubble")
             } description: {
                 Text(loadError)
             }
         } else if !loaded {
-            centered { ProgressView() }
+            HStack(spacing: Space.s) {
+                ProgressView().controlSize(.small)
+                Text("Reading your chats…").font(.callout).foregroundStyle(.secondary)
+            }
         } else if chats.isEmpty {
             ContentUnavailableView("No Active Chats", systemImage: "bubble.left.and.bubble.right",
                                    description: Text("Nothing in the last \(ChatWindowing.lookbackDays) days."))
+        } else if filtered.isEmpty && search.isEmpty {
+            ContentUnavailableView("Only Unsaved Numbers", systemImage: "person.crop.circle.badge.questionmark",
+                                   description: Text("Turn on “Show Unsaved Numbers” to see them."))
         } else if filtered.isEmpty {
-            if search.isEmpty {
-                ContentUnavailableView("Only Unsaved Numbers", systemImage: "person.crop.circle.badge.questionmark",
-                                       description: Text("Turn on “Show unsaved numbers” to see them."))
-            } else {
-                ContentUnavailableView.search(text: search)
-            }
+            ContentUnavailableView.search(text: search)
         } else {
-            List(filtered) { chat in
-                Toggle(isOn: Binding(
-                    get: { selection.contains(chat.id) },
-                    set: { on in if on { selection.insert(chat.id) } else { selection.remove(chat.id) } })) {
-                    row(chat)
+            List {
+                ForEach(filtered) { chat in
+                    ConnectorCheckRow(chat.name, subtitle: rowDetail(chat), isOn: Binding(
+                        get: { selection.contains(chat.id) },
+                        set: { on in if on { selection.insert(chat.id) } else { selection.remove(chat.id) } })) {
+                        Image(systemName: chat.isGroup ? "person.3.fill" : "person.fill")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 20)
+                    }
                 }
-                .toggleStyle(.checkbox)
             }
             .listStyle(.inset)
             .alternatingRowBackgrounds()
         }
     }
 
-    private func row(_ chat: ChatInfo) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(chat.name).lineLimit(1)
-                Text("\(chat.isGroup ? "Group" : "DM") · \(chat.messageCount) msgs · \(chat.lastActive.formatted(.relative(presentation: .numeric)))")
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
-        } icon: {
-            Image(systemName: chat.isGroup ? "person.3" : "person").foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var footer: some View {
-        HStack {
-            Text("\(selection.count) selected").font(.callout).foregroundStyle(.secondary)
-            Spacer()
-            Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-            Button("Done") { onDone(selection); dismiss() }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(!loaded)
-        }
-        .padding(.horizontal, 20).padding(.vertical, 14)
-    }
-
-    private func centered<C: View>(@ViewBuilder _ inner: () -> C) -> some View {
-        VStack(spacing: 8) { Spacer(); inner(); Spacer() }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private func rowDetail(_ chat: ChatInfo) -> String {
+        let relative = chat.lastActive.formatted(.relative(presentation: .numeric))
+        return "\(chat.isGroup ? "Group" : "DM") · \(chat.messageCount) \(chat.messageCount == 1 ? "message" : "messages") · \(relative)"
     }
 
     private func load() async {
@@ -176,6 +165,14 @@ struct ChatPicker: View {
 }
 
 #Preview("Mixed saved & unsaved (iMessage)") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            chatPickerPreview.environment(\.colorScheme, scheme)
+        }
+    }
+}
+
+@MainActor private var chatPickerPreview: ChatPicker {
     ChatPicker(
         sourceName: "iMessage",
         loadChats: { [

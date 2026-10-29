@@ -26,8 +26,15 @@ import Foundation
 struct Window {struct ID {let rawValue:String};var identifier:ID?;var isVisible=false;var isMiniaturized=false}
 @MainActor let NSApp=NSApplication()
 @MainActor final class MainNavigation {
-    static let shared=MainNavigation();var approved=true
+    enum Page:Equatable {case home,settings,knowledge,analysis,setup}
+    static let shared=MainNavigation();var approved=true;var page:Page = .home
     func confirmLeavingKnowledge(_ completion:(Bool)->Void) {completion(approved)}
+}
+@MainActor enum SentientOSApp {
+    static func isHomeWindow(_ window:Window)->Bool {
+        guard let raw=window.identifier?.rawValue else {return false}
+        return raw=="home" || raw.hasPrefix("home-")
+    }
 }
 @MainActor final class NativePermissionCheck {
     static let shared=NativePermissionCheck();var hold=false;var closes=0
@@ -41,7 +48,6 @@ struct Window {struct ID {let rawValue:String};var identifier:ID?;var isVisible=
 @MainActor final class VaultActivity {static let shared=VaultActivity();var editorBusy=false}
 @MainActor enum UserPresence {static var isAwayFromApp=true}
 @MainActor final class ComputerUseGate {static let shared=ComputerUseGate();var isPresenting=false}
-enum PersonalSetupView {static let windowID="personal-setup"}
 enum UpdateNotice {static var recorded=0;static func recordSilentRelaunch() {recorded+=1}}
 func Log(_ value:String) {}
 extension URL {static var sentientSupport:URL {URL(fileURLWithPath:ProcessInfo.processInfo.environment["TEST_HANDOFF_ROOT"]!)}}
@@ -86,10 +92,13 @@ TESTS=r'''
         relaunch.allowsAutomaticRelaunch=false
         check(!update.canInstall,"Shared busy policy blocks tasks, installations and active proof")
         relaunch.allowsAutomaticRelaunch=true
-        for window in [Window(identifier:.init(rawValue:"personal-setup-AppWindow-1"),isVisible:true),
-                       Window(identifier:.init(rawValue:"personal-setup"),isMiniaturized:true)] {
+        // Personal Setup is the home window's .setup page (d29bd56), not its own window.
+        MainNavigation.shared.page = .setup
+        for window in [Window(identifier:.init(rawValue:"home-AppWindow-1"),isVisible:true),
+                       Window(identifier:.init(rawValue:"home"),isMiniaturized:true)] {
             NSApp.windows=[window];check(!update.canInstall,"Active or minimized personal setup is preserved")
         }
+        MainNavigation.shared.page = .home
         NSApp.windows=[];ComputerUseGate.shared.isPresenting=true
         check(!update.canInstall,"Permission repair UI is preserved")
         ComputerUseGate.shared.isPresenting=false;VaultActivity.shared.editorBusy=true

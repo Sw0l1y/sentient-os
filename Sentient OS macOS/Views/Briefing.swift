@@ -48,17 +48,17 @@ struct Briefing: Identifiable {
             switch self {
             case .meeting:  Color(red: 0.36, green: 0.55, blue: 1.00)   // cobalt
             case .overdue:  Color(red: 1.00, green: 0.50, blue: 0.18)   // overdue orange — hotter than amber
-            case .promise:  Theme.Ink.green
+            case .promise:  .green                                   // system green
             case .deadline: Color(red: 1.00, green: 0.42, blue: 0.45)   // ember
             case .plan:     Color(red: 0.72, green: 0.46, blue: 0.96)   // orchid
-            case .welcome:  Theme.Ink.amber
+            case .welcome:  .orange                                  // system orange
             }
         }
     }
 
     let id: String
     let kind: Kind
-    let kicker: String          // mono-caps provenance whisper, e.g. "OVERDUE · 3 DAYS · GMAIL"
+    let kicker: String          // the provenance line, e.g. "Overdue · 3 days · Gmail"
     let title: String           // the serif headline
     let body: String            // 2–3 line card preview
     let letter: String?         // the full typeset letter (paragraphs split on \n\n; "✦ " = accent bullet)
@@ -160,16 +160,16 @@ struct Briefing: Identifiable {
             doneTitle: "", doneBody: "")
     }
 
-    /// The clean mono-caps kicker: `METHOD · TARGET` (gmail/calendar/research name themselves;
-    /// an mcp card's kicker IS the service's name).
+    /// The row's provenance line, sentence case with the target as written: `Method · Target`
+    /// (gmail/calendar/research name themselves; an mcp card's kicker IS the service's name).
     static func kickerLine(method: PreparedAction.Method, target: String) -> String {
-        let t = target.trimmingCharacters(in: .whitespaces).uppercased()
+        let t = target.trimmingCharacters(in: .whitespaces)
         switch method {
-        case .gmail:    return "GMAIL MCP"
-        case .calendar: return "CALENDAR"
-        case .computer: return t.isEmpty ? "COMPUTER USE" : "COMPUTER USE · \(t)"
-        case .mcp:      return t.isEmpty ? "CONNECTOR" : t
-        case .research: return "RESEARCHED"
+        case .gmail:    return "Gmail"
+        case .calendar: return "Calendar"
+        case .computer: return t.isEmpty ? "Computer use" : "Computer use · \(t)"
+        case .mcp:      return t.isEmpty ? "Connector" : t
+        case .research: return "Researched"
         }
     }
 

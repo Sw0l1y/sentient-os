@@ -2,19 +2,24 @@
 //  UninstallView.swift
 //  Sentient OS macOS
 //
-//  The farewell sheet (Settings → System → Uninstall Sentient…). Four phases: the farewell
-//  (the two-college-students note, the what-gets-removed manifest, Keep Sentient / the red
-//  Uninstall as a uniform pill pair, Email the Founders below, the GitHub mark bottom-right),
-//  the working teardown (Uninstall.Stage whispers over a quiet spinner), the helper-cleanup
-//  interstitial (Try Again / Skip, Cancel as a quiet link when cleanup needs attention), and the gone screen (drag Sentient to the Trash, then Quit via
-//  Uninstall.finishAndQuit). Drives System/Uninstall.swift; the teardown itself lives there.
+//  The uninstall sheet (Settings › General › Uninstall…), a Setup Assistant–style paged sheet
+//  (`.presentationSizing(.page)`) of four SetupAssistantPages:
+//   · farewell: the founders' note, the what-gets-removed manifest, Keep Sentient (Esc) and the
+//     destructive Uninstall Sentient (Return), Email the Founders and the GitHub mark;
+//   · working: the teardown, its Uninstall.Stage as the page message under a spinner;
+//   · helperPrompt: the wake-helper cleanup interstitial (Cancel Uninstall / Skip for Now / Try Again);
+//   · gone: Show App in Finder, then Quit via Uninstall.finishAndQuit.
+//  Drives System/Uninstall.swift; the teardown itself lives there. It follows the appearance.
 //
 
 import SwiftUI
+import AppKit
 
 struct UninstallView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var systemReduced
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
 
     fileprivate enum Phase { case farewell, working, helperPrompt, gone }
     @State private var phase: Phase = .farewell
@@ -30,6 +35,8 @@ struct UninstallView: View {
     /// Preview-only: open the sheet directly in a later phase.
     fileprivate init(previewPhase: Phase) { _phase = State(initialValue: previewPhase) }
 
+    private var reduceMotion: Bool { motionOverride ?? systemReduced }
+
     var body: some View {
         Group {
             switch phase {
@@ -39,14 +46,10 @@ struct UninstallView: View {
             case .gone:         gone
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 34).padding(.top, 30).padding(.bottom, 24)
-        .frame(width: 560)
-        .background(Theme.bg)
-        .preferredColorScheme(.dark)
+        .presentationSizing(.page)
         .interactiveDismissDisabled(phase != .farewell)   // mid-teardown there's no walking away
-        .animation(.easeInOut(duration: 0.25), value: phase)
-        .alert("Uninstall needs attention", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+        .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: phase)
+        .alert("Uninstall Needs Attention", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK") { failure = nil }
         } message: { Text(failure ?? "") }
     }
@@ -54,149 +57,135 @@ struct UninstallView: View {
     // MARK: - Phase 1 · the farewell
 
     private var farewell: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Before you go.")
-                .display(24).foregroundStyle(.primary)
-            prose("We’re two college students who built Sentient to push the bounds of what private, on-device LLM inference can do: understand your entire life, and proactively offer to help with anything you have going on. That future should be accessible to everyone, so Sentient is 100% open source and free forever.")
-                .padding(.top, 14)
-            prose("Something here didn’t land for you, and we would love to hear what. We read every note.")
-                .padding(.top, 10)
-
-            Text("Uninstalling includes").font(.title3.weight(.medium)).foregroundStyle(.primary)
-                .padding(.top, 22)
-            Grid(alignment: .leading, horizontalSpacing: 22, verticalSpacing: 9) {
-                GridRow {
-                    manifestRow("cpu", "The on-device model")
-                    manifestRow("book.closed", "Your knowledge base")
+        SetupAssistantPage(tile: .setupUninstall, title: "Before You Go", message: nil) {
+            VStack(alignment: .leading, spacing: Space.l) {
+                GroupBox {
+                    VStack(alignment: .leading, spacing: Space.m) {
+                        prose("We’re two college students who built Sentient to push the bounds of what private, on-device LLM inference can do: understand your entire life, and proactively offer to help with anything you have going on. That future should be accessible to everyone, so Sentient is 100% open source and free forever.")
+                        prose("Something here didn’t land for you, and we would love to hear what. We read every note.")
+                    }
+                    .padding(Space.s)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                GridRow {
-                    manifestRow("cloud", "Cloud-copy deletion request")
-                    manifestRow("moon.zzz", "The overnight wake helper")
+
+                Text("Uninstalling Includes")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                Grid(alignment: .leading, horizontalSpacing: Space.xl, verticalSpacing: Space.s) {
+                    GridRow {
+                        Label("The on-device model", systemImage: "cpu")
+                        Label("Your knowledge base", systemImage: "book.closed")
+                    }
+                    GridRow {
+                        Label("Cloud-copy deletion request", systemImage: "cloud")
+                        Label("The overnight wake helper", systemImage: "moon.zzz")
+                    }
                 }
+
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("Saved contact addresses and invitation or lifetime-access records are retained.")
+                    Text("Any running analysis or Sidekick task will be stopped first.")
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.top, 12)
-            prose("Saved contact addresses and invitation or lifetime-access records are retained.")
-                .padding(.top, 12)
-            prose("Any running analysis or Sidekick task will be stopped first.")
-                .padding(.top, 10)
-
-            HStack(spacing: 10) {
-                FarewellPill(title: "Keep Sentient", style: .quiet) { dismiss() }
-                FarewellPill(title: "Uninstall Sentient", style: .danger) { beginUninstall() }
+        } footer: {
+            HStack(spacing: Space.m) {
+                Button("Keep Sentient") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+                feedbackLinks
+                    .font(.footnote)
+                Spacer()
+                Button("Uninstall Sentient", role: .destructive) { beginUninstall() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .keyboardShortcut(.defaultAction)
             }
-            .padding(.top, 26)
-
-            feedbackButton
-                .frame(maxWidth: .infinity)
-                .overlay(alignment: .trailing) { githubButton }
-                .padding(.top, 16)
-        }
-    }
-
-    /// The quiet GitHub mark in the sheet's bottom-right corner — the receipt for the
-    /// "100% open source" line above it.
-    private var githubButton: some View {
-        Button {
-            NSWorkspace.shared.open(URL(string: "https://github.com/Sentient-OS-Labs/sentient-os")!)
-        } label: {
-            Image("GitHubMark")
-                .resizable().scaledToFit()
-                .frame(width: 15, height: 15)
-                .foregroundStyle(Theme.Ink.label)
-                .padding(4)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(PressScaleStyle())
-        .help("Sentient OS on GitHub")
-    }
-
-    /// One line of the what-gets-removed manifest — a quiet symbol + body ink.
-    private func manifestRow(_ symbol: String, _ text: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol)
-                .font(.subheadline)
-                .foregroundStyle(Theme.Ink.label)
-                .frame(width: 15)
-            Text(text).font(.body).foregroundStyle(Theme.Ink.body)
+            .controlSize(.large)
+            .padding(.horizontal, Space.xl)
+            .padding(.vertical, 20)
         }
     }
 
     // MARK: - Phase 2 · the teardown
 
     private var working: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(stage.whisper).font(.body).foregroundStyle(SettingsStyle.secondary)
-                .id(stage)
-                .transition(.opacity)
-                .animation(.easeInOut(duration: 0.3), value: stage)
-            Text("Taking Sentient apart, gently.")
-                .display(24).foregroundStyle(.primary)
-                .padding(.top, 12)
-            prose(stage == .stopping
-                  ? "Stopping active work safely before removing Sentient’s data."
-                  : "Give us a moment. We’re removing Sentient’s local data and saved connections.")
-                .padding(.top, 14)
-            ProgressView()
-                .controlSize(.small)
-                .tint(.white.opacity(0.6))
-                .padding(.top, 22)
+        SetupAssistantPage(tile: .setupUninstall, title: "Taking Sentient Apart, Gently",
+                           message: stageLine(stage)) {
+            VStack(alignment: .center, spacing: Space.l) {
+                ProgressView()
+                    .controlSize(.large)
+                prose(stage == .stopping
+                      ? "Stopping active work safely before removing Sentient’s data."
+                      : "Give us a moment. We’re removing Sentient’s local data and saved connections.")
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: stage)
+        }
+    }
+
+    /// `Uninstall.Stage.whisper` is all caps, which the design forbids on screen, and
+    /// System/Uninstall.swift is logic this view does not own: the sentence-case line lives here.
+    private func stageLine(_ stage: Uninstall.Stage) -> String {
+        switch stage {
+        case .stopping:  return "Stopping active work"
+        case .helper:    return "Standing down the wake helper"
+        case .cloud:     return "Removing the cloud copy"
+        case .keychain:  return "Clearing your Keychain key"
+        case .knowledge: return "Erasing your knowledge base"
+        case .model:     return "Removing the on-device model"
+        case .traces:    return "Sweeping the last traces"
         }
     }
 
     // MARK: - Phase 3 · native helper cleanup needs attention
 
     private var helperPrompt: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("One more step").font(.body).foregroundStyle(SettingsStyle.secondary)
-            Text("The wake helper needs attention.")
-                .display(24).foregroundStyle(.primary)
-                .padding(.top, 12)
+        SetupAssistantPage(tile: .overnight, title: "One More Step",
+                           message: "The wake helper needs attention.") {
             prose("Sentient needs its wake helper to restore normal sleep and remove its system files. If System Settings opens, allow Sentient OS to run in the background, then try again. You can skip this step, but the helper and its system files may remain.")
-                .padding(.top, 14)
-            HStack(spacing: 10) {
-                FarewellPill(title: "Skip for Now", style: .quiet) { helperResolver?(.skip) }
-                FarewellPill(title: "Try Again", style: .bright) { helperResolver?(.retry) }
+        } footer: {
+            HStack(spacing: Space.m) {
+                Button("Cancel Uninstall") { helperResolver?(.cancel) }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Skip for Now") { helperResolver?(.skip) }
+                    .buttonStyle(.bordered)
+                Button("Try Again") { helperResolver?(.retry) }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
             }
-            .padding(.top, 26)
-            quietLink("Cancel Uninstall") { helperResolver?(.cancel) }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 16)
+            .controlSize(.large)
+            .padding(.horizontal, Space.xl)
+            .padding(.vertical, 20)
         }
-    }
-
-    /// The centered quiet text action that sits under a pill pair (Cancel Uninstall here;
-    /// the feedback button is its sibling on the farewell and gone screens).
-    private func quietLink(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.body)
-                .foregroundStyle(Theme.Ink.bright.opacity(0.9))
-        }
-        .buttonStyle(PressScaleStyle())
     }
 
     // MARK: - Phase 4 · gone
 
     private var gone: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(Uninstall.helperWasSkipped ? "App data cleared" : "All clear").font(.body).foregroundStyle(SettingsStyle.secondary)
-            Text(Uninstall.helperWasSkipped ? "The wake helper may remain." : "Sentient is gone from this Mac.")
-                .display(24).foregroundStyle(.primary)
-                .padding(.top, 12)
+        SetupAssistantPage(tile: .noticeUpToDate,
+                           title: Uninstall.helperWasSkipped ? "App Data Cleared" : "All Clear",
+                           message: Uninstall.helperWasSkipped ? "The wake helper may remain." : "Sentient is gone from this Mac.") {
             prose(Uninstall.helperWasSkipped
                   ? "The wake helper and its system files may remain because you skipped that step. Turn off Sentient OS in System Settings → General → Login Items & Extensions, then drag the app to the Trash."
                   : "Everything Sentient made here has been removed. To finish, drag the Sentient OS app from your Applications folder to the Trash. Thank you for giving Sentient a try; it meant a lot to the two of us.")
-                .padding(.top, 14)
-            HStack(spacing: 10) {
-                FarewellPill(title: "Show App in Finder", style: .quiet) {
-                    NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+        } footer: {
+            SetupAssistantFooter(primaryTitle: "Quit Sentient", leading: {
+                HStack(spacing: Space.m) {
+                    Button("Show App in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+                    }
+                    .buttonStyle(.link)
+                    feedbackLinks
                 }
-                FarewellPill(title: "Quit Sentient", style: .bright) { Uninstall.finishAndQuit() }
+            }) {
+                Uninstall.finishAndQuit()
             }
-            .padding(.top, 26)
-            feedbackButton
-                .frame(maxWidth: .infinity)
-                .padding(.top, 16)
         }
     }
 
@@ -228,26 +217,37 @@ struct UninstallView: View {
 
     private func prose(_ text: String) -> some View {
         Text(text)
-            .font(.body).foregroundStyle(Theme.Ink.body)
-            .lineSpacing(3.5)
+            .font(.body)
+            .lineSpacing(3)
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var feedbackButton: some View {
-        Button(action: shareFeedback) {
-            HStack(spacing: 6) {
-                Image(systemName: feedbackCopied ? "checkmark" : "envelope").font(.caption)
-                Text(feedbackCopied ? "feedback@sentient-os.ai copied" : "Email the founders")
-                    .font(.body)
+    /// Email the Founders and the GitHub mark (the receipt for the "100% open source" line).
+    private var feedbackLinks: some View {
+        HStack(spacing: Space.m) {
+            Button(feedbackCopied ? "feedback@sentient-os.ai copied" : "Email the Founders…",
+                   systemImage: feedbackCopied ? "checkmark" : "envelope") {
+                shareFeedback()
             }
-            .foregroundStyle(Theme.Ink.bright.opacity(0.9))
+            .buttonStyle(.link)
+            Button {
+                NSWorkspace.shared.open(URL(string: "https://github.com/Sentient-OS-Labs/sentient-os")!)
+            } label: {
+                Image("GitHubMark")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 16, height: 16)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("Sentient OS on GitHub")
+            .accessibilityLabel("Sentient OS on GitHub")
         }
-        .buttonStyle(PressScaleStyle())
-        .animation(.easeInOut(duration: 0.2), value: feedbackCopied)
     }
 
     /// Open a pre-addressed compose in a real mail app. The naive `open(mailto:)` is not enough:
-    /// when a BROWSER owns the mailto scheme (Chrome et al. — field-seen 2026-07-11), it reports
+    /// when a BROWSER owns the mailto scheme (Chrome et al., field-seen 2026-07-11), it reports
     /// success and then silently swallows the link unless the user once opted into its webmail
     /// handling. So: a dedicated mail app as handler → the default route; the handler is the web
     /// browser (or nothing) → Apple Mail directly; Mail missing too → copy the address and say so
@@ -278,40 +278,17 @@ struct UninstallView: View {
         feedbackCopied = true
         Task { try? await Task.sleep(for: .seconds(4)); feedbackCopied = false }
     }
-
 }
 
-/// The sheet's one action shape — equal-width capsules that share a two-up row, so every
-/// phase's choices sit as a uniform pair. Quiet for the safe choice, danger for the
-/// destructive one, bright for the single primary (no halo: the glow is jewelry, and a
-/// farewell is not the place to wear it). Local on purpose: Settings' small
-/// SettingsPillButton stays the pane-level danger affordance.
-private struct FarewellPill: View {
-    enum Style { case quiet, danger, bright }
-    let title: String
-    let style: Style
-    let action: () -> Void
-
-    var body: some View {
-        Group {
-            switch style {
-            case .quiet:
-                Button(action: action) { label }.buttonStyle(.bordered)
-            case .danger:
-                Button(role: .destructive, action: action) { label }.buttonStyle(.bordered).tint(.red)
-            case .bright:
-                Button(action: action) { label }.buttonStyle(.borderedProminent)
-            }
+#Preview("Farewell") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            UninstallView()
+                .frame(width: 640, height: 640)
+                .environment(\.colorScheme, scheme)
         }
-        .controlSize(.large)
-    }
-
-    private var label: some View {
-        Text(title).lineLimit(1).frame(maxWidth: .infinity)
     }
 }
-
-#Preview("Farewell") { UninstallView() }
-#Preview("Working") { UninstallView(previewPhase: .working) }
-#Preview("Helper prompt") { UninstallView(previewPhase: .helperPrompt) }
-#Preview("Gone") { UninstallView(previewPhase: .gone) }
+#Preview("Working") { UninstallView(previewPhase: .working).frame(width: 640, height: 560) }
+#Preview("Helper prompt") { UninstallView(previewPhase: .helperPrompt).frame(width: 640, height: 560) }
+#Preview("Gone") { UninstallView(previewPhase: .gone).frame(width: 640, height: 560) }

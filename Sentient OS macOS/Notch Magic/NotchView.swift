@@ -2,13 +2,16 @@
 //  NotchView.swift
 //  Sentient OS macOS
 //
-//  The notch overlay's content — a Dynamic-Island-grade living object. `NotchView` is the thin
-//  reactive binder (reads CommandCoordinator); `NotchContent` is the pure, previewable visual that
-//  draws the morphing NotchShape, the camera-flanking content (spinning logo · status · STOP), the
-//  serif→mono read-back dissolve, and the flowing Sentient edge glow that says "the AI is working".
+//  The notch overlay's content, in the Dynamic Island's grammar. `NotchView` is the thin reactive
+//  binder (reads CommandCoordinator); `NotchContent` is the pure, previewable visual: the morphing
+//  black NotchShape, the identity mark on the leading side of the camera, the controls on the trailing
+//  side, and below the camera band the Live Activity content (field row, status caption, message
+//  preview, recovery). Colour comes only from tinted glyphs: the notch accent marks the identity and
+//  the thing to press next, system green/orange/red mark status, everything else is white at a fixed
+//  opacity (NotchTone). There is no edge glow; "working" is the identity mark turning.
 //
-//  The shape, size, radii, content and glow all animate together off `phase` (one spring) so nothing
-//  ever hard-cuts. Only the controls are hit-testable (the type field with its mic button, the send
+//  The shape, size, radii and content all animate together off `phase` (one spring) so nothing ever
+//  hard-cuts. Only the controls are hit-testable (the type field with its mic button, the send
 //  button, the listening stop button, the running STOP); everything else passes clicks through. The panel
 //  host + positioning live in NotchWindowController. Doc: the two Documentation - Sidekick - *.md files in this folder.
 //
@@ -123,11 +126,10 @@ struct NotchMetrics: Equatable {
 
     // MARK: Read-back sizing — grow the notch to fit the whole heard instruction (capped)
 
-    /// Serif-italic font matching the read-back caption — used to measure the full spoken text's height.
+    /// System-italic font matching the read-back caption — used to measure the full spoken text's height.
     private static let readBackFont: NSFont = {
         let base = NSFont.systemFont(ofSize: 13)
-        let serif = base.fontDescriptor.withDesign(.serif) ?? base.fontDescriptor
-        return NSFont(descriptor: serif.withSymbolicTraits(.italic), size: 13) ?? base
+        return NSFont(descriptor: base.fontDescriptor.withSymbolicTraits(.italic), size: 13) ?? base
     }()
 
     private var readBackLineHeight: CGFloat {
@@ -275,23 +277,20 @@ struct NotchContent: View {
         let radii = hoverIdle ? metrics.hoverRadii : metrics.radii(for: phase)
         let visible = phase != .hidden
         // The notch sits FLUSH at the screen's top edge — its concave top corners visible on the bezel
-        // (the genuine-notch flare). The glow traces only the sides + bottom (NotchSkirtShape), so the
-        // bezel line never lights up and there's no need to bleed the window off-screen to hide a top glow.
+        // (the genuine-notch flare). Like the Dynamic Island it has no outline and no glow: depth comes
+        // from the soft shadow under the shell only.
 
         ZStack(alignment: .top) {
-            // The depth bed — the silhouette's drop shadow, at the very BOTTOM of the stack so it
-            // sits BEHIND the color glow: the spectrum reads against darkness instead of the user's
-            // wallpaper, and the hover swell reads solid (hover deliberately has NO glow — the shadow
-            // alone says "pressable"). The bed's own fill never shows (the real shell covers it
-            // exactly); only its shadow escapes. Opacity-only fade, so it rides whichever morph is
-            // driving (the phase spring or the hover spring) and vanishes for the retract-merge.
+            // The depth bed — the silhouette's drop shadow, at the very BOTTOM of the stack. It is the
+            // shell's only depth cue (the hover swell reads as "pressable" by this shadow alone). The
+            // bed's own fill never shows (the real shell covers it exactly); only its shadow escapes.
+            // Opacity-only fade, so it rides whichever morph is driving (the phase spring or the hover
+            // spring) and vanishes for the retract-merge.
             NotchShape(topCornerRadius: radii.top, bottomCornerRadius: radii.bottom)
                 .fill(.black)
                 .shadow(color: .black.opacity(0.55), radius: 9, y: 3)
                 .opacity(visible || hoverIdle ? 1 : 0)
                 .allowsHitTesting(false)
-            glow(radii, lineWidth: 13, blur: 17, strength: 0.75)   // wide soft outer halo (behind the fill)
-            glow(radii, lineWidth: 6,  blur: 6,  strength: 0.95)   // denser halo hugging the edge
             NotchShape(topCornerRadius: radii.top, bottomCornerRadius: radii.bottom)
                 .fill(.black)
                 // Clickable ONLY as the hover affordance — every other state keeps the shell
@@ -302,7 +301,6 @@ struct NotchContent: View {
                 .contentShape(Rectangle().inset(by: -4))
                 .onTapGesture(perform: onNotchClick)
                 .allowsHitTesting(hoverIdle)
-            glow(radii, lineWidth: 3,  blur: 0.6, strength: 1.0)   // crisp bright rim, over the fill
             content(size: size)
                 .opacity(visible ? 1 : 0)              // icons + caption dissolve as the shell retracts into the cutout
                 .blur(radius: reduceMotion || visible ? 0 : 7)
@@ -315,6 +313,9 @@ struct NotchContent: View {
         .scaleEffect(reduceMotion || visible || hoverIdle ? 1 : 0.94, anchor: .top)
         .opacity(shellOpacity)                           // shell stays opaque & MERGES into a real notch on dismiss (fades only if there's none)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // The notch is a hardware object: OLED black in light and dark mode, so its system controls
+        // (the field, the spinner) always draw dark. It never follows the system appearance.
+        .environment(\.colorScheme, .dark)
         .animation(morph, value: phase)
         .animation(morph, value: readBack)               // grow/shrink the notch as the read-back appears/clears
         .animation(morph, value: personalizing)
@@ -334,6 +335,8 @@ struct NotchContent: View {
         }
     }
 
+    /// The live waveform symbol stands still under Reduce Motion, Low Power Mode, and in every phase
+    /// that is not actively listening or working.
     private var ambientAnimationPaused: Bool {
         if reduceMotion || lowPowerMode { return true }
         switch phase {
@@ -342,8 +345,8 @@ struct NotchContent: View {
         }
     }
 
-    /// The same brand mark drifts slowly while waiting for a prompt. Keep the larger
-    /// ambient effects paused during typing, and stop every clock when the notch is hidden.
+    /// The identity mark turns only while work is happening; this freezes it under Reduce Motion and
+    /// Low Power Mode, and stops its clock entirely when the notch is hidden.
     private var identityAnimationPaused: Bool { reduceMotion || lowPowerMode || phase == .hidden }
 
     private var morph: Animation {
@@ -368,6 +371,8 @@ struct NotchContent: View {
 
     private func content(size: CGSize) -> some View {
         VStack(spacing: 0) {
+            // The camera band: compact leading (identity, a notice's reason symbol, or recovery's back)
+            // and compact trailing (open-conversation, then the phase's one control).
             HStack(spacing: 0) {
                 if phase == .recovery {
                     Button(action: onBack) {
@@ -380,9 +385,20 @@ struct NotchContent: View {
                     .buttonStyle(.plain)
                     .help(isTaskRunning ? "Stop this task and write a new request" : "Write a new request")
                     .accessibilityLabel(isTaskRunning ? "Stop this task and write a new request" : "Write a new request")
+                } else if let notice = noticeSymbol, let name = notice.systemName {
+                    Image(systemName: name)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(notice.tint)
+                        .frame(width: metrics.controlSlot, height: metrics.controlSlot)
+                        .accessibilityHidden(true)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
                 } else {
-                    NotchIdentityMark(size: metrics.controlSlot, working: phase == .running || isTaskRunning,
-                        animated: !identityAnimationPaused)
+                    NotchIdentityMark(size: metrics.controlSlot,
+                                      working: phase == .running || isTaskRunning,
+                                      animated: !identityAnimationPaused,
+                                      compact: phase == .opening)
+                        .transition(.opacity)
                 }
                 Spacer(minLength: metrics.centerGap)
                 HStack(spacing: 12) {
@@ -392,7 +408,7 @@ struct NotchContent: View {
                                 .font(.system(size: 13, weight: .medium))
                                 .frame(width: metrics.controlSlot, height: metrics.controlSlot)
                         }
-                        .buttonStyle(NotchIconButtonStyle())
+                        .buttonStyle(NotchControlStyle(kind: .quiet, shape: .circle))
                         .help("Open conversation in Sentient")
                         .accessibilityLabel("Open Sidekick conversation in Sentient")
                     }
@@ -447,10 +463,10 @@ struct NotchContent: View {
         switch phase {
         case .typing, .listening, .transcribing:
             // One identity (controlKey) across the type-or-talk moment, so the send button sits still
-            // while the field row underneath changes. Solid and clickable when there is something to
+            // while the field row underneath changes. The accent circle when there is something to
             // send (a typed draft, or an open mic, where a click ends the recording and fires, same
-            // as the stop button), a faint ghost otherwise. Transcribing has nothing to send yet, so
-            // it waits dim.
+            // as the stop button), a quiet ghost otherwise. Transcribing has nothing to send yet, so
+            // it waits as a ghost.
             NotchSendButton(enabled: phase == .listening || (phase == .typing && !isTaskRunning && !draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
                             help: phase == .listening ? "Stop and send" : "Send") {
                 if phase == .listening { onFinishListening() } else { submitDraft() }
@@ -459,14 +475,17 @@ struct NotchContent: View {
             // The onboarding demo is theater — nothing real to stop, so no STOP.
             if showStop { NotchStopButton(action: onStop) } else { Color.clear.frame(width: 1, height: 18) }
         case .finishing(let outcome):
+            // A filled status badge; the container label already reads the status line.
             Image(systemName: Self.outcomeSymbol(outcome))
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Self.outcomeColor(outcome))
                 .allowsHitTesting(false)
+                .accessibilityHidden(true)
         case .recovery:
+            // Beside the camera like the Island's own chrome: a plain glyph, not an action tile.
             Button { recovery?.dismiss() } label: {
                 Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(NotchTone.secondary)
                     .contentShape(Rectangle().inset(by: -6))
             }
             .buttonStyle(.plain).help("Hide for now").accessibilityLabel("Hide for now")
@@ -476,7 +495,7 @@ struct NotchContent: View {
                     .font(.system(size: 11, weight: .semibold))
                     .frame(width: metrics.controlSlot, height: metrics.controlSlot)
             }
-            .buttonStyle(NotchIconButtonStyle())
+            .buttonStyle(NotchControlStyle(kind: .quiet, shape: .circle))
             .help("Hide response")
             .accessibilityLabel("Hide response. It stays in your conversation history.")
         case .hidden, .opening, .notice:
@@ -493,9 +512,9 @@ struct NotchContent: View {
         HStack(spacing: 10) {
             ZStack(alignment: .leading) {
                 if draftText.isEmpty {
-                    Text("What can I take over for you?")
-                        .font(.system(size: 13)).italic()
-                        .foregroundStyle(.white.opacity(0.4))
+                    Text("Ask Sentient")
+                        .font(.system(size: 13))
+                        .foregroundStyle(NotchTone.tertiary)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -503,7 +522,7 @@ struct NotchContent: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
                     .foregroundStyle(.white)
-                    .tint(.white)
+                    .tint(NotchTone.accent)
                     .focused($fieldFocused)
                     .onSubmit(submitDraft)
                     .accessibilityLabel("Message Sidekick")
@@ -541,81 +560,82 @@ struct NotchContent: View {
     }
 
     /// The field row while the mic is open, and while the transcript finalizes: the same row, its
-    /// content swapped in place — the serif whisper on the left, and in the mic's slot the stop
-    /// button (ends the recording and fires the task) or the finalize spinner.
+    /// content swapped in place. Listening shows a live accent waveform and "Listening…", with the red
+    /// recording stop in the mic's slot (ends the recording and fires the task); transcribing dims the
+    /// word and puts a mini spinner in that slot.
     private var voiceRow: some View {
         HStack(spacing: 10) {
-            Group {
+            HStack(spacing: 6) {
                 if phase == .listening {
-                    TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: ambientAnimationPaused)) { ctx in
-                        let t = ctx.date.timeIntervalSinceReferenceDate
-                        let breathe = ambientAnimationPaused ? 0.5 : (sin(t * 2 * .pi / 1.6) + 1) / 2   // the "I'm hearing you" breath
-                        Text("Listening…")
-                            .opacity(0.55 + 0.35 * breathe)
-                    }
+                    Image(systemName: "waveform")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(NotchTone.accent)
+                        .symbolEffect(.variableColor.iterative, isActive: !ambientAnimationPaused)
+                        .frame(width: 16, height: 16)
+                        .accessibilityHidden(true)
+                    Text("Listening…").foregroundStyle(NotchTone.primary)
                 } else {
-                    Text("Transcribing…")
-                        .opacity(0.55)
+                    Text("Transcribing…").foregroundStyle(NotchTone.secondary)
                 }
             }
-            .font(.system(size: 13)).italic()
-            .foregroundStyle(.white)
+            .font(.system(size: 13))
             .frame(maxWidth: .infinity, alignment: .leading)
             .allowsHitTesting(false)
             ZStack {
                 if phase == .listening {
                     NotchListenStopButton(action: onFinishListening)
-                        .transition(.opacity.combined(with: .scale(scale: 0.7)))
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.7)))
                 } else {
-                    ProgressView().controlSize(.small).tint(.white).scaleEffect(0.8)
+                    ProgressView().controlSize(.mini).tint(.white)
                         .transition(.opacity)
                         .allowsHitTesting(false)
                 }
             }
             .frame(width: metrics.controlSlot, height: metrics.controlSlot)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: phase)
+            // Reduce Motion gets the same short ease the mic slot uses instead of the spring.
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.3, dampingFraction: 0.8), value: phase)
         }
     }
 
-    /// Read-back dissolves into the same app icon and readable activity used in chat.
+    /// The Live Activity status line below the camera. Each running sub-state leads with the symbol of
+    /// who is acting (personalization, memory, the heard instruction, Sidekick's tool); sub-state changes
+    /// blur-dissolve, status changes within a state morph in place.
     @ViewBuilder private var caption: some View {
         switch phase {
         case .running:
             Group {
                 if personalizing {
-                    Text("Personalizing Sidekick…")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Self.rememberingGradient)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel("Personalizing Sidekick")
+                    symbolCaption("person.crop.circle.badge.checkmark") {
+                        Text("Personalizing Sidekick…")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(NotchTone.primary)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Personalizing Sidekick")
                 } else if let remembering {
-                    rememberingCaption(remembering)                 // gradient, blooming "Remembering" + the note
+                    // The "it knows me" beat: the word stays still while the note being read flickers by.
+                    symbolCaption("brain.head.profile") {
+                        Text(rememberingLabel)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(NotchTone.primary)
+                            .fixedSize()
+                        if !remembering.isEmpty {
+                            Text(remembering)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(NotchTone.quiet)
+                                .lineLimit(1).truncationMode(.middle)
+                                .contentTransition(.interpolate)               // morph the note per file
+                                .animation(.easeInOut(duration: 0.3), value: remembering)
+                        }
+                    }
                 } else if let readBack {
                     Text(NotchMetrics.quoted(readBack))              // the heard instruction, in quotes — wraps in full
                         .font(.system(size: 13)).italic()
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(NotchTone.strong)
                         .lineLimit(metrics.maxReadBackLines)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 } else {
-                    HStack(spacing: 7) {
-                        if let shownActivity {
-                            ZStack {
-                                SidekickActivityIcon(identifier: shownActivity.appIdentifier, symbol: shownActivity.symbol)
-                                    .id(shownActivity.appIdentifier ?? shownActivity.symbol)
-                                    .transition(contentReveal)
-                            }.frame(width: 16, height: 16)
-                        }
-                        ZStack(alignment: .leading) {
-                            Text(progressCaption)
-                                .font(.system(size: 12, weight: shownActivity == nil ? .regular : .medium))
-                                .lineLimit(shownActivity == nil ? 2 : 1).truncationMode(.tail)
-                                .id(progressCaption)
-                                .transition(contentReveal)
-                        }
-                    }
-                    .foregroundStyle(.white.opacity(0.8))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.22), value: progressCaption)
+                    progressRow
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -625,21 +645,72 @@ struct NotchContent: View {
             .animation(.easeInOut(duration: 0.35), value: statusLine)
             .allowsHitTesting(false)
         case .finishing(let outcome):
-            // Failures get a second line so the reason remains readable.
-            Text(statusLine)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.7))
-                .lineLimit(outcome == .failed ? 2 : 1).truncationMode(.tail)
-                .allowsHitTesting(false)
+            finishingLine(outcome)
         case .notice(let message):
-            Text(message)
-                .font(.system(size: 13)).italic()
-                .foregroundStyle(.white.opacity(0.85))
-                .lineLimit(1)
-                .allowsHitTesting(false)
+            noticeLine(message)          // text only; its reason symbol sits in the leading slot
         default:
             EmptyView()
         }
+    }
+
+    /// Progress: the same app icon and readable activity used in chat, then the status.
+    private var progressRow: some View {
+        HStack(spacing: 7) {
+            if let shownActivity {
+                ZStack {
+                    SidekickActivityIcon(identifier: shownActivity.appIdentifier, symbol: shownActivity.symbol)
+                        .id(shownActivity.appIdentifier ?? shownActivity.symbol)
+                        .transition(contentReveal)
+                }.frame(width: 16, height: 16)
+            }
+            ZStack(alignment: .leading) {
+                Text(progressCaption)
+                    .font(.system(size: 12, weight: shownActivity == nil ? .regular : .medium))
+                    .lineLimit(shownActivity == nil ? 2 : 1).truncationMode(.tail)
+                    .id(progressCaption)
+                    .transition(contentReveal)
+            }
+        }
+        .foregroundStyle(NotchTone.primary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.22), value: progressCaption)
+    }
+
+    // Named symbolCaption, not statusLine: NotchContent already stores `statusLine: String`.
+    private func symbolCaption<Content: View>(_ symbol: String, @ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(NotchTone.accent)
+                .frame(width: 16, height: 16)
+                .accessibilityHidden(true)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    /// The result in the system face. Failures get a second line so the reason remains readable.
+    private func finishingLine(_ outcome: CommandRunModel.Outcome) -> some View {
+        Text(statusLine)
+            .font(.system(size: 12))
+            .foregroundStyle(NotchTone.primary)
+            .lineLimit(outcome == .failed ? 2 : 1).truncationMode(.tail)
+            .allowsHitTesting(false)
+    }
+
+    private func noticeLine(_ message: String) -> some View {
+        Text(message)
+            .font(.system(size: 13))
+            .foregroundStyle(NotchTone.strong)
+            .lineLimit(1).truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .allowsHitTesting(false)
+    }
+
+    /// The reason symbol a notice shows in the leading slot; nil outside `.notice`.
+    private var noticeSymbol: NotchNoticeSymbol? {
+        if case .notice(let message) = phase { return NotchNoticeSymbol(message: message) }
+        return nil
     }
 
     /// Narration and connection notices keep their own words. Raw tool IDs use durable
@@ -659,91 +730,10 @@ struct NotchContent: View {
         return 0
     }
 
-    /// The "it knows me" beat: a gradient, gently-blooming "Remembering" with the note codex is reading
-    /// morphing alongside it (the word stays still while the file flickers by). Gradient = the analysis
-    /// screen's "Everything." palette.
-    private func rememberingCaption(_ note: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: ambientAnimationPaused)) { ctx in
-                let t = ctx.date.timeIntervalSinceReferenceDate
-                let bloom = ambientAnimationPaused ? 0.5 : (sin(t * 2 * .pi / 1.5) + 1) / 2   // a 1.5s breathing glow
-                Text(rememberingLabel)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Self.rememberingGradient)
-                    .opacity(0.78 + 0.22 * bloom)                                   // breathe via opacity only — no scale bounce
-            }
-            .fixedSize()
-            if !note.isEmpty {
-                Text(note)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .lineLimit(1).truncationMode(.middle)
-                    .contentTransition(.interpolate)               // morph the note per file; "Remembering" stays put
-                    .animation(.easeInOut(duration: 0.3), value: note)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    /// The analysis screen's "Everything." gradient (ProcessingView), reused for the "Remembering" word.
-    private static let rememberingGradient = LinearGradient(
-        colors: [Color(red: 0.66, green: 0.42, blue: 0.85),
-                 Color(red: 0.91, green: 0.45, blue: 0.75),
-                 Color(red: 0.96, green: 0.55, blue: 0.50),
-                 Color(red: 0.95, green: 0.70, blue: 0.35)],
-        startPoint: .leading, endPoint: .trailing)
-
-    // MARK: Edge glow (the "AI is working" signal — running + finishing)
-
-    /// One glow layer at a given thickness/softness, faded by `glowStrength * strength`. Stacking a few of
-    /// these (wide haze → dense halo → crisp rim) builds the thick, vivid edge glow.
-    private func glow(_ radii: (top: CGFloat, bottom: CGFloat),
-                      lineWidth: CGFloat, blur: CGFloat, strength: Double) -> some View {
-        glowLayer(radii, lineWidth: lineWidth, blur: blur)
-            .opacity(glowStrength * strength)
-            .allowsHitTesting(false)
-    }
-
-    /// The rotating spectrum, MASKED by the notch-skirt stroke. The mask shape lives in the regular body
-    /// (NOT inside the TimelineView), so its geometry interpolates in LOCKSTEP with the black fill during
-    /// a morph — the edges light up in place, never a separate rounded-rect snapping on. The layer is
-    /// always present; its brightness rides `glowStrength` via opacity. Only the gradient ANGLE ticks
-    /// per-frame; the skirt (sides + rounded bottom, no top) keeps the glow off the bezel line.
-    private func glowLayer(_ radii: (top: CGFloat, bottom: CGFloat),
-                           lineWidth: CGFloat, blur: CGFloat) -> some View {
-        // The gradient must extend PAST the stroke + blur on every edge — including the bottom, which sits
-        // right at the notch's frame edge. So we grow the layer (negative padding) and inset the skirt mask
-        // by the same margin: the gradient then bleeds beyond ALL sides equally (no thin bottom edge).
-        let m = lineWidth / 2 + blur + 6
-        return TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: ambientAnimationPaused)) { ctx in
-            let t = ctx.date.timeIntervalSinceReferenceDate
-            let angle = ambientAnimationPaused ? 0 : (t.truncatingRemainder(dividingBy: 6.5) / 6.5) * 360
-            let breathe = ambientAnimationPaused ? 0.5 : (sin(t * 2 * .pi / 3.2) + 1) / 2
-            AngularGradient(colors: GlowHalo.stops, center: .center, angle: .degrees(angle))
-                .opacity(0.88 + 0.12 * breathe)
-        }
-        .mask(
-            NotchSkirtShape(topCornerRadius: radii.top, bottomCornerRadius: radii.bottom)
-                .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .padding(m)
-        )
-        .blur(radius: blur)
-        .padding(-m)
-    }
-
-    private var glowStrength: Double {
-        switch phase {
-        case .hidden:    return 0
-        case .message, .recovery: return 0.35
-        case .finishing: return 0.9
-        default:         return 1.0   // alive from the moment the notch appears — opening, listening, typing, running…
-        }
-    }
-
     /// The black shell's opacity. On dismiss into a REAL notch it stays fully opaque — the shape collapses to
     /// the cutout's exact silhouette and merges (then the window orders out invisibly), so the retract reads
     /// as a physical "suck back into the notch", never a fade. With no hardware notch there's nothing to merge
-    /// into, so the shell simply fades out. (The inner content + glow dissolve on their own regardless.)
+    /// into, so the shell simply fades out. (The inner content dissolves on its own regardless.)
     private var shellOpacity: Double {
         if phase != .hidden { return 1 }
         return metrics.hasPhysicalNotch ? 1 : 0
@@ -755,7 +745,7 @@ struct NotchContent: View {
         switch phase { case .running, .finishing, .notice: return true; default: return false }
     }
 
-    /// Identity for the right-control cross-fade (⏎ glyph → STOP → outcome glyph).
+    /// Identity for the right-control cross-fade (send → STOP → outcome badge).
     private var controlKey: Int {
         switch phase {
         case .hidden: return 0
@@ -785,148 +775,153 @@ struct NotchContent: View {
     }
 
     private static func outcomeSymbol(_ o: CommandRunModel.Outcome) -> String {
-        switch o { case .success: return "checkmark"; case .stopped: return "stop.fill"; case .failed: return "xmark" }
+        switch o {
+        case .success: return "checkmark.circle.fill"
+        case .stopped: return "stop.circle.fill"
+        case .failed: return "xmark.circle.fill"
+        }
     }
     private static func outcomeColor(_ o: CommandRunModel.Outcome) -> Color {
         switch o {
-        case .success: return Theme.Ink.green
-        case .stopped: return .white.opacity(0.6)
-        case .failed:  return Color(red: 1.0, green: 0.45, blue: 0.45)
+        case .success: return .green
+        case .stopped: return NotchTone.secondary
+        case .failed: return .red
         }
     }
 }
 
-// MARK: - The notch's interactive elements (each fills the 17 pt control slot, like the logo)
+// MARK: - Notice reason symbols
 
-/// The brand stays still when Reduce Motion is enabled, including its wall-clock spin.
+/// A Dynamic Island system alert names its reason with one coloured symbol. NotchPhase.notice carries
+/// only the coordinator's message, so the symbol is chosen by matching that text (first match wins;
+/// "downloading" precedes "voice" because the download notice mentions the voice model). Orange asks
+/// the user to act; the accent asks them to wait. Unknown messages keep the identity mark.
+private enum NotchNoticeSymbol {
+    case microphone, downloading, plus, onboarding, voice, brand
+
+    init(message: String) {
+        let m = message.lowercased()
+        if m.contains("microphone") { self = .microphone }
+        else if m.contains("downloading") { self = .downloading }
+        else if m.contains("chatgpt plus") { self = .plus }
+        else if m.contains("onboarding") { self = .onboarding }
+        else if m.contains("voice") || m.contains("catch that") { self = .voice }
+        else { self = .brand }
+    }
+
+    /// nil = the leading slot keeps the static identity mark.
+    var systemName: String? {
+        switch self {
+        case .microphone: return "mic.slash.fill"
+        case .downloading: return "arrow.down.circle"
+        case .plus: return "lock.fill"
+        case .onboarding: return "checklist"
+        case .voice: return "exclamationmark.circle.fill"
+        case .brand: return nil
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .downloading, .onboarding, .brand: return NotchTone.accent
+        case .microphone, .plus, .voice: return .orange
+        }
+    }
+}
+
+// MARK: - The notch's interactive elements (each fills the 17 pt control slot, like the mark)
+
+/// The compact-leading identity: the BrandMark in the notch accent. It stands still at rest and turns
+/// only while work is happening; Reduce Motion, Low Power Mode and the hidden notch freeze it.
 private struct NotchIdentityMark: View {
     let size: CGFloat
     let working: Bool
     let animated: Bool
+    /// Opening draws the mark at 14 pt inside the 17 pt slot, so the morph spring carries the size into typing.
+    let compact: Bool
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.sidekickReduceMotionOverride) private var motionOverride
     private var reduceMotion: Bool { motionOverride ?? systemReduceMotion }
 
     var body: some View {
-        SpinningLogo(size: size, fast: working, paused: reduceMotion || !animated)
-        .accessibilityHidden(true)
-        .allowsHitTesting(false)
+        SpinningLogo(size: size, fast: working, paused: reduceMotion || !animated, tint: NotchTone.accent)
+            .scaleEffect(compact ? 14.0 / 17.0 : 1)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
     }
 }
 
-private struct NotchIconButtonStyle: ButtonStyle {
-    @State private var hovering = false
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(.white.opacity(configuration.isPressed ? 1 : (hovering ? 0.96 : 0.58)))
-            .background {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(.white.opacity(hovering ? 0.09 : 0))
-                    .padding(-4)
-            }
-            .contentShape(Rectangle().inset(by: -5))
-            .onHover { hovering = $0 }
-            .animation(.easeOut(duration: 0.13), value: hovering)
-    }
-}
-
-/// The running STOP: a circle, because it interrupts the work.
+/// The running STOP: a quiet circle filling the slot, because it interrupts the work.
 private struct NotchStopButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
             Image(systemName: "stop.fill")
                 .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 18, height: 18)
-                .background(Circle().fill(.white.opacity(0.16)))
-                .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 1))
-                .contentShape(Circle())
+                .frame(width: 17, height: 17)   // = NotchMetrics.controlSlot
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NotchControlStyle(kind: .quiet, shape: .circle))
         .help("Stop")
         .accessibilityLabel("Stop current Sidekick task")
     }
 }
 
-/// The send button in the camera band: the pointer's twin of pressing Return, drawn as the familiar
-/// up-arrow in a filled circle. Solid white and clickable only when there is something to send (it
-/// brightens fully under the cursor); a faint ghost of itself and hit-transparent otherwise, so it
-/// never swallows a click as a dead button.
+/// The send button in the camera band: the pointer's twin of pressing Return, the up-arrow in a filled
+/// circle. The notch accent with a black arrow, and clickable, only when there is something to send; a
+/// quiet ghost and hit-transparent otherwise, so it never swallows a click as a dead button.
 private struct NotchSendButton: View {
     let enabled: Bool
     let help: String
     let action: () -> Void
-    @State private var hovering = false
     var body: some View {
         Button(action: action) {
             Image(systemName: "arrow.up")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(enabled ? Color.black : .white.opacity(0.3))
-                .frame(width: 18, height: 18)
-                .background(Circle().fill(.white.opacity(!enabled ? 0.12 : hovering ? 1.0 : 0.88)))
-                .contentShape(Circle().inset(by: -6))
+                .frame(width: 17, height: 17)   // = NotchMetrics.controlSlot
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NotchControlStyle(kind: enabled ? .primary : .quiet, shape: .circle))
         .disabled(!enabled)
         .allowsHitTesting(enabled)
-        .onHover { hovering = $0 }
-        .onChange(of: enabled) { _, on in if !on { hovering = false } }   // hover exits don't reach a hit-transparent view
-        .animation(.easeOut(duration: 0.15), value: hovering)
-        .animation(.easeOut(duration: 0.15), value: enabled)
         .help(help)
         .accessibilityLabel(help)
     }
 }
 
-/// The type field's mic: a quiet glyph that brightens under the cursor. Its hit area is padded past
-/// the 17 pt slot so a click near it lands.
+/// The type field's mic: a quiet circle in the slot under Send. Its hit area is padded past the
+/// 17 pt slot (by the style) so a click near it lands.
 private struct NotchMicButton: View {
     let action: () -> Void
-    @State private var hovering = false
     var body: some View {
         Button(action: action) {
             Image(systemName: "mic.fill")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white.opacity(hovering ? 0.95 : 0.55))
-                .frame(width: 18, height: 18)
-                .contentShape(Rectangle().inset(by: -6))
+                .frame(width: 17, height: 17)   // = NotchMetrics.controlSlot
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: hovering)
+        .buttonStyle(NotchControlStyle(kind: .quiet, shape: .circle))
         .help("Say it instead")
         .accessibilityLabel("Speak to Sidekick")
     }
 }
 
-/// The listening stop: a rounded square holding a white square (the recording-stop shape), sitting
-/// exactly where the mic was so the second click lands on the first. Ends the recording AND fires
-/// the task; it is not a cancel (Esc and a hotkey press are).
+/// The listening stop: the red recording-stop circle every Apple recorder uses, sitting exactly where
+/// the mic was so the second click lands on the first. Ends the recording AND fires the task; it is
+/// not a cancel (Esc and a hotkey press are).
 private struct NotchListenStopButton: View {
     let action: () -> Void
-    @State private var hovering = false
     var body: some View {
         Button(action: action) {
-            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                .fill(.white)
-                .frame(width: 7, height: 7)
-                .frame(width: 18, height: 18)
-                .background(RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                    .fill(.white.opacity(hovering ? 0.3 : 0.18)))
-                .overlay(RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                    .strokeBorder(.white.opacity(0.25), lineWidth: 1))
-                .contentShape(Rectangle().inset(by: -6))
+            Image(systemName: "stop.fill")
+                .font(.system(size: 8, weight: .bold))
+                .frame(width: 17, height: 17)   // = NotchMetrics.controlSlot
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: hovering)
+        .buttonStyle(NotchControlStyle(kind: .destructive, shape: .circle))
         .help("Stop and send")
         .accessibilityLabel("Finish recording and send to Sidekick")
     }
 }
 
-// MARK: - Blur-dissolve transition (the serif read-back ⇄ mono codex line morph)
+// MARK: - Blur-dissolve transition (the running caption's sub-state swap)
 
 private struct BlurFadeScale: ViewModifier {
     let radius: CGFloat
@@ -955,7 +950,7 @@ private struct NotchPreviewStage<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         ZStack(alignment: .top) {
-            LinearGradient(colors: [Color(white: 0.18), .black], startPoint: .top, endPoint: .bottom)
+            Color(white: 0.18)
             content
         }
         .frame(width: 560, height: 230)
@@ -983,6 +978,9 @@ private struct NotchPreviewStage<Content: View>: View {
 #Preview("running · streaming") {
     NotchPreviewStage { NotchContent(phase: .running, readBack: nil, statusLine: "→ filling out the application…", metrics: .preview) }
 }
+#Preview("running · remembering") {
+    NotchPreviewStage { NotchContent(phase: .running, readBack: nil, statusLine: "", remembering: "People/Alex Chen.md", metrics: .preview) }
+}
 #Preview("finishing · offline") {
     NotchPreviewStage { NotchContent(phase: .finishing(.failed), readBack: nil,
                                      statusLine: CommandRunModel.offlineMessage, metrics: .preview) }
@@ -997,4 +995,7 @@ private struct NotchPreviewStage<Content: View>: View {
 }
 #Preview("notice") {
     NotchPreviewStage { NotchContent(phase: .notice("didn’t catch that"), readBack: nil, statusLine: "", metrics: .preview) }
+}
+#Preview("notice · microphone") {
+    NotchPreviewStage { NotchContent(phase: .notice("turn on the microphone to talk to Sentient"), readBack: nil, statusLine: "", metrics: .preview) }
 }

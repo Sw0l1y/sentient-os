@@ -2,31 +2,35 @@
 //  LetterBody.swift
 //  Sentient OS macOS  ·  Views/
 //
-//  The letter renderer — the editorial Markdown subset our letters use (the gift letter, research
-//  briefings), drawn line-by-line: `##`/`###` section headings, bullets (`✦ `/`- `/`* `/`• `),
-//  numbered items, `---` hairline rules, a closing sign-off line, and plain paragraphs with
-//  `**bold**` inline. A blank line is a paragraph break. `neutral` swaps the accent glyphs for
-//  quiet ink (research notes); the default accent dress is the gift letter's.
+//  The letter renderer: the editorial Markdown subset our letters use (the gift letter, research
+//  briefings), set as system document text, line by line: `##`/`###` section headings, bullets
+//  (`✦ `/`- `/`* `/`• `), numbered items, `---` rules, a closing sign-off line, and plain
+//  paragraphs with `**bold**` and links inline. A blank line is a paragraph break. `neutral`
+//  (research notes) draws the bullet glyphs in secondary ink instead of the accent.
 //  (`# H1` is promoted to the card title upstream, but a stray one still renders defensively.)
-//  Shared by the expanded letter (LetterView) and the saved share image (GiftShareImage), so what
-//  you read is exactly what you save.
+//  Shared by the letter sheet (HomeLetterSheet) and the saved share image (GiftShareImage), so what
+//  you read is exactly what you save. It names no fixed color: the poster renders it in its own
+//  light context, the sheet in the system appearance. SPEC-D1 S12.
 //
 
 import SwiftUI
+import AppKit
 
 struct LetterBody: View {
     let text: String
     let accent: Color
-    var neutral = false   // research notes: quiet ink instead of accent — the house • bullet and
-                          // dim mono-caps headings (accent text is unpleasant over a whole read)
+    var neutral = false   // research notes: secondary bullet glyphs instead of the accent
 
     var body: some View {
         let lines = text.components(separatedBy: "\n")
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.s) {
             ForEach(Array(lines.enumerated()), id: \.offset) { _, raw in
                 letterBlock(raw.trimmingCharacters(in: .whitespaces))
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
+        .tint(Color(nsColor: .linkColor))       // inline Markdown links read as links, not accent
     }
 
     @ViewBuilder
@@ -34,54 +38,69 @@ struct LetterBody: View {
         if line.isEmpty {
             Color.clear.frame(height: 2)                              // a paragraph break
         } else if line.hasPrefix("### ") {
-            Text(Self.inline(String(line.dropFirst(4))))             // soulful subhead (serif italic)
-                .font(.title3.italic())
+            Text(Self.inline(String(line.dropFirst(4))))
+                .font(.headline)
                 .foregroundStyle(.primary)
-                .padding(.top, 6)
+                .padding(.top, Space.xs)
+                .accessibilityAddTraits(.isHeader)
         } else if line.hasPrefix("## ") {
-            MonoCaps(String(line.dropFirst(3)).uppercased(), size: 10, tracking: 2.2,
-                     color: neutral ? .white.opacity(0.5) : accent.opacity(0.95))   // section whisper
-                .padding(.top, 12)
+            Text(Self.inline(String(line.dropFirst(3))))
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.primary)
+                .padding(.top, Space.s)
+                .accessibilityAddTraits(.isHeader)
         } else if line.hasPrefix("# ") {
             Text(Self.inline(String(line.dropFirst(2))))             // a stray title, defensive
-                .font(.title.weight(.semibold)).foregroundStyle(.primary)
-                .padding(.top, 4)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.primary)
+                .padding(.top, Space.xs)
+                .accessibilityAddTraits(.isHeader)
         } else if Self.isRule(line) {
-            Rectangle().fill(.quaternary)               // a `---` rule → hairline divider
-                .frame(height: 1)
-                .padding(.vertical, 6)
+            Divider()                                                 // a `---` rule
+                .padding(.vertical, Space.xs)
         } else if let bullet = Self.bulletText(line) {
-            HStack(alignment: .firstTextBaseline, spacing: 9) {
-                if neutral {
-                    Text("•").font(.body).foregroundStyle(.tertiary)
-                } else {
-                    Text("✦").font(.callout).foregroundStyle(accent)
-                }
+            HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+                Text("•")
+                    .font(.body)
+                    .foregroundStyle(neutral ? AnyShapeStyle(.secondary) : AnyShapeStyle(accent))
+                    .accessibilityHidden(true)
                 Text(Self.inline(bullet))
-                    .font(.body).foregroundStyle(.primary).lineSpacing(4.5)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         } else if let (number, item) = Self.numberedText(line) {
-            HStack(alignment: .firstTextBaseline, spacing: 9) {
-                Text("\(number).").font(.body).monospacedDigit()
-                    .foregroundStyle(.tertiary)
+            HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+                Text("\(number).")
+                    .font(.body)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
                 Text(Self.inline(item))
-                    .font(.body).foregroundStyle(.primary).lineSpacing(4.5)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         } else if Self.isSignoff(line) {
             Text(Self.inline(line))                                  // "-- Your Sentient"
                 .font(.body.italic())
                 .foregroundStyle(.secondary)
-                .padding(.top, 10)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.top, Space.s)
         } else {
             Text(Self.inline(line))
-                .font(.body).foregroundStyle(.primary).lineSpacing(5)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     /// "✦ …" (tolerating a stray word-joiner / nbsp the model sometimes slips in) → the bullet's text;
     /// nil if the line isn't a bullet. Standard-Markdown bullets ("- " / "* " / "• ") are accepted
     /// too — models slip into vanilla Markdown no matter what the prompt says — and every flavour
-    /// renders as the same ✦ accent bullet. "- " needs its space so a "-- your Sentient" sign-off
+    /// renders as the same bullet. "- " needs its space so a "-- your Sentient" sign-off
     /// (and "**bold**"-opening lines for "* ") can never be mistaken for a bullet.
     private static func bulletText(_ line: String) -> String? {
         let rest: Substring
@@ -116,10 +135,39 @@ struct LetterBody: View {
         line.hasPrefix("--") || line.hasPrefix("—") || line.hasPrefix("– ")
     }
 
-    /// Inline-markdown parse (**bold** etc.) so letters can carry a skimmable bold rail.
+    /// Inline-markdown parse (**bold**, links) so letters can carry a skimmable bold rail.
     private static func inline(_ s: String) -> AttributedString {
         (try? AttributedString(markdown: s,
                                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
             ?? AttributedString(s)
     }
+}
+
+#Preview("Letter body") {
+    let sample = """
+    ## Who she is
+    **Priya Iyer, Partner at Northbeam Capital**; leads early-stage consumer AI.
+
+    ## Lead with
+    - Traction: **2,500 waitlist signups in 24 hours** from one post.
+    - Moat: the full on-device pipeline runs on real data today.
+
+    ### Likely questions
+    1. Why won't Apple do this? Apple Intelligence can't read WhatsApp.
+    2. Business model? Free consumer wedge.
+
+    ---
+    -- Your Sentient
+    """
+    return HStack(spacing: 0) {
+        LetterBody(text: sample, accent: .accentColor)
+            .padding()
+            .background(Color(nsColor: .textBackgroundColor))
+            .environment(\.colorScheme, .light)
+        LetterBody(text: sample, accent: .accentColor, neutral: true)
+            .padding()
+            .background(Color(nsColor: .textBackgroundColor))
+            .environment(\.colorScheme, .dark)
+    }
+    .frame(width: 900)
 }

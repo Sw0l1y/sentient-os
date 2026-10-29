@@ -18,81 +18,178 @@ struct AppleCalendarConnectSheet: View {
     @AppStorage(AppleCalendarSource.issueKey) private var readIssue = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                ConnectorLogo(asset: "AppleCalendarMark", size: 32)
-                Text("Apple Calendar").display(26)
-                Spacer()
+        VStack(spacing: 0) {
+            ConnectorSheetHeader("Apple Calendar", message: "Choose the calendars Sentient reads on this Mac.") {
+                ConnectorSheetLogo(asset: "AppleCalendarMark")
             }
-            Text("Choose the calendars Sentient reads on this Mac.")
-                .font(.body).foregroundStyle(Theme.secondary)
-            if authorization == .fullAccess {
-                if loading { ProgressView().controlSize(.small) }
-                else if loaded && calendars.isEmpty {
-                    Text("No calendars are available. Add an account in Apple Calendar, then refresh.")
-                        .font(.callout).foregroundStyle(Theme.secondary)
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(calendars) { calendar in
-                                Toggle(isOn: Binding(get: { selected.contains(calendar.id) }, set: { value in
-                                    if value { selected.insert(calendar.id) } else { selected.remove(calendar.id) }
-                                })) {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(calendar.title).font(.body)
-                                        Text(calendar.account).font(.subheadline).foregroundStyle(Theme.secondary)
-                                    }
-                                }.toggleStyle(.checkbox)
-                            }
-                            let missing = selected.subtracting(Set(calendars.map(\.id)))
-                            if !missing.isEmpty {
-                                Text("\(missing.count) previously selected calendars are unavailable. Refresh or remove them to resume analysis.")
-                                    .font(.callout).foregroundStyle(Theme.Ink.amber)
-                                Button("Remove unavailable calendars") { selected.subtract(missing) }
-                            }
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                    }.frame(minHeight: 80, maxHeight: 260)
+            Form {
+                if authorization == .fullAccess { calendarSections } else { accessSection }
+                noticeSection
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            ConnectorSheetFooter {
+                Text("\(selected.count) selected")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .monospacedDigit()
+                if authorization == .fullAccess && !selected.isEmpty {
+                    Button("Clear Selection") { selected.removeAll() }
+                        .buttonStyle(.link)
+                        .disabled(loading)
                 }
-                HStack {
-                    Button("Refresh") { Task { await refresh() } }
-                    Button("Clear selection") { selected.removeAll() }
-                }.disabled(loading)
-            } else {
-                Text(permissionExplanation).font(.callout).foregroundStyle(Theme.secondary)
-                if authorization == .notDetermined || authorization == .writeOnly {
-                    Button("Allow Calendar Access") { Task { await connect() } }.disabled(loading)
-                } else if authorization == .denied {
-                    Button("Open Calendar Privacy Settings") {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
-                    }
-                }
-            }
-            if !PipelineActivity.shared.isRunning, let issue = AppleCalendarSource.issueMessage(readIssue) {
-                Text(issue).font(.callout).foregroundStyle(Theme.Ink.amber)
-            }
-            if let message { Text(message).font(.callout).foregroundStyle(Theme.Ink.amber) }
-            if PipelineActivity.shared.isRunning {
-                Text("You can change calendar selections after analysis finishes.")
-                    .font(.subheadline).foregroundStyle(Theme.secondary)
-            }
-            HStack {
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Save Selection") {
-                    AppleCalendarSource.saveSelection(selected)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(loading || !loaded || authorization != .fullAccess || PipelineActivity.shared.isRunning)
+            } trailing: {
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("connector.cancel")
+                Button("Save Selection", action: save)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(loading || !loaded || authorization != .fullAccess || PipelineActivity.shared.isRunning)
+                    .accessibilityIdentifier("connector.calendar.save")
             }
         }
-        .padding(28).frame(width: 510).background(Theme.bg).foregroundStyle(.primary)
+        .frame(minWidth: 460, idealWidth: 480, minHeight: 420, idealHeight: 520)
+        .presentationSizing(.form)
         .task { await refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await refresh() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
             Task { await refresh() }
+        }
+    }
+
+    // MARK: - With Full Access: calendars grouped under their account
+
+    @ViewBuilder private var calendarSections: some View {
+        if !loaded && message == nil {
+            Section {
+                HStack(spacing: Space.s) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading calendars…").font(.callout).foregroundStyle(.secondary)
+                }
+            }
+        } else if !loaded {
+            Section {
+                StatusRow("Calendars", detail: "Couldn’t read", tone: .warning, fixTitle: "Refresh",
+                          fix: { Task { await refresh() } })
+                    .disabled(loading)
+            }
+        } else if calendars.isEmpty {
+            Section {
+                ContentUnavailableView {
+                    Label("No Calendars", systemImage: "calendar")
+                } description: {
+                    Text("Add an account in Apple Calendar, then refresh.")
+                } actions: {
+                    Button("Refresh") { Task { await refresh() } }
+                        .disabled(loading)
+                }
+            }
+        } else {
+            ForEach(accountGroups) { group in
+                Section {
+                    ForEach(group.calendars) { calendar in
+                        ConnectorCheckRow(calendar.title, isOn: Binding(get: { selected.contains(calendar.id) }, set: { value in
+                            if value { selected.insert(calendar.id) } else { selected.remove(calendar.id) }
+                        }))
+                    }
+                } header: {
+                    HStack {
+                        Text(group.account)
+                        Spacer()
+                        if group.id == accountGroups.first?.id { refreshButton }
+                    }
+                }
+            }
+        }
+        if loaded && !missing.isEmpty {
+            Section {
+                StatusRow("Unavailable Calendars", detail: "\(missing.count)", tone: .warning,
+                          fixTitle: "Remove", fix: removeMissing)
+            } footer: {
+                Text("\(missing.count) previously selected calendars are unavailable. Refresh or remove them to resume analysis.")
+            }
+        }
+    }
+
+    /// Calendars grouped by account, in the first-seen order of `calendars`.
+    private var accountGroups: [CalendarGroup] {
+        var groups: [CalendarGroup] = []
+        for calendar in calendars {
+            if let index = groups.firstIndex(where: { $0.account == calendar.account }) {
+                groups[index].calendars.append(calendar)
+            } else {
+                groups.append(CalendarGroup(account: calendar.account, calendars: [calendar]))
+            }
+        }
+        return groups
+    }
+
+    private var refreshButton: some View {
+        Button { Task { await refresh() } } label: {
+            Image(systemName: "arrow.clockwise")
+        }
+        .buttonStyle(.borderless)
+        .help("Refresh")
+        .accessibilityLabel("Refresh")
+        .disabled(loading)
+    }
+
+    private var missing: Set<String> { selected.subtracting(Set(calendars.map(\.id))) }
+
+    private func removeMissing() { selected.subtract(missing) }
+
+    private func save() {
+        AppleCalendarSource.saveSelection(selected)
+        dismiss()
+    }
+
+    // MARK: - Without Full Access: a Privacy-style row with its fix
+
+    @ViewBuilder private var accessSection: some View {
+        Section {
+            switch authorization {
+            case .notDetermined, .writeOnly:
+                StatusRow("Calendar Access", detail: accessDetail, tone: .warning,
+                          fixTitle: "Allow Calendar Access…", fix: { Task { await connect() } })
+                    .disabled(loading)
+            case .denied:
+                StatusRow("Calendar Access", detail: accessDetail, tone: .warning,
+                          fixTitle: "Open Privacy Settings…", fix: {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+                })
+            case .restricted:
+                StatusRow("Calendar Access", detail: accessDetail, tone: .off)
+            default:
+                StatusRow("Calendar Access", detail: accessDetail, tone: .warning)
+            }
+        } footer: {
+            Text(permissionExplanation)
+        }
+    }
+
+    private var accessDetail: String {
+        switch authorization {
+        case .writeOnly: "Add events only"
+        case .denied: "Denied"
+        case .restricted: "Restricted"
+        default: "Not allowed"
+        }
+    }
+
+    // MARK: - Notices
+
+    @ViewBuilder private var noticeSection: some View {
+        let issue = PipelineActivity.shared.isRunning ? nil : AppleCalendarSource.issueMessage(readIssue)
+        if issue != nil || message != nil || PipelineActivity.shared.isRunning {
+            Section {
+                if let issue { StatusLabel(issue, tone: .warning) }
+                if let message { StatusLabel(message, tone: .error) }
+                if PipelineActivity.shared.isRunning {
+                    StatusLabel("You can change calendar selections after analysis finishes.", tone: .info)
+                }
+            }
         }
     }
 
@@ -130,6 +227,16 @@ struct AppleCalendarConnectSheet: View {
     }
 }
 
+/// One account's calendars, as Calendar's sidebar groups them.
+private struct CalendarGroup: Identifiable {
+    let account: String
+    var calendars: [AppleCalendarSource.CalendarInfo]
+    var id: String { account }
+}
+
 #Preview("Apple Calendar connection") {
-    AppleCalendarConnectSheet()
+    HStack(spacing: 0) {
+        AppleCalendarConnectSheet().environment(\.colorScheme, .light)
+        AppleCalendarConnectSheet().environment(\.colorScheme, .dark)
+    }
 }

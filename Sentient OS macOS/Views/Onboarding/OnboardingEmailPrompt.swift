@@ -1,6 +1,7 @@
 // OnboardingEmailPrompt.swift
-// Required email entry when onboarding reaches the source picker. submit() validates the
-// address; a durable enqueue is followed by an optional company welcome before source selection.
+// Required email entry when onboarding reaches the source picker, as a Setup Assistant field
+// page. submit() validates the address; a durable enqueue is followed by an optional company
+// welcome before source selection.
 // Doc: Documentation - Onboarding.md
 
 import SwiftUI
@@ -12,8 +13,13 @@ struct OnboardingEmailPrompt: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var welcome: YCCompanyWelcome?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduced
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
     @FocusState private var emailFocused: Bool
+
+    private var motion: Animation? {
+        Motion.gated(Motion.standard, reduceMotion: motionOverride ?? systemReduced)
+    }
 
     var body: some View {
         Group {
@@ -24,8 +30,8 @@ struct OnboardingEmailPrompt: View {
                 emailForm.transition(.opacity)
             }
         }
-        .background(Theme.bg)
-        .preferredColorScheme(.dark)
+        // A sheet sizes itself to an ideal size; the page's ScrollView has none of its own.
+        .frame(minWidth: 460, idealWidth: 560, minHeight: 420, idealHeight: 520)
         .interactiveDismissDisabled()
         .task(id: isSaving) {
             guard isSaving, welcome == nil, let address = MailAccount.normalizedEmail(email) else { return }
@@ -35,7 +41,7 @@ struct OnboardingEmailPrompt: View {
                 guard !Task.isCancelled else { return }
                 if let match {
                     emailFocused = false
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { welcome = match }
+                    withAnimation(motion) { welcome = match }
                 } else {
                     onSaved()
                 }
@@ -49,63 +55,30 @@ struct OnboardingEmailPrompt: View {
     }
 
     private var emailForm: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Image(systemName: "envelope")
-                .font(.largeTitle.weight(.light))
-                .foregroundStyle(Theme.Ink.bright)
-                .accessibilityHidden(true)
-
-            Text("What’s your email?")
-                .display(27)
-                .foregroundStyle(.primary)
-
-            VStack(alignment: .leading, spacing: 10) {
-                MonoCaps("Email address", size: 9, tracking: 1.5, color: Theme.secondary)
-                TextField("Email address", text: $email,
-                          prompt: Text(verbatim: "you@example.com").foregroundStyle(Theme.faint))
-                    .textFieldStyle(.plain)
+        SetupAssistantPage(tile: .invitations, title: "What’s Your Email?",
+                           message: "Your email is saved for occasional feedback invitations.") {
+            VStack(alignment: .leading, spacing: Space.s) {
+                TextField("Email address", text: $email, prompt: Text(verbatim: "you@example.com"))
+                    .textFieldStyle(.roundedBorder)
                     .textContentType(.emailAddress)
                     .autocorrectionDisabled()
-                    .font(.title3)
-                    .foregroundStyle(.primary)
-                    .padding(14)
-                    .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(errorMessage == nil ? Color.white.opacity(emailFocused ? 0.35 : 0.12)
-                                          : Theme.Ink.red.opacity(0.7), lineWidth: 1)
-                    }
+                    .privacySensitive()
                     .focused($emailFocused)
                     .disabled(isSaving)
-                    .privacySensitive()
                     .accessibilityLabel("Email address")
                     .onSubmit(submit)
                     .onChange(of: email) { errorMessage = nil }
 
                 if let errorMessage {
-                    Text(errorMessage)
-                        .font(.callout)
-                        .foregroundStyle(Theme.Ink.red)
+                    StatusLabel(errorMessage, tone: .error)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-
-            Text("Your email is saved for occasional feedback invitations.")
-                .font(.callout)
-                .foregroundStyle(Theme.secondary)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Spacer()
-                OnboardingNextButton(title: isSaving ? "Saving…" : "Save & Continue",
-                                     enabled: !isSaving && !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                                     action: submit)
-                    .keyboardShortcut(.defaultAction)
-            }
+        } footer: {
+            SetupAssistantFooter(primaryTitle: isSaving ? "Saving…" : "Save & Continue",
+                                 primaryEnabled: !isSaving && !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                 primary: submit)
         }
-        .padding(32)
-        .frame(width: 460)
         .onAppear {
             if email.isEmpty { email = InviteProgram.shared.snapshot?.lateUse?.email ?? "" }
             emailFocused = true
@@ -124,6 +97,15 @@ struct OnboardingEmailPrompt: View {
     }
 }
 
+#if DEBUG
 #Preview("Onboarding email") {
-    OnboardingEmailPrompt(onSaved: {})
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            OnboardingEmailPrompt(onSaved: {})
+                .frame(width: 720, height: 560)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }
+#endif

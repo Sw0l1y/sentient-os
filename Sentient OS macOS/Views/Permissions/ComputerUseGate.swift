@@ -422,9 +422,7 @@ final class ComputerUseGate {
             let hosting = NSHostingController(rootView: ComputerUseGateView(gate: self))
             let w = NSWindow(contentViewController: hosting)
             w.styleMask = [.titled, .closable, .fullSizeContentView]
-            w.titlebarAppearsTransparent = true
-            w.titleVisibility = .hidden
-            w.backgroundColor = .black
+            GateWindowStyle.apply(to: w)   // system window background and appearance; hidden title
             w.isReleasedWhenClosed = false
             w.level = .floating
             w.isMovableByWindowBackground = true

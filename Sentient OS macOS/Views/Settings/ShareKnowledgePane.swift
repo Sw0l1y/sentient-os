@@ -2,10 +2,10 @@
 //  ShareKnowledgePane.swift
 //  Sentient OS macOS
 //
-//  Settings → Give AIs Knowledge: the value + privacy story up top, then a link that pushes the
-//  guided setup (ConnectAIsView) in place. That page owns sharing on AND off (its consent ask /
-//  toolbar switch), so this pane carries no toggle.
-//  Live activity from /stats below when sharing is on. Regenerate lives in MirrorClient only
+//  Settings › Share with AIs, laid out like System Settings › General › Sharing: a status row and
+//  a row that pushes the setup page (ConnectAIsView) in SettingsView's NavigationStack. That page
+//  owns sharing on AND off (its consent step and toolbar switch), so this pane carries no toggle.
+//  Live activity from /stats shows while sharing is on. Regenerate lives in MirrorClient only
 //  (a support/dev remediation; a UI button was a footgun that bricks every connector).
 //
 
@@ -18,83 +18,86 @@ struct ShareKnowledgePane: View {
     @State private var loaded = false
 
     var body: some View {
-        SettingsPane(title: "Give AIs Knowledge",
-                     whisper: "Let ChatGPT, Claude, and other AIs get to know you.") {
-            VStack(alignment: .leading, spacing: 32) {
-                cloudSyncGroup
-                SettingsGroup(label: "Your knowledge, your control") {
-                    VStack(alignment: .leading, spacing: 18) {
-                        SettingsProse("Sharing is optional. Your original knowledge stays in a folder on this Mac.")
-                        SettingsDetails(title: "How sharing and privacy work") {
-                            SettingsProse(PrivacyCopy.sharingContents)
-                            SettingsProse(PrivacyCopy.sharingEncryption)
-                            SettingsProse(PrivacyCopy.sharingControl)
-                            SettingsProse(PrivacyCopy.sharingOpenSource)
-                        }
-                    }
-                }
-                if enabled && loaded { activityGroup }
-                else if loaded { localOnlyProse }
+        PaneForm {
+            connectionsSection
+            if loaded && enabled {
+                activitySection
+            } else if loaded {
+                localSection
             }
+            controlSection
         }
-        // Sharing flips inside the pushed Connect Your AIs page — re-probe on every return so
+        .pageSubtitle(loaded ? (enabled ? "On" : "Off") : nil, page: .settings, pane: .shareKnowledge)
+        // Sharing flips inside the pushed Connect Your AIs page; re-probe on every return so
         // Activity vs. local-only never shows a stale answer.
         .onAppear { Task { await refresh() } }
     }
 
-    // MARK: - Sharing setup owns both enabling and disabling the mirror
+    // MARK: - AI Connections
 
-    private var cloudSyncGroup: some View {
-        SettingsGroup(label: "AI connections", inset: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                SettingsRow(title: "Share your knowledge",
-                            subtitle: "Connect your AIs with a private link. Works on your phone, too.") {
-                    NavigationLink(enabled ? "Configure…" : "Set Up Sharing…") {
-                        ConnectAIsView().navigationTitle("Connect Your AIs")
-                    }
-                    .buttonStyle(.bordered)
-                }
+    private var connectionsSection: some View {
+        Section {
+            LabeledContent {
                 if loaded {
-                    SettingsHairline(opacity: 0.10)
-                    HStack(spacing: 9) {
-                        Circle().fill(enabled ? Theme.Ink.green : SettingsStyle.secondary)
-                            .frame(width: 6, height: 6)
-                        Text(enabled ? "Sharing is on" : "Sharing is off")
-                            .font(.body).foregroundStyle(SettingsStyle.secondary)
-                    }
-                    .padding(.horizontal, 20).padding(.vertical, 16)
+                    StatusLabel(enabled ? "On" : "Off", tone: enabled ? .ok : .off)
                 }
+            } label: {
+                TileLabel("Share Your Knowledge", tile: .sharing)
+            }
+            NavigationLink(enabled ? "Configure…" : "Set Up Sharing…") {
+                ConnectAIsView()
+            }
+        } header: {
+            Text("AI Connections")
+        } footer: {
+            Text("Let ChatGPT, Claude, and other AIs get to know you. Connect your AIs with a private link. Works on your phone, too.")
+        }
+    }
+
+    // MARK: - Activity (sharing on)
+
+    private var activitySection: some View {
+        Section("Activity") {
+            if let stats {
+                LabeledContent("Last 24 Hours", value: readsLine(stats))
+                if let last = stats.lastAccess {
+                    LabeledContent("Last Read", value: last.formatted(.relative(presentation: .named)))
+                }
+            } else {
+                Text("No activity yet. Connect an AI and ask it about you.")
             }
         }
     }
 
-    // MARK: - Activity
-
-    private var activityGroup: some View {
-        SettingsGroup(label: "Activity") {
-            VStack(alignment: .leading, spacing: 7) {
-                Text(activityLine)
-                    .font(.body)
-                    .foregroundStyle(Theme.Ink.body)
-                if let last = stats?.lastAccess {
-                    Text("Last read \(last.formatted(.relative(presentation: .named)))")
-                        .font(.body).foregroundStyle(SettingsStyle.secondary)
-                }
-            }
-        }
-    }
-
-    private var activityLine: String {
-        guard let stats else { return "No activity yet. Connect an AI and ask it about you." }
-        if stats.notesRead24h == 0 { return "Your AIs haven't read anything in the last day." }
+    private func readsLine(_ stats: MirrorClient.Stats) -> String {
+        if stats.notesRead24h == 0 { return "Your AIs haven’t read anything in the last day." }
         return "Your AIs read \(stats.notesRead24h) note\(stats.notesRead24h == 1 ? "" : "s") in the last 24 hours."
     }
 
-    // MARK: - Local-only (shown when sharing is off)
+    // MARK: - Local only (sharing off)
 
-    private var localOnlyProse: some View {
-        SettingsGroup(label: "Use your knowledge locally") {
-            SettingsProse(PrivacyCopy.localKnowledge)
+    private var localSection: some View {
+        Section("Use Your Knowledge Locally") {
+            Text(PrivacyCopy.localKnowledge)
+        }
+    }
+
+    // MARK: - Privacy
+
+    private var controlSection: some View {
+        Section("Your Knowledge, Your Control") {
+            Text("Sharing is optional. Your original knowledge stays in a folder on this Mac.")
+            DisclosureGroup("How Sharing and Privacy Work") {
+                VStack(alignment: .leading, spacing: Space.s) {
+                    Text(PrivacyCopy.sharingContents)
+                    Text(PrivacyCopy.sharingEncryption)
+                    Text(PrivacyCopy.sharingControl)
+                    Text(PrivacyCopy.sharingOpenSource)
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -107,8 +110,12 @@ struct ShareKnowledgePane: View {
     }
 }
 
-#Preview("Give AIs Knowledge pane") {
-    ShareKnowledgePane()
-        .background(Theme.bg)
-        .frame(width: 720, height: 640)
+#Preview("Share with AIs pane") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            NavigationStack { ShareKnowledgePane() }
+                .frame(width: 720, height: 640)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }

@@ -99,7 +99,7 @@ struct SidekickWorkDisclosure: View {
     /// the rows through it. Measuring before the zero-height frame preserves intrinsic sizing.
     private var activityViewport: some View {
         activity
-            .padding(.top, 13).padding(.bottom, 5)
+            .padding(.top, Space.s).padding(.bottom, Space.xs)
             .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self) { max(0, ceil($0.size.height)) } action: { height in
                 guard height.isFinite, abs(height - activityHeight) > 0.5 else { return }
@@ -113,98 +113,137 @@ struct SidekickWorkDisclosure: View {
             // transcript's scroll supplies the motion. Two concurrent height/scroll
             // animations otherwise leave the newest row below a transitional frame.
             .animation(reduced || (running && active && presentation.canFollowLatest)
-                ? nil : .easeInOut(duration: 0.24), value: activityHeight)
-            .animation(reduced ? nil : .spring(response: 0.35, dampingFraction: 0.92), value: expanded)
+                ? nil : Motion.gated(.easeInOut(duration: 0.24), reduceMotion: reduced), value: activityHeight)
+            .animation(Motion.gated(.spring(response: 0.35, dampingFraction: 0.92), reduceMotion: reduced), value: expanded)
             .opacity(revealed ? 1 : 0)
-            .animation(.easeOut(duration: reduced ? 0.10 : 0.14), value: expanded)
+            .animation(Motion.gated(.easeOut(duration: 0.14), reduceMotion: reduced), value: expanded)
             .disabled(!revealed)
             .allowsHitTesting(revealed)
             .accessibilityElement(children: .contain)
             .accessibilityHidden(!revealed)
     }
 
+    /// A native disclosure row: leading chevron, a real state glyph, and the work title.
+    /// Not a DisclosureGroup, because the collapsed activity must stay mounted and measured
+    /// (the transcript follows its geometry).
     @ViewBuilder private func header(at date: Date) -> some View {
         let title = SidekickTranscriptLayout.workLabel(state: state, running: running, waiting: waiting, now: date)
+        let row = HStack(spacing: Space.s) {
+            if canExpand {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
+                    .frame(width: 10)
+            }
+            headerGlyph.frame(width: 16, height: 16)
+            Text(title).font(.callout).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }.contentShape(Rectangle())
         if canExpand {
             Button {
-                withAnimation(reduced ? .easeOut(duration: 0.14) : .spring(response: 0.35, dampingFraction: 0.92)) {
+                withAnimation(Motion.gated(.spring(response: 0.35, dampingFraction: 0.92), reduceMotion: reduced)) {
                     presentation.toggleWork(taskID)
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    SidekickWorkingText(text: title, shimmering: running && !waiting && active && visible)
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .rotationEffect(.degrees(expanded ? 90 : 0))
-                }.contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).font(.callout)
-            .foregroundStyle(SidekickStyle.secondary)
-            .help(expanded ? "Hide recorded activity" : "Show recorded activity")
+            } label: { row }
+            .buttonStyle(.borderless)
+            .help(expanded ? "Hide Recorded Activity" : "Show Recorded Activity")
             .accessibilityLabel(title + (expanded ? ", hide activity" : ", show activity"))
             .accessibilityIdentifier("sidekick.work.\(taskID.uuidString)")
         } else {
-            Text(title).font(.callout).foregroundStyle(SidekickStyle.secondary)
+            row
+        }
+    }
+
+    @ViewBuilder private var headerGlyph: some View {
+        if running && !waiting {
+            ProgressView().controlSize(.mini)
+        } else if let tone = headerTone, let symbol = tone.symbol {
+            Image(systemName: symbol).foregroundStyle(tone.color)
+                .accessibilityLabel(tone.accessibilityLabel)
+        }
+    }
+
+    private var headerTone: StatusTone? {
+        if waiting { return .info }
+        return switch state?.finished?.event.outcome {
+        case .success: .ok
+        case .failed: .error
+        case .stopped, .interrupted: .off
+        case nil: nil
         }
     }
 
     private var activity: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: Space.s) {
             if let failureDescription {
                 Text(String(failureDescription.prefix(800))).font(.callout)
-                    .foregroundStyle(SidekickStyle.secondary).textSelection(.enabled)
+                    .foregroundStyle(.secondary).textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let progressNote {
-                Text(progressNote).font(.callout).foregroundStyle(SidekickStyle.secondary)
-                    .lineLimit(4).fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("sidekick.liveProgress")
+                HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+                    ProgressView().controlSize(.mini)
+                    Text(progressNote).lineLimit(4).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("sidekick.liveProgress")
+                }
+                .font(.callout).foregroundStyle(.secondary)
             } else if running && steps.isEmpty && !failed {
-                Text(waiting ? "Waiting for your answer…" : "Sidekick is thinking through your task…")
-                    .font(.callout).foregroundStyle(SidekickStyle.secondary)
-                    .accessibilityIdentifier("sidekick.thinking")
+                HStack(spacing: Space.s) {
+                    ProgressView().controlSize(.mini)
+                    Text(waiting ? "Waiting for your answer…" : "Thinking…")
+                        .accessibilityIdentifier("sidekick.thinking")
+                }
+                .font(.callout).foregroundStyle(.secondary)
             }
             if steps.isEmpty && (failed || (!running && (loading || !hasLoaded))) {
-                HStack(spacing: 8) {
-                    if expanded && !failed { ProgressView().controlSize(.mini) }
-                    Text(failed ? "Activity couldn’t be loaded." : "Loading activity…")
-                        .font(.callout).foregroundStyle(SidekickStyle.secondary)
-                    if failed { Button("Try again") { revision &+= 1 }.buttonStyle(.plain) }
+                HStack(spacing: Space.s) {
+                    if failed {
+                        StatusLabel("Activity couldn’t be loaded.", tone: .error)
+                        Button("Try Again") { revision &+= 1 }
+                            .buttonStyle(.borderless).controlSize(.small)
+                    } else {
+                        if expanded { ProgressView().controlSize(.mini) }
+                        Text("Loading activity…").font(.callout).foregroundStyle(.secondary)
+                    }
                 }.frame(minHeight: 16)
             }
             ForEach(steps) { step in
-                SidekickActivityRow(step: step)
+                SidekickActivityRow(step: step, running: running)
             }
             if earlier || more || (running && currentPage != .latest) {
-                HStack(spacing: 18) {
+                HStack(spacing: Space.m) {
                     if earlier {
-                        Button("Earlier steps") {
+                        Button("Earlier Steps") {
                             guard let first = records.first else { return }
                             presentation.browseWork(taskID); selectPage(.before(first.sequence))
                         }
                     }
                     if more {
-                        Button("Next steps") {
+                        Button("Next Steps") {
                             guard let last = records.last else { return }
                             presentation.browseWork(taskID); selectPage(.after(last.sequence))
                         }
                     }
                     if running && currentPage != .latest {
-                        Button("Latest steps") {
+                        Button("Latest Steps") {
                             presentation.followLatestWork(taskID); selectPage(.latest)
                         }
                     }
                     if expanded && loading { ProgressView().controlSize(.mini) }
-                }.buttonStyle(.plain).font(.subheadline).foregroundStyle(SidekickStyle.secondary)
-                    .disabled(loading)
+                }
+                .buttonStyle(.borderless).controlSize(.small)
+                .disabled(loading)
             }
             if failed && !steps.isEmpty {
-                Button("Couldn’t refresh activity. Try again") { revision &+= 1 }
-                    .buttonStyle(.plain).font(.subheadline).foregroundStyle(SidekickStyle.secondary)
+                HStack(spacing: Space.s) {
+                    StatusLabel("Couldn’t refresh activity.", tone: .warning)
+                    Button("Try Again") { revision &+= 1 }
+                        .buttonStyle(.borderless).controlSize(.small)
+                }
             }
         }
-        .padding(.leading, 17)
-        .overlay(alignment: .leading) { Rectangle().fill(.quaternary).frame(width: 1) }
+        // Step glyphs line up under the header's state glyph (past the chevron and its spacing).
+        .padding(.leading, 22)
         .accessibilityIdentifier("sidekick.activity.\(taskID.uuidString)")
         .id(SidekickPresentation.workTailID(taskID))
     }
@@ -255,75 +294,99 @@ struct SidekickWorkDisclosure: View {
     }
 }
 
+/// A Reminders-style checklist row: state glyph, the app's real icon, title over app name, and a
+/// trailing status tag. "Details" opens the raw tool call in monospaced inset boxes.
 private struct SidekickActivityRow: View {
     let step: SidekickActivityPresentation.Step
+    let running: Bool
     @State private var details = false
+    private var status: SidekickConversationEvent.Activity.Status? { step.record.event.activity?.status }
+
     var body: some View {
         DisclosureGroup(isExpanded: $details) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Space.s) {
                 Text(step.record.event.activity?.name ?? "Activity")
-                    .font(.system(.subheadline, design: .monospaced, weight: .medium))
+                    .font(.caption.monospaced())
                 if let activity = step.record.event.activity {
-                    Text(activity.status.rawValue.capitalized).font(.subheadline)
+                    Text(activity.status.rawValue.capitalized).font(.caption)
                     if let arguments = activity.arguments { detail(arguments) }
                     if let result = activity.result { detail(result) }
                 }
-            }.foregroundStyle(SidekickStyle.secondary).padding(.vertical, 7)
+            }
+            .foregroundStyle(.secondary).padding(.vertical, Space.xs)
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+                glyph.frame(width: 16, height: 16)
+                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
                 SidekickActivityIcon(identifier: step.appIdentifier, symbol: step.symbol)
                     .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(step.title).font(.callout).foregroundStyle(SidekickStyle.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(step.title).font(.subheadline)
                     if let app = step.appName, !step.title.localizedCaseInsensitiveContains(app) {
-                        Text(app).font(.caption).foregroundStyle(SidekickStyle.secondary.opacity(0.8))
+                        Text(app).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                if step.record.event.activity?.status == .failed {
-                    Text("Step incomplete").font(.caption).foregroundStyle(SidekickStyle.secondary)
-                } else if step.record.event.activity?.status == .interrupted {
-                    Text("Not confirmed").font(.caption).foregroundStyle(SidekickStyle.secondary)
-                } else if step.record.event.activity?.status == .started {
-                    Text("Started").font(.caption).foregroundStyle(SidekickStyle.secondary)
-                }
+                Spacer(minLength: Space.s)
+                if let tag { Text(tag).font(.caption).foregroundStyle(.secondary) }
             }
         }
-        .tint(SidekickStyle.secondary.opacity(0.7))
+        .tint(.secondary)
         .accessibilityIdentifier("sidekick.activityStep." + step.id)
     }
+
+    @ViewBuilder private var glyph: some View {
+        switch status {
+        case .completed: toneGlyph(.ok)
+        case .failed: toneGlyph(.error)
+        case .interrupted: toneGlyph(.off)
+        case .started: if running { ProgressView().controlSize(.mini) } else { toneGlyph(.off) }
+        case nil: EmptyView()
+        }
+    }
+
+    private func toneGlyph(_ tone: StatusTone) -> some View {
+        Image(systemName: tone.symbol ?? "circle").foregroundStyle(tone.color)
+            .accessibilityLabel(tone.accessibilityLabel)
+    }
+
+    private var tag: String? {
+        switch status {
+        case .failed: "Step incomplete"
+        case .interrupted: "Not confirmed"
+        case .started: "Started"
+        case .completed, nil: nil
+        }
+    }
+
     private func detail(_ text: String) -> some View {
         ScrollView([.horizontal, .vertical]) {
-            Text(text).font(.system(.subheadline, design: .monospaced))
+            Text(text).font(.caption.monospaced())
                 .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-        }.frame(maxHeight: 180).padding(9)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 7))
+        }
+        .frame(maxHeight: 180).padding(Space.s)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: Radius.thumbnail, style: .continuous))
     }
 }
 
+/// The real application icon at 16 pt (Finder, Spotlight), or an SF Symbol where no app applies.
+/// The symbol inherits the caller's foreground style, so it reads the same in the always-dark notch.
 struct SidekickActivityIcon: View {
     let identifier: String?
     let symbol: String
     var body: some View {
         Group {
-            if let identifier, let icon = SidekickActivityIconCache.icon(for: identifier) {
-                Image(nsImage: icon).resizable().scaledToFit()
+            if let image = Self.icon(identifier) {
+                Image(nsImage: image).resizable().scaledToFit()
             } else { Image(systemName: symbol).font(.callout) }
         }.frame(width: 16, height: 16).accessibilityHidden(true)
     }
-}
 
-@MainActor private enum SidekickActivityIconCache {
-    static var icons: [String: NSImage] = [:]
-    static var resolved = Set<String>()
-    static func icon(for identifier: String) -> NSImage? {
-        if resolved.contains(identifier) { return icons[identifier] }
-        if resolved.count >= 80 { resolved.removeAll(); icons.removeAll() }
-        resolved.insert(identifier)
-        let url: URL?
+    /// Shares the app-wide icon cache with every other real-icon surface.
+    private static func icon(_ identifier: String?) -> NSImage? {
+        guard let identifier else { return nil }
         if identifier.hasPrefix("/"), identifier.lowercased().hasSuffix(".app") {
-            url = FileManager.default.fileExists(atPath: identifier) ? URL(fileURLWithPath: identifier) : nil
-        } else { url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) }
-        if let url { icons[identifier] = NSWorkspace.shared.icon(forFile: url.path) }
-        return icons[identifier]
+            return FileManager.default.fileExists(atPath: identifier) ? AppIconCache.image(forFile: identifier) : nil
+        }
+        return AppIconCache.image(bundleID: identifier)
     }
 }

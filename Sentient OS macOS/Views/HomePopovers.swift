@@ -2,46 +2,126 @@
 //  HomePopovers.swift
 //  Sentient OS macOS
 //
-//  Two glanceable, on-demand dropdowns for Home and Knowledge:
-//   · AnalysisPopover — the work glance: things understood, vault size, an Analyze Now control
-//     with the last/next-run footer, the overnight-on-battery preference, and the source chips
-//     (sources are the INPUTS to analysis, so they live under "Analysis").
-//  Pure presentation; harvested from the retired Constellation home. The vault counts ARE real
-//  (disk); the demo deck substitutes its showcase last-run stamp.
+//  The Analysis status, built like the Time Machine / Backups status popover from the menu bar:
+//   · HomeAnalysisSummary — the shared status block (things understood, the vault, last and next
+//     run, why it is waiting). Home's Today block and the popover both draw THIS view, so their
+//     counts can never disagree. It carries no accessibility ids (both surfaces embed it).
+//   · AnalysisPopover — the summary, the live status line, a two-column source checklist (the
+//     inputs to analysis), the overnight-on-battery switch and one default button.
+//  The vault counts are real (disk); the demo deck substitutes its showcase last-run stamp.
+//  SPEC-D1 S13.
 //
 
 import SwiftUI
 import AppKit
 
-/// Which sources are armed to run — drives the Analysis popover's chips.
+/// Which sources are armed to run — drives the Analysis popover's source checklist.
 struct HomeSources: Equatable {
     var files = true
     var whatsapp = false
     var imessage = false
     var notes = false
-    var whatsappAvailable = true   // false → WhatsApp isn't installed on this Mac; hide its chip entirely
+    var whatsappAvailable = true   // false → WhatsApp isn't installed on this Mac; hide its row entirely
 }
 
-// MARK: - Analysis
+// MARK: - The shared summary
+
+/// What analysis has done and what it will do next. `sources` and `customRoots` are kept for the
+/// cross-package signature (SPEC-00 Part 9); the source checklist lives in AnalysisPopover only.
+/// It does NOT draw `processing.statusLine`: Today shows that line as its status button, the
+/// popover as its own line, so it appears once per surface.
+struct HomeAnalysisSummary: View {
+    let thingsUnderstood: Int
+    let sources: HomeSources
+    let lastRun: String                    // last full cycle, pre-formatted by HomeView (deck-aware)
+    let nextWakeAt: Date?
+    let schedulerEnabled: Bool
+    let schedulerNeedsSetup: Bool
+    let customRoots: [URL]
+
+    @State private var processing = ProcessingCoordinator.shared
+    @State private var vault: (notes: Int, domains: Int)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(understoodLine)
+                    .font(.headline)
+                    .monospacedDigit()
+                Text(vaultLine)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: Space.m, verticalSpacing: Space.xs) {
+                GridRow {
+                    Text("Last Run").foregroundStyle(.secondary)
+                    Text(lastRun)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                GridRow {
+                    Text("Next Run").foregroundStyle(.secondary)
+                    Text(nextRunLine)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .font(.callout)
+            if case .waiting = processing.state {
+                StatusLabel(processing.waitingDetail, tone: .warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let notice = processing.record.notice, !notice.isEmpty {
+                StatusLabel(notice, tone: .warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .task { vault = HomeStats.countVault() }
+    }
+
+    private var understoodLine: String {
+        switch thingsUnderstood {
+        case 0:  "Ready to begin."
+        case 1:  "1 thing understood."
+        default: "\(thingsUnderstood.formatted()) things understood."
+        }
+    }
+
+    private var vaultLine: String {
+        guard let v = vault, v.notes > 0 else { return "No vault yet · your first analysis builds it" }
+        return "\(v.notes) notes · \(v.domains) domains in your knowledge"
+    }
+
+    private var nextRunLine: String {
+        if processing.paused { return "Paused until you resume" }
+        if schedulerNeedsSetup { return "Set up overnight wake in Settings" }
+        if let nextWakeAt { return ProcessingCoordinator.scheduleLabel(nextWakeAt) }
+        if schedulerEnabled { return "Scheduling the next overnight run…" }
+        return "Overnight processing is off"
+    }
+}
+
+// MARK: - The popover
 
 struct AnalysisPopover: View {
     let thingsUnderstood: Int
-    let sources: HomeSources               // for whatsappAvailable (hide the chip when WhatsApp isn't installed)
+    let sources: HomeSources               // for whatsappAvailable (hide the row when WhatsApp isn't installed)
     let lastRun: String                    // last full cycle, pre-formatted by HomeView (deck-aware)
     var nextWakeAt: Date? = nil
     var schedulerEnabled = false
     var schedulerNeedsSetup = false
     @State private var processing = ProcessingCoordinator.shared
     var onAnalyze: () -> Void
-    var onPickWhatsApp: () -> Void = {}    // tapping WhatsApp / iMessage opens the chat picker (in HomeView)
+    var onPickWhatsApp: () -> Void = {}    // WhatsApp / iMessage open the chat picker (in HomeView)
     var onPickIMessage: () -> Void = {}
-    var onPickGmail: () -> Void = {}       // tapping Gmail / Calendar opens the connect sheet (in HomeView)
+    var onPickGmail: () -> Void = {}       // Gmail / Calendar open the connect sheet (in HomeView)
     var onPickAppleMail: () -> Void = {}
     var onPickCalendar: () -> Void = {}
     var customRoots: [URL] = []            // session folders added in Dev Tools — shown so this mirrors the picker exactly
 
-    // Live source selection — the SAME keys SourceSelection / DevTools use. @AppStorage so a tap toggles
-    // the real selection AND the chip updates instantly. FDA is still enforced at run time (Analyze Now).
+    // Live source selection — the SAME keys SourceSelection / DevTools use. @AppStorage so a click toggles
+    // the real selection AND the row updates instantly. FDA is still enforced at run time (Analyze Now).
     @AppStorage("dbg.run.downloads")      private var runDownloads = false
     @AppStorage("dbg.run.desktop")        private var runDesktop = false
     @AppStorage("dbg.run.documents")      private var runDocuments = false
@@ -57,7 +137,6 @@ struct AnalysisPopover: View {
     // switch are one truth. Battery processing is on by default; an explicit off choice is retained.
     @AppStorage(OvernightScheduler.allowBatteryKey) private var overnightOnBattery = true
 
-    @State private var vault: (notes: Int, domains: Int)?
     @State private var hasBattery = false   // desktop Macs hide the battery row entirely
 
     private var anyArmed: Bool {
@@ -70,210 +149,134 @@ struct AnalysisPopover: View {
         anyArmed || processing.isBusy || processing.record.status == .scheduled || processing.record.status == .requested
     }
 
+    private static let batteryInfo = "Overnight on battery: 50% for first analysis, 30% for updates. Pauses at 20% to save power. Run now has no battery requirement."
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MonoCaps("Analysis", size: 10, tracking: 2.4, color: Theme.Ink.label)
+        VStack(alignment: .leading, spacing: Space.m) {
+            VStack(alignment: .leading, spacing: Space.s) {
+                HomeAnalysisSummary(thingsUnderstood: thingsUnderstood, sources: sources, lastRun: lastRun,
+                                    nextWakeAt: nextWakeAt, schedulerEnabled: schedulerEnabled,
+                                    schedulerNeedsSetup: schedulerNeedsSetup, customRoots: customRoots)
+                Text(processing.statusLine)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            Text(understoodLine)
-                .display(21).foregroundStyle(.primary)
-                .padding(.top, 13)
-            MonoCaps(vaultLine, size: 9, tracking: 1.6, color: Theme.Ink.deepMuted)
-                .padding(.top, 7)
+            Divider()
 
-            analyzeButton.padding(.top, 16)
-            runFooter.padding(.top, 11)
-            if armed && hasBattery { batteryToggleLine.padding(.top, 13) }
-
-            Rectangle().fill(.quinary).frame(height: 1).padding(.vertical, 16)
-
-            MonoCaps("Sources", size: 9, tracking: 2.2, color: Theme.Ink.label)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    SourceChip("Downloads", on: runDownloads) { runDownloads.toggle() }
-                    SourceChip("Desktop",   on: runDesktop)   { runDesktop.toggle() }
-                    SourceChip("Documents", on: runDocuments) { runDocuments.toggle() }
-                }
-                // Session folders added in Dev Tools — shown (✓) so the popover mirrors the picker
-                // exactly; add/remove still lives in Dev Tools (the owner of the session roots).
-                ForEach(Array(stride(from: 0, to: customRoots.count, by: 2)), id: \.self) { i in
-                    HStack(spacing: 8) {
-                        ForEach(customRoots[i..<min(i + 2, customRoots.count)], id: \.self) { url in
-                            SourceChip(url.lastPathComponent, on: true)
-                        }
-                    }
-                }
-                HStack(spacing: 8) {
-                    if sources.whatsappAvailable { SourceChip("WhatsApp", on: !whatsappCSV.isEmpty, action: onPickWhatsApp) }
-                    SourceChip("iMessage", on: !imessageCSV.isEmpty, action: onPickIMessage)
-                }
-                HStack(spacing: 8) {
-                    SourceChip("Notes", on: runNotes) { runNotes.toggle() }
-                    SourceChip("Apple Mail", on: !appleMailAccounts.isEmpty, action: onPickAppleMail)
-                }
-                if SiYuanSource.isInstalled {
-                    HStack(spacing: 8) {
-                        SourceChip("SiYuan", on: runSiYuan) { runSiYuan.toggle() }
-                    }
-                }
-                HStack(spacing: 8) {
-                    SourceChip("Gmail",    on: runGmail,
-                               locked: CodexAuth.connectorsLocked, action: onPickGmail)
-                    SourceChip("Calendar", on: runCalendar,
-                               locked: CodexAuth.connectorsLocked, action: onPickCalendar)
+            VStack(alignment: .leading, spacing: Space.s) {
+                Text("Sources")
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading),
+                                    GridItem(.flexible(), alignment: .leading)],
+                          alignment: .leading, spacing: Space.xs) {
+                    sourceList
                 }
             }
-            .padding(.top, 11)
-        }
-        .padding(20)
-        .frame(width: 360)
-        .background(Theme.Ink.cardBG)
-        .task {
-            vault = HomeStats.countVault()
-            hasBattery = PowerState.batteryPercent() != nil
-        }
-    }
 
-    private var understoodLine: String {
-        switch thingsUnderstood {
-        case 0:  "Ready to begin."
-        case 1:  "1 thing understood."
-        default: "\(thingsUnderstood.formatted()) things understood."
-        }
-    }
-    private var vaultLine: String {
-        guard let v = vault, v.notes > 0 else { return "No vault yet · your first analysis builds it" }
-        return "\(v.notes) notes · \(v.domains) domains in your knowledge"
-    }
-    /// Under the button: last run + when the next one comes, or the reason nothing can run.
-    private var runFooter: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(processing.statusLine).font(.callout.weight(.medium)).foregroundStyle(Theme.secondary)
-            if case .waiting = processing.state {
-                Text(processing.waitingDetail).font(.callout).foregroundStyle(Theme.Ink.amber)
-            }
-            if let notice = processing.record.notice, !notice.isEmpty {
-                Text(notice).font(.callout).foregroundStyle(Theme.Ink.amber)
-            }
-            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
-                GridRow {
-                    MonoCaps("Last run", size: 9, tracking: 1.6, color: Theme.Ink.deepMuted)
-                    footerValue(lastRun)
-                }
-                GridRow {
-                    MonoCaps("Next run", size: 9, tracking: 1.6, color: Theme.Ink.deepMuted)
-                    footerValue(nextRunLine)
-                }
-            }
             if hasBattery {
-                footerValue("Overnight on battery: 50% for first analysis, 30% for updates. Pauses at 20% to save power. Run now has no battery requirement.")
+                HStack(spacing: Space.s) {
+                    if armed {
+                        Toggle("Run on battery too", isOn: $overnightOnBattery)
+                            .toggleStyle(.switch)
+                    } else {
+                        Text("Overnight on battery")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: Space.s)
+                    InfoPopoverButton(Self.batteryInfo, title: "Battery")
+                }
+                .font(.callout)
+            }
+
+            HStack {
+                Spacer()
+                Button(analyzeButtonTitle, action: onAnalyze)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!armed)
             }
         }
-        .fixedSize(horizontal: false, vertical: true)
+        .padding(Space.l)
+        .frame(width: PageMetrics.popover)
+        .task { hasBattery = PowerState.batteryPercent() != nil }
     }
 
-    private var nextRunLine: String {
-        if processing.paused { return "Paused until you resume" }
-        if schedulerNeedsSetup { return "Set up overnight wake in Settings" }
-        if let nextWakeAt { return ProcessingCoordinator.scheduleLabel(nextWakeAt) }
-        if schedulerEnabled { return "Scheduling the next overnight run…" }
-        return "Overnight processing is off"
-    }
-
-    /// The battery preference for the 3 AM run — one quiet line + a small switch, hidden on desktop
-    /// Macs. Both initial and iterative thresholds are shown above.
-    private var batteryToggleLine: some View {
-        HStack(spacing: 12) {
-            Text("Run on battery too")
-                .font(.callout).foregroundStyle(Theme.Ink.body)
-            Spacer(minLength: 12)
-            Toggle("", isOn: $overnightOnBattery)
-                .labelsHidden().toggleStyle(.switch).controlSize(.mini).tint(Theme.Ink.green)
+    /// The same sources, in the same order, as the old chip rows.
+    @ViewBuilder private var sourceList: some View {
+        SourceChip("Downloads", on: runDownloads) { runDownloads.toggle() }
+        SourceChip("Desktop",   on: runDesktop)   { runDesktop.toggle() }
+        SourceChip("Documents", on: runDocuments) { runDocuments.toggle() }
+        // Session folders added in Dev Tools — shown (✓) so the popover mirrors the picker
+        // exactly; add/remove still lives in Dev Tools (the owner of the session roots).
+        ForEach(customRoots, id: \.self) { url in
+            SourceChip(url.lastPathComponent, on: true)
         }
-    }
-
-    /// The footer's value voice — quiet plain sans next to the mono-caps labels. The infinity
-    /// frame makes the Grid's value column claim the full width right of the labels.
-    private func footerValue(_ text: String) -> some View {
-        Text(text)
-            .font(.callout).foregroundStyle(Theme.Ink.body)
-            .lineSpacing(2.5)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var analyzeButton: some View {
-        Button(action: onAnalyze) {
-            Text(analyzeButtonTitle)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(armed ? .black : .white.opacity(0.35))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(Capsule(style: .continuous)
-                    .fill(armed ? Color.white : Color.white.opacity(0.08)))
-                .overlay(Capsule(style: .continuous)
-                    .stroke(armed ? .clear : .white.opacity(0.1), lineWidth: 1))
-                .contentShape(Capsule())
+        if sources.whatsappAvailable {
+            SourceChip("WhatsApp", on: !whatsappCSV.isEmpty, action: onPickWhatsApp)
         }
-        .buttonStyle(PressScaleStyle())
-        .background(GlowHalo(active: armed, intensity: 0.28))
-        .disabled(!armed)
+        SourceChip("iMessage", on: !imessageCSV.isEmpty, action: onPickIMessage)
+        SourceChip("Notes", on: runNotes) { runNotes.toggle() }
+        SourceChip("Apple Mail", on: !appleMailAccounts.isEmpty, action: onPickAppleMail)
+        if SiYuanSource.isInstalled {
+            SourceChip("SiYuan", on: runSiYuan) { runSiYuan.toggle() }
+        }
+        SourceChip("Gmail", on: runGmail, locked: CodexAuth.connectorsLocked, action: onPickGmail)
+        SourceChip("Calendar", on: runCalendar, locked: CodexAuth.connectorsLocked, action: onPickCalendar)
     }
 
     private var analyzeButtonTitle: String {
-        if processing.isBusy || processing.record.status == .requested { return "View progress" }
+        if processing.isBusy || processing.record.status == .requested { return "View Progress" }
         if processing.paused { return "Resume Analysis" }
-        return processing.record.status == .scheduled ? "Start now" : "Analyze Now"
+        return processing.record.status == .scheduled ? "Start Now" : "Analyze Now"
     }
 }
 
 // MARK: - Shared bits
 
-/// A source pill (✓ when armed). Tappable when an `action` is set (toggles a source / opens a
-/// chat or connect sheet). `locked` (knowledge-base-only mode's Gmail/Calendar) renders a dim
-/// lock chip that ignores its action and explains itself on hover. Harvested from the Constellation.
+/// One source in the checklist (a filled check when armed). Clickable when an `action` is set
+/// (toggles a source / opens a chat picker or connect sheet). `locked` (knowledge-base-only mode's
+/// Gmail/Calendar) shows a lock, ignores its action and explains itself in the help tag.
 struct SourceChip: View {
     let name: String
     let on: Bool
     var locked: Bool = false
-    var action: (() -> Void)? = nil    // tappable when set (toggles a source / opens the chat picker)
-
-    @State private var hover = false
+    var action: (() -> Void)? = nil
 
     init(_ name: String, on: Bool, locked: Bool = false, action: (() -> Void)? = nil) {
         self.name = name; self.on = on; self.locked = locked; self.action = action
     }
 
     var body: some View {
-        let chip = HStack(spacing: 5) {
-            if locked {
-                Image(systemName: "lock.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.quaternary)
-            } else if on {
-                Text("✓").foregroundStyle(Theme.Ink.green)
-            }
-            Text(name).foregroundStyle(on && !locked ? Theme.Ink.chipInk : .white.opacity(0.28))
-        }
-        .font(.system(.caption2, design: .monospaced, weight: .medium))
-        .padding(.horizontal, 9).padding(.vertical, 4)
-        .background(Capsule().fill(.white.opacity(hover && action != nil && !locked ? 0.06 : 0)))
-        .overlay(Capsule().strokeBorder(Theme.Ink.chipBorder, lineWidth: 1))
-        .contentShape(Capsule())
-
         if locked {
-            chip
-                .onHover { hover = $0 }
-                .overlay(alignment: .top) {
-                    if hover { LockedChipTip().offset(y: -26) }
-                }
-                .animation(.easeInOut(duration: 0.15), value: hover)
+            label
+                .foregroundStyle(.secondary)
+                .help(CodexAuth.connectorLockedTip)
+                .accessibilityElement(children: .combine)
+                .accessibilityValue("Locked")
         } else if let action {
-            Button(action: action) { chip }
-                .buttonStyle(.plain)
-                .onHover { hover = $0 }
+            Button(action: action) { label }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.primary)
+                .accessibilityValue(on ? "On" : "Off")
         } else {
-            chip
+            label
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(on ? "On" : "Off")
         }
+    }
+
+    private var label: some View {
+        Label {
+            Text(name).lineLimit(1)
+        } icon: {
+            Image(systemName: locked ? "lock.fill" : on ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(locked ? AnyShapeStyle(.tertiary)
+                                 : on ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+        }
+        .font(.callout)
     }
 }
 
@@ -295,8 +298,14 @@ enum HomeStats {
 }
 
 #Preview("Analysis") {
-    ZStack { Theme.bg
+    HStack(spacing: 0) {
         AnalysisPopover(thingsUnderstood: 3339, sources: .init(files: true, whatsapp: true, imessage: true, notes: true),
                         lastRun: "3:41 AM", onAnalyze: {})
-    }.frame(width: 380, height: 460).preferredColorScheme(.dark)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .environment(\.colorScheme, .light)
+        AnalysisPopover(thingsUnderstood: 3339, sources: .init(files: true, whatsapp: true, imessage: true, notes: true),
+                        lastRun: "3:41 AM", onAnalyze: {})
+            .background(Color(nsColor: .windowBackgroundColor))
+            .environment(\.colorScheme, .dark)
+    }
 }

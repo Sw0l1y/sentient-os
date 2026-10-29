@@ -54,51 +54,32 @@ final class OnboardingShortcutHint {
     }
 }
 
-/// Keeps normal font metrics and one accessibility label; only the word is painted.
+/// The instruction line ("Press right Command"), in the caller's font. A mistaken left ⌘ tap
+/// lights the word "right" with a Find-style accent highlight that fades over one second. With
+/// `showsKeycap`, the key's cap is drawn before the words. One accessibility label.
+/// This file is compiled standalone by Scripts/test_onboarding_shortcut_hint.swift, so it names
+/// no Views/Design type: the keycap below is drawn here to match KeyCap.
 struct OnboardingShortcutInstruction: View {
     let prefix: String
     let key: ShortcutKey
     var suffix = ""
     let hint: OnboardingShortcutHint
+    /// Kept for source compatibility; ignored (the text follows the caller's style).
     var onLight = false
+    var showsKeycap = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
+            if showsKeycap {
+                InstructionKeycap(glyph: String(key.label.suffix(1)))
+                    .padding(.trailing, 6)
+            }
             Text(prefix).fixedSize()
             if key == .rightCommand {
                 Text("right")
                     .fixedSize()
-                    .overlay {
-                        GeometryReader { geometry in
-                            TimelineView(.animation(minimumInterval: 1.0 / 30,
-                                                    paused: !hint.isActive || reduceMotion)) { _ in
-                                let p = hint.progress(at: ProcessInfo.processInfo.systemUptime)
-                                let eased = p * p * (3 - 2 * p)
-                                let width = geometry.size.width
-                                let band = LinearGradient(colors: [.clear] + Array(GlowHalo.stops.dropLast()) + [.clear],
-                                                          startPoint: .leading, endPoint: .trailing)
-                                let offset = reduceMotion ? -width * 0.2 : width * (2.4 * eased - 1.4)
-                                ZStack(alignment: .leading) {
-                                    band.frame(width: width * 1.4)
-                                        .offset(x: offset)
-                                        .frame(width: width, height: geometry.size.height, alignment: .leading)
-                                        .mask(Text("right").frame(width: width, height: geometry.size.height, alignment: .leading))
-                                        .blur(radius: 1.8)
-                                        .opacity(onLight ? 0.22 : 0.32)
-                                    band.frame(width: width * 1.4)
-                                        .offset(x: offset)
-                                        // Keep the colored letters readable on the white CTA.
-                                        .colorMultiply(onLight ? Color(white: 0.65) : .white)
-                                        .frame(width: width, height: geometry.size.height, alignment: .leading)
-                                        .mask(Text("right").frame(width: width, height: geometry.size.height, alignment: .leading))
-                                }
-                                .opacity(hint.isActive ? 1 : 0)
-                            }
-                        }
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                    }
+                    .background { highlight }
                 Text(" Command" + suffix).fixedSize()
             } else {
                 Text(key.spokenLabel + suffix).fixedSize()
@@ -106,6 +87,36 @@ struct OnboardingShortcutInstruction: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(prefix + key.spokenLabel + suffix)
+    }
+
+    /// The accent highlight behind "right": full strength on a mistaken tap, easing out over
+    /// the hint's duration (static while Reduce Motion is on).
+    private var highlight: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !hint.isActive || reduceMotion)) { _ in
+            let p = hint.progress(at: ProcessInfo.processInfo.systemUptime)
+            let eased = p * p * (3 - 2 * p)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.accentColor.opacity(0.28))
+                .padding(.horizontal, -2)
+                .opacity(hint.isActive ? (reduceMotion ? 1 : 1 - eased) : 0)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// A small keycap drawn to match KeyCap (quaternary fill, separator hairline).
+private struct InstructionKeycap: View {
+    let glyph: String
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
+        Text(glyph)
+            .font(.callout.weight(.medium))
+            .frame(width: 22, height: 22)
+            .background(shape.fill(.quaternary))
+            .overlay(shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1))
+            .accessibilityHidden(true)
     }
 }
 

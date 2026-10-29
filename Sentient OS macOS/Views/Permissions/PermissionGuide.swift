@@ -3,7 +3,7 @@
 //  Sentient OS macOS
 //
 //  The floating System-Settings companion for grants Sentient can't prompt for. `guide(...)` opens
-//  the right Privacy pane AND raises a small OLED-black panel that flies to the Settings window and
+//  the right Privacy pane AND raises a small floating-material panel that flies to the Settings window and
 //  follows it (SettingsWindowTracker). Two modes: DRAG (the panel carries an .app card the user
 //  drags straight into the permission list — Sentient itself for Full Disk Access, OpenAI's Codex
 //  Computer Use helper for its Accessibility/Screen Recording) and INSTRUCTION (toggle lists with
@@ -33,14 +33,14 @@ final class PermissionGuide {
         case loginItems
         case overnightWake
 
-        /// The list's name, for the panel copy.
+        /// The list's name, for the panel's title (Title Case, as System Settings names it).
         var title: String {
             switch self {
             case .fullDiskAccess:  return "Full Disk Access"
             case .accessibility:   return "Accessibility"
             case .screenRecording: return "Screen Recording"
             case .loginItems:      return "Login Items"
-            case .overnightWake:   return "Overnight wake"
+            case .overnightWake:   return "Overnight Wake"
             }
         }
 
@@ -62,7 +62,7 @@ final class PermissionGuide {
     }
 
     private(set) var job: Job?
-    /// Drives the header arrow animation while the app card is mid-drag.
+    /// True while the app card is mid-drag (the panel goes mouse-transparent and dims).
     private(set) var isDraggingApp = false
     /// Shows the "reopen Settings" affordance when Settings slipped behind something.
     private(set) var isSettingsFrontmost = false

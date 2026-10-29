@@ -1,16 +1,29 @@
 //
 // ConnectorLogo.swift
-// Shared brand artwork for source pills and connection sheets. Keep original colors and
-// alpha; Granola's square artwork uses a continuous squircle mask at every size.
-// Apple Mail, Apple Notes, Messages, WhatsApp and SiYuan artwork is exported from the installed macOS apps.
+// Shared brand artwork for source pills and connection sheets. Apple's own apps (Mail, Calendar,
+// Notes, Messages) show their real, installed icon, falling back to the exported artwork when the
+// app is missing. Third-party marks keep their original colors and alpha; Granola's square artwork
+// uses a continuous squircle mask at every size.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
 //
 
 import SwiftUI
+import AppKit
 
 struct ConnectorLogo: View {
     let asset: String
     var size: CGFloat = 34
+
+    /// The installed Apple app an asset stands for, or nil for third-party marks.
+    static func appleAppBundleID(for asset: String) -> String? {
+        switch asset {
+        case "AppleMailMark": "com.apple.mail"
+        case "AppleCalendarMark": "com.apple.iCal"
+        case "AppleNotesMark": "com.apple.Notes"
+        case "IMessageMark": "com.apple.MobileSMS"
+        default: nil
+        }
+    }
 
     /// Match visible weight inside a fixed layout slot. Exported Mac app icons have
     /// about 19% transparent padding; the solid square marks need a little breathing room.
@@ -24,6 +37,16 @@ struct ConnectorLogo: View {
     }
 
     var body: some View {
+        if let id = Self.appleAppBundleID(for: asset), AppIconCache.image(bundleID: id) != nil {
+            AppIconImage(bundleID: id, size: size * 1.11)
+                .frame(width: size, height: size)
+                .accessibilityHidden(true)
+        } else {
+            assetImage
+        }
+    }
+
+    private var assetImage: some View {
         Image(asset)
             .renderingMode(.original)
             .resizable()
@@ -37,18 +60,24 @@ struct ConnectorLogo: View {
     }
 }
 
-#Preview("Connection logos · on black") {
-    HStack(alignment: .top, spacing: 28) {
-        ForEach(["GmailMark", "GoogleCalendarMark", "GoogleDriveMark", "SlackMark",
-                 "OutlookMark", "NotionMark", "GranolaMark", "WhatsAppMark", "IMessageMark",
-                 "AppleNotesMark", "AppleMailMark", "AppleCalendarMark", "SiYuanMark"], id: \.self) { asset in
-            VStack(spacing: 16) {
-                ConnectorLogo(asset: asset)
-                Text(asset.replacingOccurrences(of: "Mark", with: ""))
-                    .font(.caption).foregroundStyle(.secondary)
+#Preview("Connection logos") {
+    VStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            HStack(alignment: .top, spacing: 28) {
+                ForEach(["GmailMark", "GoogleCalendarMark", "GoogleDriveMark", "SlackMark",
+                         "OutlookMark", "NotionMark", "GranolaMark", "WhatsAppMark", "IMessageMark",
+                         "AppleNotesMark", "AppleMailMark", "AppleCalendarMark", "SiYuanMark"], id: \.self) { asset in
+                    VStack(spacing: 16) {
+                        ConnectorLogo(asset: asset)
+                        Text(asset.replacingOccurrences(of: "Mark", with: ""))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .frame(width: 72)
+                }
             }
-            .frame(width: 72)
+            .padding(36)
+            .background(.background)
+            .environment(\.colorScheme, scheme)
         }
     }
-    .padding(36).background(.black)
 }

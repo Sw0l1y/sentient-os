@@ -7,7 +7,8 @@
 //  area and follows it. In drag mode it carries the .app card (AppDragSourceView) whose drag
 //  payload is shaped to look Finder-originated — the exact pasteboard mix System Settings accepts
 //  into its privacy lists; while dragging, the panel goes mouse-transparent so the drop lands in
-//  Settings. The SwiftUI content (PermissionPanelView) speaks the app's design language.
+//  Settings. The SwiftUI content (PermissionPanelView) is a system-material helper: the pane's
+//  tile and title, the instruction, and the real app icon as the drag source.
 //
 //  ⚠️ hostingView.sizingOptions = [] is load-bearing: with the default .intrinsicContentSize the
 //  hosting view re-advertises its own size to the window every layout pass and every setFrame is
@@ -98,7 +99,8 @@ final class PermissionDragPanel: NSPanel {
         stopLaunchAnimation()
         let targetFrame = targetFrame(for: settingsFrame)
 
-        guard sourceFrameInScreen.isEmpty == false else {
+        // Reduce Motion (or Low Power Mode): no flight, the panel appears at its final frame.
+        guard sourceFrameInScreen.isEmpty == false, !reducesMotion else {
             isAnimatingLaunch = false
             alphaValue = 1
             setFrame(targetFrame, display: false)
@@ -120,6 +122,11 @@ final class PermissionDragPanel: NSPanel {
         }
         RunLoop.main.add(timer, forMode: .common)
         launchTimer = timer
+    }
+
+    /// The same stillness rule as SwiftUI's Motion.gated, read from AppKit.
+    private var reducesMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || ProcessInfo.processInfo.isLowPowerModeEnabled
     }
 
     /// While the app card is being dragged, mouse events pass through so Settings gets the drop.
@@ -232,17 +239,42 @@ final class PermissionDragPanel: NSPanel {
     }
 }
 
-// MARK: - The panel content (Sentient-voiced)
+// MARK: - The panel content
 
-/// The floating card's face: a mono-caps whisper, the one-line instruction, and (drag mode) the
-/// app card to drag. OLED black with a hairline ring — it should read as a piece of Sentient
-/// hovering beside System Settings.
+/// The floating helper's face: the pane's tile and title with the gear (reopen Settings) and ✕,
+/// the one-line instruction, and (drag mode) the real app icon to drag. System floating material,
+/// so it reads as a macOS helper beside System Settings in either appearance.
 struct PermissionPanelView: View {
     let guide: PermissionGuide
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header
+        VStack(alignment: .leading, spacing: Space.m) {
+            HStack(spacing: Space.s) {
+                if let pane = guide.job?.pane {
+                    TileLabel(pane.title, tile: pane.tile, size: 40)
+                }
+                Spacer(minLength: 0)
+                if !guide.isSettingsFrontmost {
+                    Button { guide.reopenSettings() } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Show System Settings")
+                    .accessibilityLabel("Show System Settings")
+                }
+                Button { guide.close() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .keyboardShortcut(.cancelAction)
+                .help("Close")
+                .accessibilityLabel("Close")
+            }
+            Text(guide.instruction)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
             if let appURL = guide.job?.appURL {
                 AppDragItemView(url: appURL) { dragging in
                     guide.setDragging(dragging)
@@ -250,87 +282,23 @@ struct PermissionPanelView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .padding(.top, 10)
-        .padding(.bottom, 12)
-        .padding(.horizontal, 14)
+        .padding(Space.l)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black)
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Theme.stroke, lineWidth: 1))
-        )
-        .preferredColorScheme(.dark)
-    }
-
-    private var header: some View {
-        HStack(alignment: .top, spacing: 8) {
-            HStack(alignment: .center, spacing: 8) {
-                GuideDirectionIcon(isDragging: guide.isDraggingApp, isDragMode: guide.job?.appURL != nil)
-                VStack(alignment: .leading, spacing: 3) {
-                    MonoCaps(guide.job?.pane.title.uppercased() ?? "", size: 8.5, tracking: 2.0,
-                             color: Theme.Ink.label)
-                    Text(guide.instruction)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            Spacer(minLength: 8)
-            HStack(alignment: .top, spacing: 4) {
-                if guide.isSettingsFrontmost == false {
-                    Button { guide.reopenSettings() } label: {
-                        Image(systemName: "gear")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(Theme.Ink.label)
-                    }
-                    .buttonStyle(.plain)
-                }
-                Button { guide.close() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3.weight(.semibold))
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(Theme.Ink.label, Color.white.opacity(0.12))
-                }
-                .buttonStyle(.plain)
-            }
-        }
+        .floatingGlass(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
-/// The little animated pointer — drifts gently up and down at rest, pulses while the card is
-/// being dragged.
-private struct GuideDirectionIcon: View {
-    let isDragging: Bool
-    let isDragMode: Bool
-
-    @State private var driftPhase = false
-    @State private var scalePhase = false
-
-    var body: some View {
-        Image(systemName: isDragMode ? "arrowshape.up.fill" : "switch.2")
-            .font(.body.weight(.bold))
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(Theme.Ink.green)
-            .offset(y: isDragging || !isDragMode ? 0 : (driftPhase ? -2 : 2))
-            .scaleEffect(isDragging ? (scalePhase ? 1.18 : 0.88) : 1)
-            .animation(
-                isDragging
-                    ? .easeInOut(duration: 0.68).repeatForever(autoreverses: true)
-                    : .easeInOut(duration: 1.6).repeatForever(autoreverses: true),
-                value: isDragging ? scalePhase : driftPhase
-            )
-            .onAppear { if isDragMode { driftPhase = true } }
-            .onChange(of: isDragging) { _, dragging in
-                if dragging {
-                    scalePhase = true
-                    driftPhase = false
-                } else {
-                    scalePhase = false
-                    driftPhase = isDragMode
-                }
-            }
+private extension PermissionGuide.Pane {
+    /// The pane's System Settings tile (SPEC-00 2.5).
+    var tile: TileSpec {
+        switch self {
+        case .fullDiskAccess:  .fullDiskAccess
+        case .accessibility:   .accessibility
+        case .screenRecording: .screenRecording
+        case .loginItems:      .launchAtLogin
+        case .overnightWake:   .overnight
+        }
     }
 }
 
@@ -393,7 +361,7 @@ final class AppDragSourceView: NSView, NSDraggingSource {
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: max(64, hostingView.fittingSize.height))
+        NSSize(width: NSView.noIntrinsicMetric, height: max(72, hostingView.fittingSize.height))
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -475,32 +443,34 @@ private final class AppBundlePasteboardWriter: NSObject, NSPasteboardWriting {
     }
 }
 
-/// The draggable app card — icon, name, and a quiet "drag" affordance on a dashed ring.
+/// The draggable app card: the real Finder icon, the app's name and "Drag into the list", on a
+/// dashed drop-target outline.
 private struct AppDragCardContent: View {
     let url: URL
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Space.m) {
             Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
                 .resizable()
-                .frame(width: 32, height: 32)
-            Text(FileManager.default.displayName(atPath: url.path))
-                .font(.body.weight(.medium))
-                .foregroundStyle(.primary)
-            Spacer()
-            VStack(spacing: 1) {
-                Image(systemName: "hand.draw")
-                    .font(.body)
-                MonoCaps("Drag", size: 7, tracking: 1.6, color: Theme.Ink.label)
+                .frame(width: 48, height: 48)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(FileManager.default.displayName(atPath: url.path))
+                    .font(.headline)
+                Text("Drag into the list")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
-            .foregroundStyle(Theme.Ink.label)
-            .padding(.trailing, 4)
+            Spacer(minLength: 0)
+            Image(systemName: "hand.draw")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
         }
-        .padding(8)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(Space.m)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: Radius.group, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            RoundedRectangle(cornerRadius: Radius.group, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         )
     }
 }

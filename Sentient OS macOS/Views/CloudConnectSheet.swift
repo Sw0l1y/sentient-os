@@ -8,8 +8,8 @@
 //  connector directory (GmailConnect/CalendarConnect.connectorURL pick; the copy follows). Flow:
 //    Connect …  → opens the engine's connector page (the user links Google there).
 //    Done       → verifies linked-account/read-tool metadata, then saves the selection.
-//    ✕ (top-left) → closes without saving.
-//  Already connected → "Stop reading …" clears selection, not the provider connection.
+//    Cancel     → closes without saving.
+//  Already connected → "Stop Reading …" clears selection, not the provider connection.
 //
 //  Presented from Settings → Knowledge Sources, the home's Analysis popover, onboarding's ready
 //  screen, and Dev Tools. See GmailConnect / CalendarConnect for the codex side.
@@ -25,7 +25,7 @@ struct CloudConnectSheet: View {
         var logoAsset: String { self == .gmail ? "GmailMark" : "GoogleCalendarMark" }
         var title: String { self == .gmail ? "Gmail" : "Google Calendar" }
         var connectTitle: String { self == .gmail ? "Connect Gmail" : "Connect Calendar" }
-        var stopLine: String { self == .gmail ? "Stop reading Gmail" : "Stop reading Google Calendar" }
+        var stopLine: String { self == .gmail ? "Stop Reading Gmail" : "Stop Reading Google Calendar" }
         var connectorURL: URL { self == .gmail ? GmailConnect.connectorURL : CalendarConnect.connectorURL }
         var slug: String { self == .gmail ? "gmail" : "google-calendar" }
         var connectedKey: String { self == .gmail ? "dbg.gmail.connected" : "dbg.calendar.connected" }
@@ -56,54 +56,96 @@ struct CloudConnectSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ConnectorLogo(asset: service.logoAsset)
-
-            Text(service.title)
-                .display(20)
-                .foregroundStyle(Theme.Ink.statusInk)
-                .padding(.top, 18)
-
-            if !selected {
-                Text(openedConnectorPage
-                     ? "Connect \(service.title) to your \(backend == .claude ? "Claude" : "ChatGPT") account, and then come back to Sentient."
-                     : "Sentient reads through your \(backend == .claude ? "Claude" : "ChatGPT") connector. Enable it and sign in on that page, then press Done.")
-                    .font(.callout.weight(.bold)).foregroundStyle(Theme.Ink.body)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true).padding(.top, 14)
+            ConnectorSheetHeader(service.title, message: headerLine) {
+                ConnectorSheetLogo(asset: service.logoAsset)
             }
-
-            if selected && (backend == .custom || CodexAuth.connectorsLocked) {
-                Text("This selected source is unavailable with your current AI. You can stop reading it here or choose a supported connection.")
-                    .font(.callout).foregroundStyle(Theme.Ink.body)
-                    .multilineTextAlignment(.center).padding(.top, 14)
+            Form {
+                let lines = statusFooterLines
+                if lines.isEmpty {
+                    Section {
+                        StatusRow("\(readerName) Connector", detail: statusDetail, tone: statusTone)
+                    }
+                } else {
+                    Section {
+                        StatusRow("\(readerName) Connector", detail: statusDetail, tone: statusTone)
+                    } footer: {
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            ForEach(lines, id: \.self) { Text($0) }
+                        }
+                    }
+                }
             }
-            connectButton.padding(.top, 26)
-                .disabled(backend == .custom || CodexAuth.connectorsLocked)
-            if selected {
-                stopLink.padding(.top, 18)
-            }
-            if openedConnectorPage {
-                doneButton.padding(.top, 14)
-            }
-            if let connectionProblem {
-                Text(connectionProblem).font(.callout).foregroundStyle(Theme.Ink.amber)
-                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, 14)
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+            ConnectorSheetFooter {
+                // Reading remains an explicit opt-in.
+                if selected {
+                    Button(service.stopLine, action: stopReading)
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("connector.stopReading")
+                }
+            } trailing: {
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("connector.cancel")
+                ConnectorActionButton(title: selected ? "Open connector settings" : service.connectTitle,
+                                      kind: openedConnectorPage ? .again : .connect, action: openConnectorPage)
+                    .disabled(backend == .custom || CodexAuth.connectorsLocked)
+                if openedConnectorPage {
+                    ConnectorActionButton(title: checkingConnection ? "Checking Connection…" : "Done", kind: .done,
+                                          isLoading: checkingConnection, action: done)
+                        .disabled(checkingConnection)
+                }
             }
         }
-        .padding(.horizontal, 36).padding(.top, 40).padding(.bottom, 24)
-        .frame(width: 400)
-        .background(Theme.bg)
-        .overlay(alignment: .topLeading) { closeButton.padding(12) }
+        .frame(minWidth: 460, idealWidth: 480, minHeight: 320, idealHeight: 380)
+        .presentationSizing(.form)
         .onChange(of: backendRaw) { verification?.cancel(); dismiss() }
         .onDisappear { verification?.cancel() }
     }
 
-    // MARK: - The two buttons (+ the ✕)
+    // MARK: - What the sheet says
 
-    private var connectButton: some View {
-        ConnectorActionButton(title: selected ? "Open connector settings" : service.connectTitle,
-                              action: openConnectorPage)
+    private var readerName: String { backend == .claude ? "Claude" : "ChatGPT" }
+
+    private var unavailable: Bool { selected && (backend == .custom || CodexAuth.connectorsLocked) }
+
+    private var headerLine: String {
+        if selected { return "Sentient reads \(service.title) through your \(readerName) connector." }
+        return openedConnectorPage
+            ? "Connect \(service.title) to your \(readerName) account, and then come back to Sentient."
+            : "Sentient reads through your \(readerName) connector. Enable it and sign in on that page, then press Done."
     }
+
+    private var statusDetail: String {
+        if checkingConnection { return "Checking connection…" }
+        if unavailable { return "Unavailable with your current AI" }
+        if connectionProblem != nil { return "Not verified" }
+        if selected { return "Connected" }
+        if openedConnectorPage { return "Waiting for you in \(readerName)" }
+        return "Not connected"
+    }
+
+    private var statusTone: StatusTone {
+        if checkingConnection { return .working }
+        if unavailable { return .warning }
+        if connectionProblem != nil { return .warning }
+        if selected { return .ok }
+        if openedConnectorPage { return .info }
+        return .off
+    }
+
+    private var statusFooterLines: [String] {
+        var lines: [String] = []
+        if unavailable {
+            lines.append("This selected source is unavailable with your current AI. You can stop reading it here or choose a supported connection.")
+        }
+        if let connectionProblem { lines.append(connectionProblem) }
+        return lines
+    }
+
+    // MARK: - Connect, Stop Reading and Done
 
     private func openConnectorPage() {
         guard !checkingConnection else { return }
@@ -112,24 +154,6 @@ struct CloudConnectSheet: View {
             openedConnectorPage = true
             HostedConnectorSetup.settingsOpened(slug: service.slug, backend: backend)
         }
-    }
-
-    private var doneButton: some View {
-        ConnectorActionButton(title: checkingConnection ? "Checking connection…" : "Done", kind: .done,
-                              isLoading: checkingConnection, action: done)
-            .disabled(checkingConnection)
-    }
-
-    private var closeButton: some View {
-        CloseHoverButton { dismiss() }
-    }
-
-    /// Reading remains an explicit opt-in.
-    private var stopLink: some View {
-        Button(service.stopLine, action: stopReading)
-            .buttonStyle(.plain)
-            .font(.subheadline)
-            .foregroundStyle(Theme.Ink.deepMuted)
     }
 
     // MARK: - Done: verify native linked-account metadata before selecting
@@ -159,27 +183,6 @@ struct CloudConnectSheet: View {
         }
     }
 
-}
-
-/// The quiet ✕ — a small glass circle that brightens on hover.
-struct CloseHoverButton: View {
-    let action: () -> Void
-    @State private var hover = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "xmark")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(hover ? .white : Theme.Ink.label)
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(.white.opacity(hover ? 0.1 : 0)))
-                .contentShape(Circle())
-        }
-        .buttonStyle(PressScaleStyle())
-        .accessibilityLabel("Close")
-        .onHover { hover = $0 }
-        .animation(.easeOut(duration: 0.15), value: hover)
-    }
 }
 
 #Preview("Connect Gmail") {

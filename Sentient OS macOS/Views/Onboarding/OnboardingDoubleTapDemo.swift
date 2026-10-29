@@ -58,18 +58,18 @@ final class OnboardingDoubleTapDemo {
                 if !self.reduceMotion {
                     self.swirl.begin(orbit: 24, initialRadius: entranceRadius)
                     // Light becomes visible while the comets are still at the window edges.
-                    withAnimation(.easeOut(duration: 0.85)) { self.spiralVisible = true }
+                    withAnimation(self.gated(.easeOut(duration: 0.85))) { self.spiralVisible = true }
                     try await Task.sleep(for: .milliseconds(850))
                 }
-                withAnimation(self.reduceMotion ? .easeOut(duration: 0.25) : .spring(duration: 0.65, bounce: 0.08)) {
+                withAnimation(self.gated(.spring(duration: 0.65, bounce: 0.08))) {
                     self.windowVisible = true
                     self.spiralAtCaret = true
                 }
                 try await Task.sleep(for: .milliseconds(480))
-                withAnimation(.easeOut(duration: 0.38)) { self.spiralVisible = false }
+                withAnimation(self.gated(.easeOut(duration: 0.38))) { self.spiralVisible = false }
                 try await Task.sleep(for: .milliseconds(260))
                 self.phase = .waiting
-                withAnimation(.easeOut(duration: 0.4)) { self.controlsVisible = true }
+                withAnimation(self.gated(.easeOut(duration: 0.4))) { self.controlsVisible = true }
                 try await Task.sleep(for: .milliseconds(180))
                 self.swirl.phase = .idle
                 self.sequence = nil
@@ -81,7 +81,7 @@ final class OnboardingDoubleTapDemo {
     /// cannot count twice. Monotonic time avoids clock corrections changing the gesture window.
     func keyChanged(_ down: Bool, at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         guard down != keyIsDown else { return }
-        withAnimation(reduceMotion ? nil : .spring(duration: down ? 0.1 : 0.2, bounce: down ? 0 : 0.12)) {
+        withAnimation(gated(.spring(duration: down ? 0.1 : 0.2, bounce: down ? 0 : 0.12))) {
             keyIsDown = down
         }
         guard down, phase == .waiting else { return }
@@ -124,7 +124,7 @@ final class OnboardingDoubleTapDemo {
         feedbackTask?.cancel()
         feedbackTask = nil
         tapFeedback = nil
-        withAnimation(.easeOut(duration: 0.15)) { keyIsDown = false }
+        withAnimation(gated(.easeOut(duration: 0.15))) { keyIsDown = false }
     }
 
     /// Only a completed pair starts the reply; a single button activation never does.
@@ -143,7 +143,7 @@ final class OnboardingDoubleTapDemo {
                 try await Task.sleep(for: .milliseconds(850))
                 if !self.reduceMotion { self.swirl.transition(landing: true) }
                 try await Task.sleep(for: CaretSwirl.landingDelay)
-                withAnimation(.easeOut(duration: 0.12)) { self.replyVisible = true }
+                withAnimation(self.gated(.easeOut(duration: 0.12))) { self.replyVisible = true }
                 // Let the landing bloom finish, then give the pasted reply a brief settle.
                 let landingTail = max(Duration.zero, .seconds(SwirlMath.landDuration) - CaretSwirl.landingDelay)
                 try await Task.sleep(for: landingTail + .milliseconds(70))
@@ -152,9 +152,9 @@ final class OnboardingDoubleTapDemo {
 
                 if self.sample == .email {
                     // Hold the reply until the user chooses Next. No timer advances this beat.
-                    withAnimation(.easeOut(duration: 0.35)) { self.phase = .emailReady }
+                    withAnimation(self.gated(.easeOut(duration: 0.35))) { self.phase = .emailReady }
                 } else {
-                    withAnimation(.easeOut(duration: 0.4)) {
+                    withAnimation(self.gated(.easeOut(duration: 0.4))) {
                         self.phase = .complete
                         self.completionVisible = true
                         self.continueVisible = true
@@ -175,11 +175,11 @@ final class OnboardingDoubleTapDemo {
             guard let self else { return }
             do {
                 if self.reduceMotion {
-                    withAnimation(.easeOut(duration: 0.24)) { self.windowVisible = false }
+                    withAnimation(self.gated(.easeOut(duration: 0.24))) { self.windowVisible = false }
                     try await Task.sleep(for: .milliseconds(260))
                 } else {
                     // Keep the email opaque until its curved throw clears the top-right.
-                    withAnimation(.timingCurve(0.3, 0, 0.65, 0.3, duration: Self.flightDuration)) {
+                    withAnimation(self.gated(.timingCurve(0.3, 0, 0.65, 0.3, duration: Self.flightDuration))) {
                         self.emailDeparture = 1
                     }
                     try await Task.sleep(for: .seconds(Self.flightDuration + 0.04))
@@ -194,12 +194,12 @@ final class OnboardingDoubleTapDemo {
                 try await Task.sleep(for: .milliseconds(30))
                 let arrivalDuration = self.reduceMotion ? 0.25 : Self.flightDuration
                 if self.reduceMotion {
-                    withAnimation(.easeOut(duration: arrivalDuration)) { self.windowVisible = true }
+                    withAnimation(self.gated(.easeOut(duration: arrivalDuration))) { self.windowVisible = true }
                 } else {
                     // Reverse the email's timing curve as well as its path: matching momentum
                     // from the top-left, slowing into the same resting position.
                     self.windowVisible = true
-                    withAnimation(.timingCurve(0.35, 0.7, 0.7, 1, duration: arrivalDuration)) {
+                    withAnimation(self.gated(.timingCurve(0.35, 0.7, 0.7, 1, duration: arrivalDuration))) {
                         self.messageArrival = 1
                     }
                 }
@@ -209,6 +209,13 @@ final class OnboardingDoubleTapDemo {
                 self.sequence = nil
             } catch { /* Leaving cancels the throw and the Messages entrance. */ }
         }
+    }
+
+    /// Every beat's animation passes through Motion.gated, so Reduce Motion (and Low Power
+    /// Mode, which the lesson folds into `reduceMotion`) shows each state without movement.
+    /// The beats' timing is unchanged.
+    private func gated(_ animation: Animation) -> Animation? {
+        Motion.gated(animation, reduceMotion: reduceMotion)
     }
 
     func setReduceMotion(_ enabled: Bool) {

@@ -1,14 +1,20 @@
 // InviteViews.swift
-// Settings' redemption field, invitation section, and the in-app sharing offer.
-// All surfaces use InviteProgram; presentation-only pieces also support offline previews.
+// The invitation rows in Settings › General › Invitations (a code with Copy, the accepted count,
+// "Have an Invite Code?"), the Copy button with its verify-then-copy states, and Home's invite
+// notice. Every surface reads InviteProgram; the rows are Form rows, so they look like the rest
+// of Settings and follow the system appearance.
 // Doc: Views/Documentation - Views - Home, Processing & Shared UI.md
 
 import SwiftUI
 import AppKit
 
+/// "Have an Invite Code?" in the App Store's Redeem style: one field with an inline submit arrow
+/// and an error line under it. The body is a group of rows, so inside a Form (Settings) each
+/// branch reads as a Form row, and outside one it is a plain stack.
 struct InviteRedemptionView: View {
-    @Environment(\.settingsFormStyle) private var formStyle
     var startsCollapsed = false
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
     @State private var program = InviteProgram.shared
     @State private var code = ""
     @State private var showingGift = false
@@ -16,94 +22,90 @@ struct InviteRedemptionView: View {
     @State private var hasExpanded = false
     @FocusState private var codeFocused: Bool
 
+    private var reduceMotion: Bool { motionOverride ?? systemReduceMotion }
+
     private var isCollapsed: Bool {
         startsCollapsed && !hasExpanded && program.snapshot?.hasRecordedGift != true
     }
 
+    private var hasLifetimeAccess: Bool { program.snapshot?.hasLifetimeAccess == true }
+    private var showsSavedLateGift: Bool { program.snapshot?.lateUse != nil && !hasExpanded }
+    private var showsField: Bool { !hasLifetimeAccess && !showsSavedLateGift && !isCollapsed }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if program.snapshot?.hasLifetimeAccess == true {
-                Label("Lifetime access unlocked!", systemImage: "checkmark.seal.fill")
-                    .font(.system(size: formStyle ? 15 : 13, weight: .medium))
-                    .foregroundStyle(Theme.Ink.green)
-                Text("Your Sentient OS access is saved.")
-                    .font(.system(size: formStyle ? 13 : 11)).foregroundStyle(Theme.Ink.body)
-            } else if program.snapshot?.lateUse != nil && !hasExpanded {
-                Label("Your Sidekick gift is saved", systemImage: "gift")
-                    .font(.system(size: formStyle ? 15 : 13, weight: .medium)).foregroundStyle(Theme.Ink.green)
-                Text("Redeem FINAL_1000 to unlock lifetime access.")
-                    .font(.system(size: formStyle ? 13 : 11)).foregroundStyle(Theme.Ink.body)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("Redeem lifetime access") {
+        Group {
+            // The modifiers below sit on this one row (not on the Group), so the refresh task
+            // and the gift sheet exist once, whichever branch is showing.
+            primaryRow
+                .onChange(of: code) { program.clearError() }
+                .task { await program.refresh(createIfNeeded: false) }
+                .sheet(isPresented: $showingGift) {
+                    InviteCelebration(ticketNamespace: giftTicket, continueTitle: "Continue") {
+                        showingGift = false
+                    }
+                }
+            if showsField, let error = program.errorMessage {
+                StatusLabel(error, tone: .warning)
+            }
+        }
+    }
+
+    @ViewBuilder private var primaryRow: some View {
+        if hasLifetimeAccess {
+            StatusRow("Lifetime Access Unlocked", detail: "Your Sentient OS access is saved.", tone: .ok)
+        } else if showsSavedLateGift {
+            LabeledContent {
+                Button("Redeem Lifetime Access") {
                     code = InviteLateUse.code
                     hasExpanded = true
                 }
-                .buttonStyle(.plain).foregroundStyle(Theme.Ink.body)
-            } else if isCollapsed {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        hasExpanded = true
-                    } completion: {
-                        codeFocused = true
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Text("Have an invite code?").font(.body.weight(.medium))
-                        Image(systemName: "chevron.down").font(.caption.weight(.medium))
-                    }
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(.quaternary, in: Capsule())
-                    .overlay(Capsule().strokeBorder(.white.opacity(0.2)))
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
+                .controlSize(.small)
+            } label: {
+                Text("Your Sidekick Gift Is Saved")
+                Text("Redeem FINAL_1000 to unlock lifetime access.")
+            }
+        } else if isCollapsed {
+            Button("Have an Invite Code?") { expand() }
+                .buttonStyle(.link)
                 .accessibilityHint("Show the invite code field")
-            } else {
-                Text("Have an invite code?")
-                    .font(.system(size: formStyle ? 15 : 13, weight: .medium)).foregroundStyle(.primary)
-                HStack(spacing: 8) {
-                    TextField("Enter invite code", text: $code)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: formStyle ? 14 : 12, design: .monospaced))
-                        .foregroundStyle(.primary)
+        } else {
+            LabeledContent("Have an Invite Code?") {
+                HStack(spacing: Space.s) {
+                    TextField("Invite Code", text: $code, prompt: Text("Enter invite code"))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.callout, design: .monospaced))
+                        .frame(width: 180)
                         .focused($codeFocused)
                         .onSubmit(redeem)
                         .accessibilityLabel("Invite code")
-                        .onChange(of: code) {
-                            program.clearError()
-                        }
                     Button(action: redeem) {
-                        Group {
-                            if program.isBusy { ProgressView().controlSize(.small) }
-                            else { Image(systemName: "arrow.right").font(.system(size: formStyle ? 15 : 13, weight: .medium)) }
+                        if program.isBusy {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.right.circle.fill").imageScale(.large)
                         }
-                        .frame(width: 28, height: 28)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderless)
                     .disabled(program.isBusy || !InviteSnapshot.isValidCode(code))
                     .help("Redeem invite code")
                     .accessibilityLabel("Redeem invite code")
                 }
-                .padding(.leading, 12).padding(.trailing, 6)
-                .frame(height: 40)
-                .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.15)))
-                .disabled(program.isRedeeming)
-                if let error = program.errorMessage {
-                    Text(error).font(.system(size: formStyle ? 13 : 11)).foregroundStyle(Theme.Ink.amber)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
+            .disabled(program.isRedeeming)
         }
-        .frame(maxWidth: .infinity, alignment: isCollapsed ? .trailing : .leading)
-        .task { await program.refresh(createIfNeeded: false) }
-        .sheet(isPresented: $showingGift) {
-            InviteCelebration(ticketNamespace: giftTicket, continueTitle: "Continue") {
-                showingGift = false
-            }
-            .frame(width: 820, height: 680)
-            .preferredColorScheme(.dark)
+    }
+
+    private func expand() {
+        guard let animation = Motion.gated(Motion.quick, reduceMotion: reduceMotion) else {
+            hasExpanded = true
+            codeFocused = true
+            return
+        }
+        withAnimation(animation) {
+            hasExpanded = true
+        } completion: {
+            codeFocused = true
         }
     }
 
@@ -119,195 +121,166 @@ struct InviteRedemptionView: View {
     }
 }
 
+/// Settings › General › Invitations, in the System Settings "share with family" shape: a labelled
+/// code with a trailing Copy button, the accepted count, the redemption rows, and a footer.
 struct InviteSettingsSection: View {
-    @Environment(\.settingsFormStyle) private var formStyle
     @State private var program = InviteProgram.shared
 
+    private var shareableCode: String? {
+        guard let snapshot = program.snapshot, snapshot.canShare else { return nil }
+        return snapshot.code
+    }
+
     var body: some View {
-        SettingsGroup(label: "Invitations") {
-            VStack(alignment: .leading, spacing: 12) {
-                if let snapshot = program.snapshot, snapshot.canShare, let code = snapshot.code {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("5 invitations, reserved for you")
-                            .font(.system(size: formStyle ? 15 : 13, weight: .medium)).foregroundStyle(.primary)
-                        Text("Share Sentient OS free\u{00A0}for\u{00A0}life with just 5\u{00A0}people you choose.")
-                            .font(.system(size: formStyle ? 14 : 12)).foregroundStyle(Theme.Ink.body)
+        Section {
+            primaryRow
+                .task {
+                    // Friends can redeem while this pane stays open. Refresh only existing identities.
+                    while !Task.isCancelled {
+                        do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                        await program.refresh(createIfNeeded: false, quietly: true)
                     }
-                    InviteCopyButton(code: code)
-                    if snapshot.redemptionCount > 0 {
-                        Text(snapshot.redemptionCount == 1 ? "1 invitation accepted." : "\(snapshot.redemptionCount) invitations accepted.")
-                            .font(.system(size: formStyle ? 13 : 11)).foregroundStyle(Theme.Ink.body)
-                    }
-                } else if let snapshot = program.snapshot, !snapshot.canShare {
-                    Text("This invitation offer has closed.")
-                        .font(.system(size: formStyle ? 15 : 13)).foregroundStyle(Theme.Ink.body)
-                } else {
-                    SettingsPillButton(title: program.isBusy ? "Preparing your invitations…" : "View your invitations") {
-                        Task { await program.refresh() }
-                    }
-                    .disabled(program.isBusy)
                 }
-                InviteRedemptionView(startsCollapsed: true).frame(maxWidth: .infinity, alignment: .leading)
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    Task { await program.refresh(createIfNeeded: false, quietly: true) }
+                }
+            if shareableCode != nil, let count = program.snapshot?.redemptionCount, count > 0 {
+                LabeledContent("Accepted", value: count == 1 ? "1 invitation" : "\(count) invitations")
+            }
+            InviteRedemptionView(startsCollapsed: true)
+        } header: {
+            Text("Invitations")
+        } footer: {
+            if shareableCode != nil {
+                Text("Share Sentient OS free\u{00A0}for\u{00A0}life with just 5\u{00A0}people you choose.")
             }
         }
-        .task {
-            // Friends can redeem while this pane stays open. Refresh only existing identities.
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(30)) } catch { return }
-                await program.refresh(createIfNeeded: false, quietly: true)
+    }
+
+    @ViewBuilder private var primaryRow: some View {
+        if let code = shareableCode {
+            LabeledContent {
+                InviteCopyButton(code: code)
+            } label: {
+                Text("Your Invite Code")
+                Text("5 invitations, reserved for you")
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task { await program.refresh(createIfNeeded: false, quietly: true) }
+        } else if let snapshot = program.snapshot, !snapshot.canShare {
+            Text("This invitation offer has closed.")
+                .foregroundStyle(.secondary)
+        } else {
+            LabeledContent("Your Invitations") {
+                Button(program.isBusy ? "Preparing…" : "View Invitations") {
+                    Task { await program.refresh() }
+                }
+                .disabled(program.isBusy)
+            }
         }
     }
 }
 
+/// A Copy button with checkmark feedback (Passwords › Copy). It re-verifies the invite before
+/// writing the current code to the pasteboard, and shows Checking / Copied / Try Again.
 struct InviteCopyButton: View {
-    @Environment(\.settingsFormStyle) private var formStyle
     let code: String
     var showsCode = true
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
     @State private var program = InviteProgram.shared
     @State private var copied = false
     @State private var copying = false
     @State private var copyFailed = false
 
+    private var reduceMotion: Bool { motionOverride ?? systemReduceMotion }
+    private var showsCodeNow: Bool { showsCode && !copying }
+
     var body: some View {
-        Button {
-            guard !copying else { return }
-            copying = true
-            copied = false
-            copyFailed = false
-            Task {
-                let verified = await program.refresh()
-                if verified, program.snapshot?.canShare == true, let currentCode = program.snapshot?.code {
-                    let pasteboard = NSPasteboard.general
-                    pasteboard.clearContents()
-                    copied = pasteboard.setString(currentCode, forType: .string)
-                }
-                copyFailed = !copied
-                copying = false
-            }
-        } label: {
-            HStack(spacing: 10) {
-                Text(showsCode ? code : actionTitle)
-                    .font(.system(size: formStyle ? 14 : 12, weight: .medium, design: showsCode ? .monospaced : .default))
+        Button(action: copy) {
+            Label {
+                Text(showsCodeNow ? code : actionTitle)
+                    .font(showsCodeNow ? .system(.callout, design: .monospaced) : nil)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Image(systemName: copied ? "checkmark" : (copyFailed ? "arrow.clockwise" : "doc.on.doc"))
-                    .font(.system(size: formStyle ? 14 : 12)).frame(width: 16, height: 18)
+            } icon: {
+                Image(systemName: icon)
+                    .foregroundStyle(copied ? AnyShapeStyle(Color.green) : AnyShapeStyle(HierarchicalShapeStyle.primary))
+                    .contentTransition(.symbolEffect(.replace))
             }
-            .foregroundStyle(copied ? Theme.Ink.green : .white)
-            .padding(.horizontal, 12).frame(height: 36)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.12)))
-            .opacity(copying ? 0.5 : 1)
         }
-        .buttonStyle(.plain).disabled(copying || program.isBusy)
-        .help(copyFailed ? "Couldn't verify this invite. Click to retry." : (copied ? "Invite code copied" : "Copy invite code"))
+        .buttonStyle(.bordered)
+        .disabled(copying || program.isBusy)
+        .help(copyFailed ? "Couldn’t verify this invite. Click to retry." : (copied ? "Invite code copied" : "Copy invite code"))
         .accessibilityLabel(copyFailed ? "Retry copying invite code" : (copied ? "Invite code copied" : "Copy invite code"))
         .onChange(of: code) { copied = false; copyFailed = false }
     }
 
+    private var icon: String {
+        copied ? "checkmark" : (copyFailed ? "arrow.clockwise" : "doc.on.doc")
+    }
+
     private var actionTitle: String {
-        if copying { return "Checking invite…" }
-        if copyFailed { return "Try again" }
-        return copied ? "Copied" : "Copy invite code"
+        if copying { return "Checking Invite…" }
+        if copyFailed { return "Try Again" }
+        return copied ? "Copied" : "Copy Invite Code"
+    }
+
+    private func copy() {
+        guard !copying else { return }
+        copying = true
+        copied = false
+        copyFailed = false
+        Task {
+            let verified = await program.refresh()
+            var didCopy = false
+            if verified, program.snapshot?.canShare == true, let currentCode = program.snapshot?.code {
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                didCopy = pasteboard.setString(currentCode, forType: .string)
+            }
+            withAnimation(Motion.gated(Motion.quick, reduceMotion: reduceMotion)) {
+                copied = didCopy
+                copyFailed = !didCopy
+                copying = false
+            }
+        }
     }
 }
 
+/// Home's invite notice: the shared NoticeBar with a pink gift tile and "Copy Invite Code".
+/// It sets no width, frame or color scheme; HomeNotices gives it the column.
 struct InviteBannerView: View {
     let code: String
     let dismiss: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            InviteHandIcon()
-                .stroke(style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
-                .foregroundStyle(.primary)
-                .frame(width: 28, height: 38).padding(.top, 1)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(InviteProgram.offerTitle)
-                    .font(.body.weight(.medium)).foregroundStyle(.primary)
-                Text(InviteProgram.offerMessage)
-                    .font(.callout).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                InviteCopyButton(code: code, showsCode: false).padding(.top, 3)
-            }
-            Spacer(minLength: 0)
-            Button(action: dismiss) {
-                Image(systemName: "xmark").font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary).frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).help("Dismiss invitation")
-            .accessibilityLabel("Dismiss invitation")
+        NoticeBar(tile: .noticeInvite, title: InviteProgram.offerTitle, message: InviteProgram.offerMessage,
+                  dismissLabel: "Dismiss invitation", onDismiss: dismiss) {
+            InviteCopyButton(code: code, showsCode: false)
         }
-        .padding(.horizontal, 16).padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.black.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.12)))
-        .preferredColorScheme(.dark)
-    }
-}
-
-/// A ribbon tied around an index finger, drawn as a small monochrome vector.
-private struct InviteHandIcon: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-
-        // Raised finger and the outside of the hand. The bow interrupts the finger outline.
-        path.move(to: CGPoint(x: 34, y: 10))
-        path.addCurve(to: CGPoint(x: 55, y: 10), control1: CGPoint(x: 38, y: -1), control2: CGPoint(x: 51, y: -1))
-        path.move(to: CGPoint(x: 33, y: 39))
-        path.addLine(to: CGPoint(x: 33, y: 93))
-        path.move(to: CGPoint(x: 33, y: 82))
-        path.addLine(to: CGPoint(x: 17, y: 70))
-        path.addCurve(to: CGPoint(x: 5, y: 85), control1: CGPoint(x: 6, y: 61), control2: CGPoint(x: -1, y: 77))
-        path.addLine(to: CGPoint(x: 29, y: 123))
-        path.addCurve(to: CGPoint(x: 39, y: 138), control1: CGPoint(x: 32, y: 130), control2: CGPoint(x: 31, y: 138))
-        path.addLine(to: CGPoint(x: 79, y: 138))
-        path.addCurve(to: CGPoint(x: 99, y: 96), control1: CGPoint(x: 94, y: 123), control2: CGPoint(x: 99, y: 109))
-        path.addLine(to: CGPoint(x: 99, y: 82))
-        path.addCurve(to: CGPoint(x: 85, y: 68), control1: CGPoint(x: 99, y: 71), control2: CGPoint(x: 95, y: 68))
-
-        // Three curled fingers.
-        path.move(to: CGPoint(x: 54, y: 39))
-        path.addLine(to: CGPoint(x: 54, y: 74))
-        path.move(to: CGPoint(x: 54, y: 51))
-        path.addCurve(to: CGPoint(x: 69, y: 66), control1: CGPoint(x: 65, y: 50), control2: CGPoint(x: 69, y: 54))
-        path.addLine(to: CGPoint(x: 69, y: 83))
-        path.move(to: CGPoint(x: 69, y: 59))
-        path.addCurve(to: CGPoint(x: 85, y: 75), control1: CGPoint(x: 80, y: 58), control2: CGPoint(x: 85, y: 62))
-        path.addLine(to: CGPoint(x: 85, y: 92))
-
-        // Two ribbon loops and their loose ends.
-        path.move(to: CGPoint(x: 44, y: 23))
-        path.addCurve(to: CGPoint(x: 8, y: 10), control1: CGPoint(x: 24, y: 8), control2: CGPoint(x: 15, y: 4))
-        path.addCurve(to: CGPoint(x: 44, y: 23), control1: CGPoint(x: -6, y: 29), control2: CGPoint(x: 18, y: 40))
-        path.addCurve(to: CGPoint(x: 79, y: 10), control1: CGPoint(x: 63, y: 8), control2: CGPoint(x: 72, y: 4))
-        path.addCurve(to: CGPoint(x: 44, y: 23), control1: CGPoint(x: 94, y: 29), control2: CGPoint(x: 69, y: 40))
-        path.move(to: CGPoint(x: 28, y: 45))
-        path.addLine(to: CGPoint(x: 44, y: 23))
-        path.addLine(to: CGPoint(x: 60, y: 45))
-
-        return path.applying(CGAffineTransform(scaleX: rect.width / 104, y: rect.height / 144))
-            .applying(CGAffineTransform(translationX: rect.minX + rect.width * 2 / 104,
-                                      y: rect.minY + rect.height * 2 / 144))
     }
 }
 
 #if DEBUG
-#Preview("Invite banner") {
-    InviteBannerView(code: "A7K2M9", dismiss: {})
-        .frame(width: 380).padding(20).background(.gray.opacity(0.25))
+#Preview("Invite notice") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            InviteBannerView(code: "A7K2M9", dismiss: {})
+                .frame(width: 420).padding(20)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }
-#Preview("Invite redemption") {
-    InviteRedemptionView().frame(width: 320).padding(28).background(.black)
-}
-#Preview("Settings invite disclosure") {
-    InviteRedemptionView(startsCollapsed: true)
-        .frame(width: 320).padding(28).background(.black)
+#Preview("Invitations section") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            Form {
+                InviteSettingsSection()
+            }
+            .formStyle(.grouped)
+            .frame(width: 480, height: 320)
+            .environment(\.colorScheme, scheme)
+        }
+    }
 }
 #endif

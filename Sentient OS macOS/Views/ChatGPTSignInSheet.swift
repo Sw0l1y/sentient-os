@@ -1,8 +1,10 @@
-// Home's private ChatGPT sign-in. Presentation never opens a browser; the user's button
-// starts the shared setup flow. Only a login started by this sheet belongs to its cleanup.
+// Home's private ChatGPT sign-in, as a two-identity pairing sheet. Presentation never opens a
+// browser; the user's button starts the shared setup flow. Only a login started by this sheet
+// belongs to its cleanup.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
 
 import SwiftUI
+import AppKit
 
 struct ChatGPTSignInSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -16,62 +18,31 @@ struct ChatGPTSignInSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            OrbMark(size: 36)
-            Text("Sign in to ChatGPT")
-                .display(24).foregroundStyle(Theme.Ink.statusInk)
-                .padding(.top, 20)
-            Text("Please sign in to ChatGPT to continue using Sentient.")
-                .font(.body).foregroundStyle(Theme.Ink.body)
+            pairing
+            Text("Sign In to ChatGPT")
+                .font(.title2.bold())
+                .accessibilityAddTraits(.isHeader)
+                .padding(.top, Space.l)
+            Text("Sign in to ChatGPT to continue using Sentient.")
+                .font(.body).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 14)
-
-            if codex.loggingIn {
-                HStack(spacing: 9) {
-                    ProgressView().controlSize(.small)
-                    Text("Finish signing in in your browser.")
-                        .font(.callout).foregroundStyle(Theme.Ink.body)
-                }
-                .padding(.top, 24)
+                .padding(.top, Space.s)
+            stateBlock
+                .padding(.top, Space.l)
+            HStack(spacing: Space.s) {
+                Spacer()
+                Button("Not Now") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("connector.chatgpt.notNow")
+                if !codex.loggingIn { signInButton }
             }
-
-            if codex.loggingIn {
-                LoginLinkButton(url: codex.loginURL)
-                    .padding(.top, 26)
-            } else {
-                Button(action: signIn) {
-                    HStack(spacing: 8) {
-                        if busy { ProgressView().controlSize(.small).tint(.black) }
-                        Text("Sign in with ChatGPT")
-                            .font(.body.weight(.semibold))
-                    }
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(Capsule().fill(.white.opacity(busy ? 0.5 : 1)))
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(PressScaleStyle())
-                .disabled(busy || !codex.installed)
-                .padding(.top, 26)
-            }
-
-            if let status = codex.loginStatusLine, status.hasPrefix("✗") {
-                Text(status.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines))
-                    .font(.callout).foregroundStyle(Theme.Ink.red)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 14)
-            }
-
-            Button("Not now") { dismiss() }
-                .buttonStyle(.plain)
-                .font(.callout).foregroundStyle(Theme.Ink.deepMuted)
-                .padding(.top, 18)
+            .padding(.top, Space.xl)
         }
-        .padding(.horizontal, 36).padding(.top, 42).padding(.bottom, 26)
-        .frame(width: 430)
-        .background(Theme.bg)
-        .overlay(alignment: .topLeading) { CloseHoverButton { dismiss() }.padding(12) }
+        .padding(.top, Space.xxl).padding(.horizontal, Space.xl).padding(.bottom, Space.l)
+        .frame(width: 400)
+        .presentationSizing(.fitted)
         .task(id: codex.loggingIn) {
             while !Task.isCancelled, codex.loggingIn, !codex.loggedIn, ModelBackend.current == .chatgpt {
                 do { try await Task.sleep(for: .seconds(2)) }
@@ -90,6 +61,58 @@ struct ChatGPTSignInSheet: View {
             }
         }
         .onDisappear { cancelOwnedLogin() }
+    }
+
+    /// Two identities joined by a link glyph: Sentient and ChatGPT.
+    private var pairing: some View {
+        HStack(spacing: Space.l) {
+            BrandMarkView(size: 48)
+            Image(systemName: "arrow.left.arrow.right")
+                .font(.title2)
+                .foregroundStyle(.tertiary)
+            chatGPTLogo
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Sentient and ChatGPT")
+    }
+
+    @ViewBuilder private var chatGPTLogo: some View {
+        if let mark = NSImage(named: "ChatGPTMark") {
+            LogoTile(size: 48) { Image(nsImage: mark).resizable().scaledToFit() }
+        } else {
+            IconTile(.engineChatGPT, size: 48)
+        }
+    }
+
+    @ViewBuilder private var stateBlock: some View {
+        VStack(spacing: Space.m) {
+            if codex.loggingIn {
+                HStack(spacing: Space.s) {
+                    ProgressView().controlSize(.small)
+                    Text("Finish signing in in your browser.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                LoginLinkButton(url: codex.loginURL)
+            }
+            if let status = codex.loginStatusLine, status.hasPrefix("✗") {
+                StatusLabel(status.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines), tone: .error)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var signInButton: some View {
+        Button(action: signIn) {
+            HStack(spacing: Space.s) {
+                if busy { ProgressView().controlSize(.small) }
+                Text("Sign In")
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .keyboardShortcut(.defaultAction)
+        .disabled(busy || !codex.installed)
+        .accessibilityIdentifier("connector.chatgpt.signIn")
     }
 
     private func signIn() {
@@ -124,5 +147,8 @@ struct ChatGPTSignInSheet: View {
 }
 
 #Preview("ChatGPT sign-in") {
-    ChatGPTSignInSheet().preferredColorScheme(.dark)
+    HStack(spacing: 0) {
+        ChatGPTSignInSheet().environment(\.colorScheme, .light)
+        ChatGPTSignInSheet().environment(\.colorScheme, .dark)
+    }
 }

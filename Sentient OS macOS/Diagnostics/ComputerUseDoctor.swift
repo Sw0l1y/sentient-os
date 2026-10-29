@@ -32,11 +32,11 @@ import UniformTypeIdentifiers
     }
     func show() {
         if window == nil {
-            let host = NSHostingController(rootView: ComputerUseDoctorView(doctor: self).preferredColorScheme(.dark))
+            let host = NSHostingController(rootView: ComputerUseDoctorView(doctor: self))
             let panel = NSWindow(contentViewController: host)
-            panel.title = "Computer-use check"
+            panel.title = "Computer-Use Check"
             panel.styleMask = [.titled, .closable, .miniaturizable]
-            panel.backgroundColor = .black
+            panel.backgroundColor = .windowBackgroundColor   // system appearance, no forced dark
             panel.isReleasedWhenClosed = false
             panel.delegate = self
             panel.setContentSize(NSSize(width: 540, height: 620))
@@ -46,6 +46,8 @@ import UniformTypeIdentifiers
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
     func cancel() { work?.cancel() }
+    /// The window's Done button. Closing still cancels a running check (windowWillClose).
+    func close() { window?.close() }
     func windowWillClose(_ notification: Notification) { cancel(); window = nil }
 
     func clear(defaults: UserDefaults = .standard) async {

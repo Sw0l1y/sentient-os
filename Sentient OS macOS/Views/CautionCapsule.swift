@@ -2,110 +2,48 @@
 //  CautionCapsule.swift
 //  Sentient OS macOS
 //
-//  The banner capsule for the home's single top-right slot: amber for the morning-after
-//  caution, red for a live HealthCaution issue, green for the just-updated notice. Message +
-//  optional action pill + dismiss ✕. UpdateNoticeCapsule is the self-contained green variant
-//  (reads/retires UpdateNotice itself) — rendered by the home's banner slot AND overlaid on
-//  onboarding by RootView, the second render site that moved this out of HomeView.swift.
+//  The kept entry point onto Home's notice row (SPEC-D1 S4): UpdateNoticeCapsule, the
+//  self-contained "Sentient Was Updated" notice, rendered as a `NoticeBar`. It reads UpdateNotice
+//  on appearance, draws nothing when no notice is armed, and retires it on dismiss or on opening
+//  the changelog. Rendered by Home's notice slot and by RootView over onboarding.
+//  `CautionCapsule` was deleted at the final cleanup: Home builds its NoticeBars directly
+//  (HomeNotices, ComputerUseUpdateNotice), so it had no callers left.
 //
 
 import SwiftUI
 
-struct CautionCapsule: View {
-    let message: String
-    var accent: Color = Theme.Ink.amber
-    var actionTitle: String? = nil
-    var onAction: () -> Void = {}
-    let onDismiss: () -> Void
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            HealthDot(color: accent)
-            Text(message)
-                .font(.body)
-                .foregroundStyle(Theme.Ink.statusInk)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-            if let actionTitle {
-                SettingsPillButton(title: actionTitle, action: onAction)
-            }
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Theme.Ink.label)
-                    .padding(4)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss notification")
-        }
-        .padding(.horizontal, 16).padding(.vertical, 11)
-        .frame(maxWidth: 480, alignment: .leading)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(accent.opacity(0.28), lineWidth: 1))
-    }
-}
-
-/// The green "Sentient just updated!" capsule — self-contained: reads UpdateNotice on
-/// appearance, draws nothing when no notice is armed, and retires it on dismiss or on
-/// opening the changelog. Hosts decide placement; this owns everything else.
+/// The "Sentient Was Updated" notice — self-contained: reads UpdateNotice on appearance, draws
+/// nothing when no notice is armed, and retires it on dismiss or on opening the changelog.
+/// Hosts decide placement; this owns everything else.
 struct UpdateNoticeCapsule: View {
     @State private var armed = false
+    @Environment(\.accessibilityReduceMotion) private var systemReducedMotion
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
+    private var reducedMotion: Bool { motionOverride ?? systemReducedMotion }
 
     var body: some View {
         Group {
             if armed {
-                CautionCapsule(message: "Sentient just updated!",
-                               accent: Theme.Ink.green,
-                               actionTitle: "Read the changelog",
-                               onAction: {
-                                   UpdateNotice.openChangelog()
-                                   retire()
-                               },
-                               onDismiss: {
-                                   UpdateNotice.dismiss()
-                                   retire()
-                               })
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                NoticeBar(tile: .noticeAppUpdated, title: "Sentient Was Updated",
+                          dismissLabel: "Dismiss notification",
+                          onDismiss: {
+                              UpdateNotice.dismiss()
+                              retire()
+                          }) {
+                    Button("Read the Changelog") {
+                        UpdateNotice.openChangelog()
+                        retire()
+                    }
+                }
+                // RootView's onboarding overlay gives it no width; the row's Spacer would
+                // otherwise stretch it across the window. On Home the column already caps it.
+                .frame(maxWidth: PageMetrics.readingColumn)
             }
         }
         .onAppear { armed = UpdateNotice.pending != nil }
     }
 
     private func retire() {
-        withAnimation(.easeInOut(duration: 0.25)) { armed = false }
+        withAnimation(Motion.gated(Motion.standard, reduceMotion: reducedMotion)) { armed = false }
     }
-}
-
-#Preview("Caution capsules") {
-    ZStack {
-        Color.black.ignoresSafeArea()
-        VStack(alignment: .trailing, spacing: 14) {
-            CautionCapsule(message: OvernightCaution.Kind.loggedOut.message,
-                           actionTitle: "Open Settings", onAction: {}, onDismiss: {})
-            CautionCapsule(message: OvernightCaution.Kind.noInternet.message, onDismiss: {})
-            CautionCapsule(message: OvernightCaution.Kind.usageLimit.message, onDismiss: {})
-            CautionCapsule(message: OvernightCaution.Kind.diskFull.message,
-                           actionTitle: "Manage Storage", onAction: {}, onDismiss: {})
-            CautionCapsule(message: HealthCaution.Issue.permissions([.fullDiskAccess]).message,
-                           accent: Theme.Ink.red,
-                           actionTitle: "Open Settings", onAction: {}, onDismiss: {})
-            CautionCapsule(message: HealthCaution.Issue.permissions([.fullDiskAccess, .launchAtLogin]).message,
-                           accent: Theme.Ink.red,
-                           actionTitle: "Open Settings", onAction: {}, onDismiss: {})
-            CautionCapsule(message: HealthCaution.Issue.codexSignedOut.message,
-                           accent: Theme.Ink.red,
-                           actionTitle: "Open Settings", onAction: {}, onDismiss: {})
-            CautionCapsule(message: HealthCaution.Issue.computerUseBroken(payloadGone: true).message,
-                           accent: Theme.Ink.red,
-                           actionTitle: "Open Settings", onAction: {}, onDismiss: {})
-            CautionCapsule(message: "Sentient just updated!",
-                           accent: Theme.Ink.green,
-                           actionTitle: "Read the changelog", onAction: {}, onDismiss: {})
-        }
-        .padding(40)
-    }
-    .frame(width: 620, height: 620)
-    .preferredColorScheme(.dark)
 }

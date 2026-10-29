@@ -29,118 +29,116 @@ struct OnboardingPlanView: View {
     @State private var plan: CodexAuth.Plan?
     @State private var checkingUpgrade = false
     @State private var confirmingUpgrade = false
+    @Environment(\.accessibilityReduceMotion) private var systemReduced
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
 
     private var planName: String { plan?.displayName ?? "Free" }
+    private var motion: Animation? {
+        Motion.gated(Motion.standard, reduceMotion: motionOverride ?? systemReduced)
+    }
+
+    private static let crossroadsMessage = "Right now, Sentient uses your ChatGPT plan’s Codex frontier model for a small part of its compute. You can still build your private knowledge base from this Mac and offer it to your AIs."
 
     var body: some View {
-        VStack(spacing: 40) {
-            Spacer()
-
-            switch phase {
-            case .checking:
-                Color.clear.frame(height: 1)   // invisible: full plans skip this screen entirely
-
-            case .crossroads:
-                OnboardingWhisper("YOUR CHATGPT PLAN · \(planName.uppercased())")
-
-                Text("We noticed you're not on ChatGPT Plus.")
-                    .display(26)
-                    .foregroundStyle(Theme.Ink.bright)
-
-                // Two balanced single lines (no width cap — each takes its natural width, so
-                // neither ever wraps into an orphan on a normal window).
-                VStack(spacing: 6) {
-                    Text("Right now, Sentient uses your ChatGPT plan's Codex frontier model for a small part of its compute.")
-                    Text("You can still build your private knowledge base from this Mac and offer it to your AIs.")
+        page
+            .task {
+                // A non-ChatGPT engine (Claude, or a custom endpoint) bypasses the ChatGPT plan
+                // entirely (knowledgeBaseOnly already reads false there) — never show the
+                // crossroads, whatever the disk claims.
+                if previewPlan == nil, ModelBackend.current != .chatgpt {
+                    onContinue()
+                    return
                 }
-                .font(.title3)
-                .foregroundStyle(Theme.secondary)
-                .multilineTextAlignment(.center)
-                .lineSpacing(4)
-
-                VStack(alignment: .leading, spacing: 11) {
-                    MonoCaps("With ChatGPT Plus", size: 9, tracking: 2.2, color: Theme.Ink.label)
-                        .padding(.bottom, 3)
-                    featureRow("sunrise", "Proactive mornings: things worth doing, already done")
-                    featureRow("command", "Sidekick anywhere: tap right \u{2318} and tell it what to do")
-                    featureRow("moon.stars", "Gmail, Calendar, and a knowledge base that keeps learning")
+                // The silent gate: read the claim off disk (no network). Anything but a positive
+                // free/go read means this screen isn't for them.
+                let current = previewPlan ?? CodexAuth.currentPlan()
+                plan = current
+                if current?.tier == .limited {
+                    Analytics.signal("PlanGate.shown", parameters: ["plan": current?.raw ?? "unknown"])
+                    withAnimation(motion) { phase = .crossroads }
+                } else {
+                    CodexAuth.knowledgeBaseOnly = false
+                    onContinue()
                 }
+            }
+            .alert("Are you on ChatGPT Plus?", isPresented: $confirmingUpgrade) {
+                Button("Yes, I’m on Plus") { acceptSelfAttestedUpgrade() }
+                Button("Wait", role: .cancel) { }
+            } message: {
+                Text("Sentient will unlock the full experience and take your word for it.\n\nNote that the ChatGPT Go plan does not offer enough Codex use to unlock the full experience.")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                // Back from the browser — quietly re-check, and auto-advance if the fresh claim
+                // happens to read full. Always silent: the trust button is the real way forward.
+                if phase == .waiting { check() }
+            }
+    }
 
-                VStack(spacing: 18) {
-                    // The two ways forward, side by side: go buy it, or tell us you already did.
-                    HStack(spacing: 16) {
-                        GlowButton(title: "Upgrade on ChatGPT",
-                                   systemImage: "arrow.up.forward",
-                                   action: openUpgrade)
-                        QuietPillButton(title: "I've upgraded to ChatGPT Plus", large: true) {
-                            confirmingUpgrade = true
+    /// An offer page in the manner of Setup Assistant's iCloud+ and Apple Arcade pages: a tile,
+    /// the plan as the title, the benefits as rows, and the choices in the footer.
+    @ViewBuilder private var page: some View {
+        switch phase {
+        case .checking:
+            Color.clear.frame(height: 1)   // invisible: full plans skip this screen entirely
+
+        case .crossroads:
+            SetupAssistantPage(tile: .setupChooseAI, title: "You’re on ChatGPT \(planName)",
+                               message: Self.crossroadsMessage) {
+                VStack(alignment: .leading, spacing: Space.l) {
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: Space.s) {
+                            Label("Proactive mornings: things worth doing, already done", systemImage: "sunrise")
+                            Label("Sidekick anywhere: tap right \u{2318} and tell it what to do", systemImage: "command")
+                            Label("Gmail, Calendar, and a knowledge base that keeps learning", systemImage: "moon.stars")
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(Space.xs)
+                    } label: {
+                        Text("With ChatGPT Plus").font(.headline)
                     }
-                    .frame(maxWidth: 540)
-                    continueFreeButton
+                    OnboardingTrustFooter()
                 }
-
-            case .waiting:
-                OnboardingWhisper("YOUR CHATGPT PLAN · \(planName.uppercased())")
-
-                Text("Finish upgrading in your browser.\nThis screen notices on its own.")
-                    .font(.title3)
-                    .foregroundStyle(Theme.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-
-                VStack(spacing: 16) {
-                    MonoWaitLine("waiting for your upgrade…")
-                    // The trust path, not a check: the account can read Free here long after a
-                    // real payment (the refreshed token re-mints from the same stale session),
-                    // so the button takes the user's word — same confirm as the crossroads'.
-                    OnboardingNextButton(title: "I've upgraded") {
-                        confirmingUpgrade = true
+            } footer: {
+                SetupAssistantFooter(primaryTitle: "Upgrade on ChatGPT…") {
+                    HStack(spacing: Space.m) {
+                        Button("I’ve Upgraded…") { confirmingUpgrade = true }
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                        continueFreeButton
                     }
-                    continueFreeButton
-                        .padding(.top, 8)
+                } primary: {
+                    openUpgrade()
                 }
-
-            case .unlocked:
-                OnboardingWhisper("YOUR CHATGPT PLAN · \(planName.uppercased())")
-                OnboardingDoneLine("\(planName) unlocked. Welcome to the full Sentient.")
             }
+            .transition(.opacity)
 
-            Spacer()
+        case .waiting:
+            SetupAssistantPage(tile: .setupChooseAI, title: "Finish Upgrading in Your Browser",
+                               message: "This screen notices on its own.") {
+                VStack(alignment: .leading, spacing: Space.l) {
+                    MonoWaitLine("Waiting for your upgrade…")
+                    OnboardingTrustFooter()
+                }
+            } footer: {
+                // The trust path, not a check: the account can read Free here long after a
+                // real payment (the refreshed token re-mints from the same stale session),
+                // so the button takes the user's word — same confirm as the crossroads'.
+                SetupAssistantFooter(primaryTitle: "I’ve Upgraded…") {
+                    continueFreeButton
+                } primary: {
+                    confirmingUpgrade = true
+                }
+            }
+            .transition(.opacity)
 
-            OnboardingTrustFooter()
-        }
-        .padding(40)
-        .task {
-            // A non-ChatGPT engine (Claude, or a custom endpoint) bypasses the ChatGPT plan
-            // entirely (knowledgeBaseOnly already reads false there) — never show the
-            // crossroads, whatever the disk claims.
-            if previewPlan == nil, ModelBackend.current != .chatgpt {
-                onContinue()
-                return
+        case .unlocked:
+            SetupAssistantPage(tile: .setupChooseAI, title: "\(planName) Unlocked") {
+                VStack(alignment: .leading, spacing: Space.l) {
+                    OnboardingDoneLine("Welcome to the full Sentient.")
+                    OnboardingTrustFooter()
+                }
             }
-            // The silent gate: read the claim off disk (no network). Anything but a positive
-            // free/go read means this screen isn't for them.
-            let current = previewPlan ?? CodexAuth.currentPlan()
-            plan = current
-            if current?.tier == .limited {
-                Analytics.signal("PlanGate.shown", parameters: ["plan": current?.raw ?? "unknown"])
-                withAnimation(.easeInOut(duration: 0.25)) { phase = .crossroads }
-            } else {
-                CodexAuth.knowledgeBaseOnly = false
-                onContinue()
-            }
-        }
-        .alert("Are you on ChatGPT Plus?", isPresented: $confirmingUpgrade) {
-            Button("Yes, I'm on Plus!") { acceptSelfAttestedUpgrade() }
-            Button("Wait", role: .cancel) { }
-        } message: {
-            Text("Sentient will unlock the full experience and take your word for it.\n\nNote that the ChatGPT Go plan does not offer enough Codex use to unlock the full experience.")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            // Back from the browser — quietly re-check, and auto-advance if the fresh claim
-            // happens to read full. Always silent: the trust button is the real way forward.
-            if phase == .waiting { check() }
+            .transition(.opacity)
         }
     }
 
@@ -148,7 +146,7 @@ struct OnboardingPlanView: View {
 
     private func openUpgrade() {
         NSWorkspace.shared.open(CodexAuth.upgradeURL)
-        withAnimation(.easeInOut(duration: 0.25)) { phase = .waiting }
+        withAnimation(motion) { phase = .waiting }
     }
 
     /// "I've upgraded", confirmed — the trust path, and the ONLY user-driven way forward from
@@ -182,49 +180,41 @@ struct OnboardingPlanView: View {
             if fresh?.tier != .limited {
                 CodexAuth.knowledgeBaseOnly = false
                 Analytics.signal("PlanGate.upgraded")
-                withAnimation(.easeInOut(duration: 0.3)) { phase = .unlocked }
+                withAnimation(motion) { phase = .unlocked }
                 try? await Task.sleep(for: .seconds(1.4))
                 onContinue()
             }
         }
     }
 
-    /// The escape hatch — a real (grey) button, visible without competing with the glow CTA.
+    /// The escape hatch: an inline link in the footer, visible without competing with the
+    /// page's one primary.
     private var continueFreeButton: some View {
-        QuietPillButton(title: "Continue with just the knowledge base") {
-            CodexAuth.knowledgeBaseOnly = true
-            Analytics.signal("PlanGate.continuedFree")
-            onContinue()
-        }
+        Button("Continue with Knowledge Base Only", action: continueFree)
+            .buttonStyle(.link)
     }
 
-    private func featureRow(_ icon: String, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 11) {
-            Image(systemName: icon)
-                .font(.callout)
-                .foregroundStyle(Theme.Ink.label)
-                .frame(width: 16)
-            Text(text)
-                .font(.body)
-                .foregroundStyle(.primary)
-        }
+    private func continueFree() {
+        CodexAuth.knowledgeBaseOnly = true
+        Analytics.signal("PlanGate.continuedFree")
+        onContinue()
     }
 }
 
+#if DEBUG
 #Preview("Onboarding — plan crossroads (Free)") {
-    ZStack {
-        Theme.bg.ignoresSafeArea()
-        OnboardingPlanView(onContinue: {}, previewPlan: CodexAuth.Plan(raw: "free"))
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            OnboardingPlanView(onContinue: {}, previewPlan: CodexAuth.Plan(raw: "free"))
+                .frame(width: 900, height: 760)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
     }
-    .frame(width: 1180, height: 880)
-    .preferredColorScheme(.dark)
 }
 
 #Preview("Onboarding — plan crossroads (Go)") {
-    ZStack {
-        Theme.bg.ignoresSafeArea()
-        OnboardingPlanView(onContinue: {}, previewPlan: CodexAuth.Plan(raw: "go"))
-    }
-    .frame(width: 1180, height: 880)
-    .preferredColorScheme(.dark)
+    OnboardingPlanView(onContinue: {}, previewPlan: CodexAuth.Plan(raw: "go"))
+        .frame(width: 900, height: 760)
 }
+#endif

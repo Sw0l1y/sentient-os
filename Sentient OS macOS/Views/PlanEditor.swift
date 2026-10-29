@@ -2,103 +2,132 @@
 //  PlanEditor.swift
 //  Sentient OS macOS  ·  Views/
 //
-//  The computer-use plan's editor: an NSTextView bridge that renders each step's leading number
-//  ("1.", "2." …) in quiet grey while the step text stays bright — SwiftUI's TextEditor can't
-//  style ranges (its attributed flavour is macOS-26-only; target is 15). Same contract as
-//  TextEditor(text:): edits flow through the binding, so autosave and the verbatim fire path are
-//  untouched. Machine voice throughout: real system mono, airy leading, no scrollers, height that
-//  hugs the content. Used by LetterView's draft block for computer-use plans.
+//  The computer-use plan's editor, built like Reminders: one editable row per step with its
+//  number leading in secondary, Return adds the next step, Delete on an empty step removes it,
+//  and a final "Add Step" row appends one. Same contract as TextEditor(text:): the binding is
+//  the only output, written only on a user edit, so autosave and the verbatim fire path are
+//  untouched. Height hugs the steps; the host (the draft block or the letter sheet's form)
+//  scrolls. Used by the draft block for computer-use plans.
 //
 
 import SwiftUI
-import AppKit
 
-struct PlanEditor: NSViewRepresentable {
+struct PlanEditor: View {
     @Binding var text: String
     var accent: Color
 
-    private static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-    private static let ink = NSColor.white.withAlphaComponent(0.92)
-    private static let numberInk = NSColor.white.withAlphaComponent(0.48)   // the quiet step number
-    private static let leading: CGFloat = 9                                 // matches the old TextEditor's lineSpacing
+    @State private var preamble = ""
+    /// Set by `parse()` only, so clearing the notes field mid-edit does not unmount it.
+    @State private var hasPreamble = false
+    @State private var steps: [PlanStep] = []
+    /// The text this editor last parsed or wrote. An external change (a card switch) re-parses
+    /// only when the binding differs from it.
+    @State private var lastSerialized: String?
+    /// True for the run loop in which `parse()` assigns `steps`, so that assignment is never
+    /// written back: a plan with irregular numbering or blank lines is normalised on the first
+    /// real edit only, never on display.
+    @State private var suppressCommit = false
+    @FocusState private var focused: UUID?
+
+    private struct PlanStep: Identifiable, Equatable {
+        let id = UUID()
+        var text: String
+    }
+
     private static let stepNumber = try! NSRegularExpression(pattern: #"^\s*\d+[.)]"#)
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
-        let tv = scroll.documentView as! NSTextView
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = false          // no scroller pill; the wheel still scrolls past 300pt
-        tv.drawsBackground = false
-        tv.isRichText = false
-        tv.allowsUndo = true
-        // Never "improve" the plan's text — smart substitutions would mangle steps codex must follow.
-        tv.isAutomaticQuoteSubstitutionEnabled = false
-        tv.isAutomaticDashSubstitutionEnabled = false
-        tv.isAutomaticTextReplacementEnabled = false
-        tv.isAutomaticSpellingCorrectionEnabled = false
-        tv.textContainerInset = NSSize(width: 0, height: 2)
-        tv.insertionPointColor = NSColor(accent)
-        tv.delegate = context.coordinator
-        tv.string = text
-        Self.restyle(tv)
-        return scroll
-    }
-
-    func updateNSView(_ scroll: NSScrollView, context: Context) {
-        context.coordinator.parent = self
-        guard let tv = scroll.documentView as? NSTextView else { return }
-        tv.insertionPointColor = NSColor(accent)
-        if tv.string != text {                      // external change (card switch); typing no-ops here
-            tv.string = text
-            Self.restyle(tv)
-        }
-    }
-
-    /// Height hugs the laid-out text (like TextEditor did), clamped to the draft block's 56–300.
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
-        guard let tv = nsView.documentView as? NSTextView,
-              let container = tv.textContainer, let layout = tv.layoutManager,
-              let width = proposal.width, width.isFinite, width > 0 else { return nil }
-        container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
-        layout.ensureLayout(for: container)
-        let height = layout.usedRect(for: container).height + tv.textContainerInset.height * 2 + 4
-        return CGSize(width: width, height: min(max(height, 56), 300))
-    }
-
-    /// Base machine-voice attributes over everything, then the quiet grey on each line's leading
-    /// "N." / "N)" token. Attribute-only edits — the caret and selection stay put, so this can run
-    /// on every keystroke.
-    static func restyle(_ tv: NSTextView) {
-        guard let storage = tv.textStorage else { return }
-        let para = NSMutableParagraphStyle()
-        para.lineSpacing = leading
-        let base: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink, .paragraphStyle: para]
-        storage.beginEditing()
-        storage.setAttributes(base, range: NSRange(location: 0, length: storage.length))
-        let ns = storage.string as NSString
-        var i = 0
-        while i < ns.length {
-            let line = ns.lineRange(for: NSRange(location: i, length: 0))
-            if let match = stepNumber.firstMatch(in: storage.string, range: line) {
-                storage.addAttribute(.foregroundColor, value: numberInk, range: match.range)
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            if hasPreamble {
+                TextField("Notes", text: $preamble, axis: .vertical)
+                    .textFieldStyle(.plain)
             }
-            i = NSMaxRange(line)
+            ForEach($steps) { $step in
+                HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+                    Text("\(number(of: step.id)).")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 20, alignment: .trailing)
+                        .accessibilityHidden(true)
+                    TextField("Step", text: $step.text, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .focused($focused, equals: step.id)
+                        .accessibilityLabel("Step \(number(of: step.id))")
+                        .onSubmit { insertStep(after: step.id) }
+                        .onKeyPress(.delete) {
+                            guard step.text.isEmpty, steps.count > 1 else { return .ignored }
+                            removeStep(step.id)
+                            return .handled
+                        }
+                }
+            }
+            Button { insertStep(after: steps.last?.id) } label: {
+                Label("Add Step", systemImage: "plus")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
         }
-        storage.endEditing()
-        tv.typingAttributes = base
+        .labelsHidden()
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .topLeading)
+        .tint(accent)
+        .autocorrectionDisabled()
+        .onAppear(perform: parse)
+        .onChange(of: text) { _, new in if new != lastSerialized { parse() } }
+        .onChange(of: steps) { _, _ in commit() }
+        .onChange(of: preamble) { _, _ in commit() }
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        var parent: PlanEditor
-        init(_ parent: PlanEditor) { self.parent = parent }
+    private func number(of id: UUID) -> Int {
+        (steps.firstIndex { $0.id == id } ?? 0) + 1
+    }
 
-        func textDidChange(_ notification: Notification) {
-            guard let tv = notification.object as? NSTextView else { return }
-            parent.text = tv.string
-            PlanEditor.restyle(tv)
+    /// `text` → preamble (lines before the first numbered line) + steps. Each line matching
+    /// `^\s*\d+[.)]` starts a step with its number token stripped; un-numbered lines after it
+    /// join that step with "\n".
+    private func parse() {
+        suppressCommit = true
+        lastSerialized = text
+        var head: [String] = []
+        var parsed: [PlanStep] = []
+        for line in text.components(separatedBy: "\n") {
+            let ns = line as NSString
+            if let match = Self.stepNumber.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)) {
+                let rest = ns.substring(from: NSMaxRange(match.range))
+                parsed.append(PlanStep(text: rest.hasPrefix(" ") ? String(rest.dropFirst()) : rest))
+            } else if parsed.isEmpty {
+                head.append(line)
+            } else {
+                parsed[parsed.count - 1].text += "\n" + line
+            }
         }
+        // A plan with no numbered lines keeps its whole text as notes; an empty plan starts empty.
+        let notes = head.joined(separator: "\n")
+        preamble = notes
+        hasPreamble = !notes.isEmpty
+        steps = parsed
+        DispatchQueue.main.async { suppressCommit = false }
+    }
+
+    /// Preamble (if any) + "N. step" lines, joined by "\n". `parse()` itself never writes back.
+    private func commit() {
+        let body = steps.enumerated().map { "\($0.offset + 1). \($0.element.text)" }
+        let out = ((hasPreamble ? [preamble] : []) + body).joined(separator: "\n")
+        guard !suppressCommit, out != text else { return }
+        lastSerialized = out
+        text = out
+    }
+
+    private func insertStep(after id: UUID?) {
+        let new = PlanStep(text: "")
+        let at = id.flatMap { target in steps.firstIndex { $0.id == target } }.map { $0 + 1 } ?? steps.count
+        steps.insert(new, at: at)
+        focused = new.id
+    }
+
+    private func removeStep(_ id: UUID) {
+        guard let i = steps.firstIndex(where: { $0.id == id }) else { return }
+        steps.remove(at: i)
+        if !steps.isEmpty { focused = steps[max(0, i - 1)].id }
     }
 }
 
@@ -112,11 +141,14 @@ struct PlanEditor: NSViewRepresentable {
     5. Confirm the cancellation.
     6. Verify the page shows Pro ending July 15 with no renewal.
     """
-    ZStack {
-        Color.black.ignoresSafeArea()
-        PlanEditor(text: $text, accent: Color(red: 0.30, green: 0.82, blue: 0.78))
-            .frame(width: 560)
-            .padding(30)
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            PlanEditor(text: $text, accent: .accentColor)
+                .frame(width: 420)
+                .padding(24)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
     }
 }
 #endif

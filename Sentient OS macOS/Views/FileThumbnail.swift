@@ -3,7 +3,9 @@
 //  Sentient OS macOS
 //
 //  Shared file preview: a real QuickLook thumbnail (PDF page / image / doc preview), falling
-//  back to the workspace file-type icon. Used by the Database viewer and the Processing screen.
+//  back to the workspace file-type icon, then to a quiet document glyph. A leaf view with no
+//  fixed colors: a quaternary fill and a separator hairline, so it reads in light and dark.
+//  Used by the Analysis page's "Just Processed" section (ProcessingView). SPEC-D1 S14.
 //
 
 import SwiftUI
@@ -17,9 +19,10 @@ struct FileThumbnail: View {
 
     @State private var image: NSImage?
 
-    private var radius: CGFloat { cornerRadius ?? size * 0.18 }
+    private var radius: CGFloat { cornerRadius ?? Radius.thumbnail }
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         ZStack {
             if let image {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
@@ -27,13 +30,18 @@ struct FileThumbnail: View {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: path))
                     .resizable().aspectRatio(contentMode: .fit).padding(size * 0.16)
             } else {
-                Image(systemName: "doc").font(.system(size: size * 0.38)).foregroundStyle(Theme.faint)
+                Image(systemName: "doc")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .padding(size * 0.3)
+                    .foregroundStyle(.tertiary)
             }
         }
         .frame(width: size, height: size)
-        .background(Color.white.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(Color.white.opacity(0.08)))
+        .background(.quaternary, in: shape)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+        .accessibilityHidden(true)
         .task(id: path) { await loadThumbnail() }
     }
 
@@ -53,4 +61,12 @@ struct FileThumbnail: View {
         }
         if let nsImage { image = nsImage }
     }
+}
+
+#Preview("Thumbnails") {
+    HStack(spacing: Space.l) {
+        FileThumbnail(path: nil, size: 48)
+        FileThumbnail(path: "/Applications", size: 48)
+    }
+    .padding()
 }

@@ -1,14 +1,22 @@
 // First launch: the existing film and lessons, then the frontier model connection.
 // Home opens immediately afterward. Personal context is a separate resumable window.
 // Doc: Documentation - Onboarding.md
+//
+// A Setup Assistant flow (SPEC-D6 S1): no backdrop of its own (the window background shows), no
+// floating Back pill and no corner chrome. Each step owns its footer: Choose Your AI carries Back,
+// the privacy footnote, the gift link and the GitHub mark beside Continue; the film places the
+// GitHub mark itself.
 
 import SwiftUI
+import AppKit
 
 struct OnboardingView: View {
     let onFinished: () -> Void
 
     /// For the DEBUG skip handle only — the quiet flag flip, no finale.
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
 
     /// Resume the introduction or frontier-model connection after an ordinary relaunch.
     @AppStorage("onboarding.step") private var step = 0
@@ -21,14 +29,14 @@ struct OnboardingView: View {
     /// Keep setup visible; the analysis owner separately holds system sleep while it works.
     @State private var awake = DisplayAwake()
 
+    private var reduceMotion: Bool { motionOverride ?? systemReduceMotion }
+
     var body: some View {
         ZStack {
-            Theme.bg.ignoresSafeArea()
-
             switch step {
             case 0:
                 // Step 1 is the website's film in a webview — it plays to the morning-home
-                // rest and blooms its own Continue (OnboardingFilmView owns the choreography).
+                // rest and offers its own Continue (OnboardingFilmView owns the choreography).
                 #if DEBUG
                 OnboardingFilmView(onContinue: advance, onWebIntroChange: { introFilm = $0 })
                     .transition(.opacity)
@@ -36,9 +44,12 @@ struct OnboardingView: View {
                 OnboardingFilmView(onContinue: advance).transition(.opacity)
                 #endif
             default:
-                OnboardingFrontierModelView(onContinue: onFinished).transition(.opacity)
+                OnboardingFrontierModelView(onBack: goBack, isPresentingGift: $isPresentingInviteGift,
+                                            onContinue: onFinished)
+                    .transition(.opacity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         // The introduction ends at Home; the display can then sleep normally.
         .onAppear { awake.begin(reason: "Onboarding — keeping the screen on") }
         .onDisappear { awake.end() }
@@ -46,69 +57,48 @@ struct OnboardingView: View {
         // context menu (Reload…), and no onboarding surface has a legitimate right-click.
         // Window-scoped, gone with this view.
         .background(RightClickBlocker())
-        // A shared back button on every screen except the intro.
-        .overlay(alignment: .topLeading) {
-            if step > 0 {
-                OnboardingBackButton(action: goBack)
-                    .padding(.top, 24)
-                    .padding(.leading, 24)
-                    .transition(.opacity)
-            }
-        }
-        // The GitHub mark in the window's absolute top-right corner — the open-source receipt on
-        // every onboarding screen, the film included. The
-        // flexible frame + ignoresSafeArea pins it past the title-bar inset to the true corner.
-        .overlay(alignment: .topTrailing) {
-            OnboardingGitHubButton()
-                .padding(.top, 12)
-                .padding(.trailing, 12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .ignoresSafeArea()
-                .transition(.opacity)
-        }
-        // Developer shortcut: enter Home without submitting an analysis plan.
+        // No GitHub overlay here: the film (bottom-right), its fallback page, the Double Tap
+        // lesson and Choose Your AI each place OnboardingGitHubButton() in their own footer.
         #if DEBUG
-        .overlay(alignment: .bottomTrailing) {
-            if step >= 0 {
-                HStack(spacing: 10) {
-                    if step == 0, let introFilm {
-                        OnboardingDevButton(
-                            title: introFilm.introSpedUp ? "INTRO ANIMATIONS: 50×" : "SPEED UP INTRO ANIMATIONS",
-                            icon: "forward.fill", action: introFilm.speedUpIntro)
-                            .disabled(introFilm.introSpedUp)
-                            .help("Play the remaining web intro at 50× speed.")
-                    }
-                    OnboardingDevButton(title: "SKIP TO HOME", icon: "forward.end") {
-                        withAnimation(.easeInOut(duration: 0.3)) { appState.hasCompletedOnboarding = true }
-                    }
-                }
-                .opacity(0.6)
-                .padding(.trailing, 22).padding(.bottom, 13)
-                .transition(.opacity)
-            }
+        // Developer shortcuts, top-center under the titlebar: every bottom corner belongs to a
+        // page footer.
+        .overlay(alignment: .top) {
+            devRow.padding(.top, 40)
         }
         #endif
         .disabled(isPresentingInviteGift)
         .accessibilityHidden(isPresentingInviteGift)
-        .overlay {
-            if step == 1 {
-                OnboardingInviteView(isPresentingGift: $isPresentingInviteGift)
+    }
+
+    #if DEBUG
+    private var devRow: some View {
+        HStack(spacing: Space.s) {
+            if step == 0, let introFilm {
+                OnboardingDevButton(title: introFilm.introSpedUp ? "Intro at 50×" : "Speed Up Intro",
+                                    icon: "forward.fill", action: introFilm.speedUpIntro)
+                    .disabled(introFilm.introSpedUp)
+                    .help("Play the remaining web intro at 50× speed.")
+            }
+            OnboardingDevButton(title: "Skip to Home", icon: "forward.end") {
+                withAnimation(Motion.gated(Motion.standard, reduceMotion: reduceMotion)) {
+                    appState.hasCompletedOnboarding = true
+                }
             }
         }
     }
+    #endif
 
     private func advance() {
-        withAnimation(.easeInOut(duration: 0.25)) { step += 1 }
+        withAnimation(Motion.gated(Motion.standard, reduceMotion: reduceMotion)) { step += 1 }
     }
 
     private func goBack() {
-        withAnimation(.easeInOut(duration: 0.25)) { step = 0 }
+        withAnimation(Motion.gated(Motion.standard, reduceMotion: reduceMotion)) { step = 0 }
     }
-
 }
 
 #if DEBUG
-/// The unobtrusive dev controls share one row and are entirely absent from Release.
+/// The developer controls share one row and are entirely absent from Release.
 private struct OnboardingDevButton: View {
     let title: String
     let icon: String
@@ -116,24 +106,17 @@ private struct OnboardingDevButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: icon).font(.caption2)
-                Text(title)
-                    .font(.system(.caption2, design: .monospaced, weight: .medium))
-            }
-            .foregroundStyle(Theme.Ink.deepMuted)
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
-            .contentShape(Capsule())
+            Label(title, systemImage: icon)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
     }
 }
 #endif
 
-/// The onboarding CTA — a quiet white capsule, shared across the onboarding screens.
-/// `glow` adds the rotating AI-gradient halo (GlowHalo intensity) — off by default, reserved
-/// for the model picker's ready Continue.
+/// The shared primary for onboarding-era callers (LoginLinkButton, the analysis and download
+/// steps, the permission pages): the system prominent button at large size, on Return.
+/// `glow` is kept for source compatibility and ignored.
 struct OnboardingNextButton: View {
     let title: String
     var enabled: Bool = true
@@ -144,22 +127,17 @@ struct OnboardingNextButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(enabled ? .black : .white.opacity(0.35))
                 .frame(minWidth: minimumLabelWidth)
-                .padding(.horizontal, 36)
-                .padding(.vertical, 12)
-                .background(Capsule(style: .continuous)
-                    .fill(enabled ? Color.white : Color.white.opacity(0.08)))
         }
-        .buttonStyle(.plain)
-        .background { if glow > 0 { GlowHalo(active: enabled, intensity: glow) } }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .keyboardShortcut(.defaultAction)
         .disabled(!enabled)
-        .animation(.easeInOut(duration: 0.3), value: enabled)
     }
 }
 
-/// The shared white Back pill, top-left on every onboarding screen but the first.
+/// A standard Back button. No onboarding step uses it after the remake (Back lives in the
+/// Choose Your AI footer); kept for source compatibility.
 struct OnboardingBackButton: View {
     let action: () -> Void
 
@@ -167,30 +145,29 @@ struct OnboardingBackButton: View {
         Button(action: action) {
             Label("Back", systemImage: "chevron.left")
         }
-        .buttonStyle(BackButtonStyle())
+        .buttonStyle(.bordered)
+        .labelStyle(.titleAndIcon)
     }
 }
 
-/// The onboarding GitHub mark — top-right on every screen the back button lives on, opening the
-/// public repo. Quiet by default, brightening on hover, so it reads as chrome, never a CTA.
+/// The GitHub mark: a 16 pt template image, borderless, that opens the public repo. The film
+/// places it at the bottom-right; the Setup Assistant pages put it at the end of their footer's
+/// leading group.
 struct OnboardingGitHubButton: View {
-    @State private var hovering = false
-
     var body: some View {
         Button {
             NSWorkspace.shared.open(URL(string: "https://github.com/Sentient-OS-Labs/sentient-os")!)
         } label: {
             Image("GitHubMark")
-                .resizable().scaledToFit()
-                .frame(width: 22, height: 22)
-                .foregroundStyle(hovering ? Theme.secondary : Theme.faint)
-                .padding(6)
-                .contentShape(Rectangle())
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
         }
-        .buttonStyle(PressScaleStyle())
-        .onHover { hovering = $0 }
-        .animation(.easeInOut(duration: 0.15), value: hovering)
-        .help("Sentient OS on GitHub")
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help("View on GitHub")
+        .accessibilityLabel("Sentient OS on GitHub")
     }
 }
 
@@ -224,18 +201,22 @@ private struct RightClickBlocker: NSViewRepresentable {
     }
 }
 
-/// The trust footer — on every onboarding surface, like everywhere else in the app.
+/// The trust line, as small print. The caller places it; it adds no padding of its own.
 struct OnboardingTrustFooter: View {
     var body: some View {
         Text(PrivacyCopy.trustRibbon)
-            .font(.callout)
-            .foregroundStyle(Theme.faint)
-            .padding(.bottom, 28)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
     }
 }
 
 #Preview("Onboarding") {
-    OnboardingView(onFinished: {})
-        .frame(width: 1180, height: 880)
-        .preferredColorScheme(.dark)
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            OnboardingView(onFinished: {})
+                .frame(width: 1100, height: 820)
+                .background(.background)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }

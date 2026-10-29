@@ -1,5 +1,6 @@
 // AppleMailPicker.swift
-// Explicit account opt-in, Mail-specific access errors, and retry. Opening never enables a source.
+// Explicit account opt-in as an account checklist, Mail-specific access errors, and retry.
+// Opening never enables a source.
 // Doc: Settings/Documentation - Settings.md
 
 import SwiftUI
@@ -26,46 +27,41 @@ struct AppleMailPicker: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ConnectorLogo(asset: "AppleMailMark")
-            Text("Apple Mail").display(20).foregroundStyle(Theme.Ink.statusInk).padding(.top, 18)
-            Text("Choose the accounts to include.")
-                .font(.callout).foregroundStyle(Theme.Ink.body).padding(.top, 10)
-            accountList.padding(.top, 22)
-            Toggle("Read emails for proactive suggestions", isOn: $researchEnabled)
-                .toggleStyle(.checkbox).font(.callout).padding(.top, 18)
-            Text("Your chosen AI can read actual email text from these accounts to check and prepare suggestions. A cloud AI processes that text with its provider. This access only reads mail.")
-                .font(.subheadline).foregroundStyle(Theme.Ink.body)
-                .fixedSize(horizontal: false, vertical: true).padding(.top, 6)
-            HStack(spacing: 10) {
-                Button { dismiss() } label: {
-                    Text("Cancel").font(.body.weight(.medium))
-                        .foregroundStyle(Theme.Ink.bright)
-                        .frame(maxWidth: .infinity, minHeight: 40)
-                        .background(Capsule().fill(.quaternary))
-                        .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
-                        .contentShape(Capsule())
+            ConnectorSheetHeader("Apple Mail", message: "Choose the accounts to include.") {
+                ConnectorSheetLogo(asset: "AppleMailMark")
+            }
+            Form {
+                Section("Accounts") { accountRows }
+                Section {
+                    Toggle("Read Emails for Proactive Suggestions", isOn: $researchEnabled)
+                } footer: {
+                    Text("Your chosen AI can read actual email text from these accounts to check and prepare suggestions. A cloud AI processes that text with its provider. This access only reads mail.")
                 }
-                .buttonStyle(PressScaleStyle()).keyboardShortcut(.cancelAction)
-                Button { AppleMailResearchAccess.save(accounts: researchEnabled ? selected : []); onDone(selected); dismiss() } label: {
-                    Text("Done").font(.body.weight(.semibold))
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity, minHeight: 40)
-                        .background(Capsule().fill(.white))
-                        .contentShape(Capsule())
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            ConnectorSheetFooter {
+                Text("\(selected.count) selected")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .monospacedDigit()
+                if !selected.isEmpty {
+                    Button("Deselect All") { selected.removeAll() }
+                        .buttonStyle(.link)
+                        .disabled(loading)
                 }
-                .buttonStyle(PressScaleStyle()).keyboardShortcut(.defaultAction)
-                .disabled(loading || (failed && !selected.isEmpty))
-                .opacity(loading || (failed && !selected.isEmpty) ? 0.4 : 1)
-            }.padding(.top, 24)
-            Button("Deselect all") { selected.removeAll() }
-                .buttonStyle(.plain).font(.subheadline)
-                .foregroundStyle(Theme.Ink.body).padding(.top, 16)
-                .disabled(loading || selected.isEmpty)
-                .opacity(selected.isEmpty ? 0 : 1).accessibilityHidden(selected.isEmpty)
+            } trailing: {
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("connector.cancel")
+                Button("Done", action: save)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(loading || (failed && !selected.isEmpty))
+                    .accessibilityIdentifier("connector.mail.done")
+            }
         }
-        .padding(.horizontal, 32).padding(.top, 36).padding(.bottom, 24)
-        .frame(width: 460).background(Theme.bg)
-        .overlay(alignment: .topLeading) { CloseHoverButton { dismiss() }.padding(12) }
+        .frame(minWidth: 460, idealWidth: 480, minHeight: 420, idealHeight: 520)
+        .presentationSizing(.form)
         .task {
             #if DEBUG
             if previewing { return }
@@ -74,37 +70,47 @@ struct AppleMailPicker: View {
         }
     }
 
-    private var accountList: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if loading { ProgressView("Loading accounts…").frame(maxWidth: .infinity, minHeight: 80) }
-            else if failed {
-                Text(failureMessage)
-                    .font(.callout).foregroundStyle(Theme.Ink.body)
-                HStack {
-                    if accessIssue { Button("Open Full Disk Access") { Permissions.openFullDiskAccessSettings() } }
-                    Button("Try Again") { Task { await load() } }
+    @ViewBuilder private var accountRows: some View {
+        if loading {
+            HStack(spacing: Space.s) {
+                ProgressView().controlSize(.small)
+                Text("Loading accounts…").font(.callout).foregroundStyle(.secondary)
+            }
+        } else if failed {
+            StatusLabel(failureMessage, tone: .error)
+            HStack {
+                if accessIssue {
+                    Button("Open Full Disk Access…") { Permissions.openFullDiskAccessSettings() }
                 }
-            } else if accounts.isEmpty {
-                Text("No Mail accounts found. Add an account in Apple Mail, then try again.")
-                    .font(.callout).foregroundStyle(Theme.Ink.body)
                 Button("Try Again") { Task { await load() } }
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        ForEach(accounts) { account in
-                            Toggle(account.name, isOn: Binding(get: { selected.contains(account.id) }, set: {
-                                if $0 { selected.insert(account.id) } else { selected.remove(account.id) }
-                            })).toggleStyle(.checkbox).font(.body)
-                        }
-                        ForEach(Array(selected.subtracting(accounts.map(\.id))).sorted(), id: \.self) { id in
-                            Toggle("Unavailable account", isOn: Binding(get: { selected.contains(id) }, set: { if !$0 { selected.remove(id) } }))
-                                .toggleStyle(.checkbox).font(.body).foregroundStyle(Theme.Ink.body)
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
-                }.frame(height: min(CGFloat(accounts.count + selected.subtracting(accounts.map(\.id)).count) * 38 + 16, 230))
+            }
+        } else if accounts.isEmpty {
+            ContentUnavailableView {
+                Label("No Mail Accounts", systemImage: "envelope")
+            } description: {
+                Text("Add an account in Apple Mail, then try again.")
+            } actions: {
+                Button("Try Again") { Task { await load() } }
+            }
+        } else {
+            ForEach(accounts) { account in
+                ConnectorCheckRow(account.name, isOn: Binding(get: { selected.contains(account.id) }, set: {
+                    if $0 { selected.insert(account.id) } else { selected.remove(account.id) }
+                })) {
+                    IconTile(.emailAndCalendar)
+                }
+            }
+            ForEach(Array(selected.subtracting(accounts.map(\.id))).sorted(), id: \.self) { id in
+                ConnectorCheckRow("Unavailable account",
+                                  isOn: Binding(get: { selected.contains(id) }, set: { if !$0 { selected.remove(id) } })) {
+                    IconTile(.emailAndCalendar)
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func save() {
+        AppleMailResearchAccess.save(accounts: researchEnabled ? selected : []); onDone(selected); dismiss()
     }
 
     private func load() async {
@@ -135,5 +141,10 @@ struct AppleMailPicker: View {
 }
 
 #if DEBUG
-#Preview { AppleMailPicker.researchPreview.environment(\.colorScheme, .dark) }
+#Preview {
+    HStack(spacing: 0) {
+        AppleMailPicker.researchPreview.environment(\.colorScheme, .light)
+        AppleMailPicker.researchPreview.environment(\.colorScheme, .dark)
+    }
+}
 #endif

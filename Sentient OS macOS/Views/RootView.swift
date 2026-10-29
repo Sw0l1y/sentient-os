@@ -1,5 +1,7 @@
 // Main window navigation: onboarding becomes a sidebar window once the frontier model is
 // connected. Home and Knowledge stay mounted while hidden; the other pages are built on demand.
+// The root sets the window title and subtitle once (pages publish subtitles with .pageSubtitle);
+// background progress lives in the sidebar footer (AppSidebar). No window background is drawn.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
 
 import SwiftUI
@@ -8,7 +10,6 @@ import Combine
 struct RootView: View {
     @Environment(AppState.self) private var appState
     @State private var navigation = MainNavigation.shared
-    @State private var showDevTools = false
     @State private var attemptedWritingStyleSelection: WritingStyle.Selection?
     @State private var writingStyleSelection = WritingStyle.selectionIdentity
     @State private var onboardingScale = OnboardingWindowLayout.scale(
@@ -27,7 +28,8 @@ struct RootView: View {
         .instance(for: .selected(for: ModelBackend(rawValue: backendRaw) ?? .chatgpt))
     }
 
-    /// Observed for the bottom-left model-download whisper (same overlay slot).
+    /// Observed for onboarding's top-left model-download whisper (after onboarding, the sidebar
+    /// footer shows it).
     @State private var download = ModelDownload.shared
 
     /// Which sources Home shows as selected. SourceSelection.current() checks each folder's and
@@ -35,6 +37,8 @@ struct RootView: View {
     /// app activation, returning Home, a source-selection or custom-folder change — not on every
     /// body pass (sampled blocking the main thread on each Knowledge / Settings switch).
     @State private var homeSources = HomeSources()
+    @Environment(\.accessibilityReduceMotion) private var systemReduced
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
 
     private func refreshHomeSources() {
         let sources = SourceSelection.current()
@@ -49,11 +53,10 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Theme.bg.ignoresSafeArea()
             if !appState.hasCompletedOnboarding {
                 OnboardingCanvas(scale: onboardingScale) {
                     OnboardingView {
-                        withAnimation(.easeInOut(duration: 0.3)) { appState.hasCompletedOnboarding = true }
+                        withAnimation(standardAnimation) { appState.hasCompletedOnboarding = true }
                     }
                 }
                 .transition(.opacity)
@@ -70,8 +73,10 @@ struct RootView: View {
                 } detail: {
                     detail
                 }
+                .frame(minWidth: 900, minHeight: 600)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minWidth: appState.hasCompletedOnboarding ? nil : OnboardingWindowLayout.minimum.width * onboardingScale,
                minHeight: appState.hasCompletedOnboarding ? nil : OnboardingWindowLayout.minimum.height * onboardingScale)
         .background(OnboardingWindowFit(active: !appState.hasCompletedOnboarding) { onboardingScale = $0 })
@@ -85,9 +90,11 @@ struct RootView: View {
             Analytics.signal("Home.opened",
                              parameters: ["trigger": sinceBoot < 5 ? "launch" : "reopen"], tier: .core)
         }
-        // Onboarding's bottom-left slot for the background download whispers (Home's detail
-        // column carries the same pair; see `whispers`).
-        .overlay(alignment: .bottomLeading) {
+        // Onboarding's slot for the background download whispers: top-left, just under the
+        // titlebar, because every onboarding page keeps its footer (Back, the footnote, the info
+        // button, the GitHub mark) in the bottom-left corner (SPEC-D6 1.4 / open issue 11). After
+        // onboarding the sidebar footer carries the same pair.
+        .overlay(alignment: .topLeading) {
             if !appState.hasCompletedOnboarding { whispers }
         }
         // The mandatory update gate floats above everything (home, processing, dev sheet) — when a
@@ -96,18 +103,18 @@ struct RootView: View {
         .overlay { UpdateGateView() }
         .background(MainWindowCloseGuard())
         .onChange(of: navigation.page) { _, page in
-            if page != .home { showDevTools = false } else { refreshHomeSources() }
+            if page == .home { refreshHomeSources() }
         }
         .onAppear { refreshHomeSources() }
         .onChange(of: writingStyleSelection) { _, _ in refreshHomeSources() }
         .onChange(of: customRootsRaw) { _, _ in refreshHomeSources() }
         .onChange(of: appState.hasCompletedOnboarding) { _, completed in
             if !completed {
-                showDevTools = false
+                navigation.showDevTools = false
                 attemptedWritingStyleSelection = nil
             }
         }
-        .sheet(isPresented: $showDevTools) {
+        .sheet(isPresented: $navigation.showDevTools) {
             DevToolsView()
         }
         // Source opt-ins and account generations may change in another window. Compare the
@@ -171,17 +178,13 @@ struct RootView: View {
             case .home, .knowledge: EmptyView()
             }
         }
+        // Set once, here. No page sets .navigationTitle or .navigationSubtitle itself.
         .navigationTitle(navigation.title)
-        // Background setup/download whispers sit in Home's bottom-left corner:
-        // · the model-download card (ModelDownloadWhisper) — the on-device model landing in the
-        //   background while the user is elsewhere;
-        // · the computer-use setup line — the driver download is an unstructured background task
-        //   that can outlive onboarding, so as long as it's actually running, this quiet line shows.
-        .overlay(alignment: .bottomLeading) {
-            if navigation.page == .home { whispers }
-        }
+        .navigationSubtitle(navigation.subtitle)
     }
 
+    /// Onboarding only: the model-download card and the computer-use setup line (the driver
+    /// download is an unstructured background task that can outlive onboarding).
     private var whispers: some View {
         VStack(alignment: .leading, spacing: 10) {
             ModelDownloadWhisper(download: download)
@@ -195,10 +198,14 @@ struct RootView: View {
                 .transition(.opacity)
             }
         }
-        .padding(.leading, 22).padding(.bottom, 12)
-        .animation(.easeInOut(duration: 0.35), value: computerSetup.isInstalling)
-        .animation(.easeInOut(duration: 0.35), value: download.phase)
-        .animation(.easeInOut(duration: 0.35), value: download.fullScreenVisible)
+        .padding(.leading, 22).padding(.top, 12)
+        .animation(standardAnimation, value: computerSetup.isInstalling)
+        .animation(standardAnimation, value: download.phase)
+        .animation(standardAnimation, value: download.fullScreenVisible)
+    }
+
+    private var standardAnimation: Animation? {
+        Motion.gated(Motion.standard, reduceMotion: motionOverride ?? systemReduced)
     }
 
     private var home: some View {
@@ -218,7 +225,7 @@ struct RootView: View {
                 }
                 navigation.show(.analysis)
             },
-            onShowDevTools: { showDevTools = true },
+            onShowDevTools: { navigation.showDevTools = true },
             onFinishSetup: { navigation.show(.setup) })
     }
 }

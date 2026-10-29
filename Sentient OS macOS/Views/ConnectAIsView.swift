@@ -2,14 +2,16 @@
 //  ConnectAIsView.swift
 //  Sentient OS macOS
 //
-//  The "Connect your AIs" page — pushed from Settings → Give AIs Knowledge.
-//   · sharing OFF → the consent ask in plain view: the trust pillars (encrypted storage,
-//     open-source server, sharing controls), "Turn On Sharing" (enables the mirror + first push)
-//     and "Not Now", which pops back to Settings.
-//   · sharing ON → a segmented ChatGPT · Claude · Other AIs picker and a toolbar switch carrying
-//     the last synced time (off goes through the confirm-and-delete alert). ChatGPT/Claude show
-//     their GuideSpec's video steps side by side, each with a take-me-there link; the masked
-//     link + Copy and MirrorClient.systemPrompt ride the cards; Other AIs is the compact pair.
+//  The Connect Your AIs page, pushed from Settings › Share with AIs (a Settings detail page in
+//  SettingsView's NavigationStack; the window title stays "Share with AIs").
+//   · sharing OFF → the consent step as a system empty state: the question, the three trust
+//     pillars (encrypted storage, open-source server, sharing controls), "Not Now" (pops back) and
+//     "Turn On Sharing" (enables the mirror and makes the first push).
+//   · sharing ON → a grouped form: a segmented Claude · ChatGPT · Other AIs switch, the private
+//     link (masked, "Copy Link" copies the full URL) and "Copy Instructions", then one numbered
+//     section per step of the chosen AI, each with its take-me-there link and tutorial clip.
+//     A toolbar switch carries the last synced time; turning it off goes through the
+//     confirm-and-delete alert.
 //  Tutorial clips load from the bundle by name (connect-chatgpt-1.mp4, …); a missing file renders
 //  a placeholder, so recordings can land later with no code change.
 //
@@ -39,25 +41,24 @@ struct ConnectAIsView: View {
     @State private var copiedPrompt = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                header
-                if loaded {
-                    if enabled { guide } else { consent }
-                }
+        Group {
+            if !loaded {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !enabled {
+                consent
+            } else {
+                guide
             }
-            .padding(.horizontal, 40).padding(.vertical, 32)
-            .frame(maxWidth: .infinity)
         }
-        .background(Theme.bg)
+        .frame(minWidth: 560, minHeight: 480)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                if loaded && enabled { sharingToggle }
+            if loaded && enabled {
+                ToolbarItem(placement: .primaryAction) { sharingToggle }
             }
         }
-        .frame(minWidth: 760, minHeight: 600)
         .task { await refresh() }
-        .alert("Stop sharing your knowledge base?", isPresented: $confirmOff) {
+        .alert("Stop Sharing Your Knowledge Base?", isPresented: $confirmOff) {
             Button("Keep Sharing", role: .cancel) {}
             Button("Stop & Delete Cloud Copy", role: .destructive) { disconnect() }
         } message: {
@@ -65,102 +66,142 @@ struct ConnectAIsView: View {
         }
     }
 
-    // MARK: - Header
-
-    private var header: some View {
-        VStack(spacing: 12) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable().frame(width: 64, height: 64)
-                .accessibilityHidden(true)
-            Text(enabled ? "Connect your AIs" : "Share your knowledge with your AIs?")
-                .font(.title.weight(.semibold))
-            Text(enabled
-                 ? "Offer your knowledge base to ChatGPT, Claude, and every AI you use. Private, over MCP, in two steps."
-                 : "Your knowledge base lives on this Mac. You can offer it to ChatGPT, Claude, and the other AIs you choose.")
-                .font(.body).foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 460)
-        }
-    }
-
-    // MARK: - Sharing off: the consent ask in plain view. Where the data goes (the same trust
-    // pillars Settings shows), an explicit yes, and "Not Now", which goes back to Settings.
+    // MARK: - Sharing off: the consent step
 
     private var consent: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 12) {
-                veilPillar("lock.fill", PrivacyCopy.sharingEncryption)
-                veilPillar("chevron.left.forwardslash.chevron.right", PrivacyCopy.sharingOpenSource)
-                veilPillar("key.fill", PrivacyCopy.sharingControl)
+        ContentUnavailableView {
+            Label {
+                Text("Share Your Knowledge with Your AIs?")
+            } icon: {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 64, height: 64)
+                    .accessibilityHidden(true)
             }
-            .padding(16)
-            .frame(width: 460, alignment: .leading)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.stroke, lineWidth: 0.5))
-            .padding(.top, 24)
-            HStack(spacing: 10) {
-                Button("Not Now") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(busy)
-                Button { connect() } label: {
-                    if busy {
-                        HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Connecting…") }
-                    } else {
-                        Text("Turn On Sharing")
-                    }
+        } description: {
+            Text("Your knowledge base lives on this Mac. You can offer it to ChatGPT, Claude, and the other AIs you choose.")
+        } actions: {
+            VStack(spacing: Space.xl) {
+                VStack(alignment: .leading, spacing: Space.m) {
+                    Label(PrivacyCopy.sharingEncryption, systemImage: "lock.fill")
+                    Label(PrivacyCopy.sharingOpenSource, systemImage: "chevron.left.forwardslash.chevron.right")
+                    Label(PrivacyCopy.sharingControl, systemImage: "key.fill")
                 }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(busy)
-            }
-            .controlSize(.large)
-            .padding(.top, 24)
-            if let errorLine {
-                Text(errorLine)
-                    .font(.callout).foregroundStyle(.orange)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 420)
-                    .padding(.top, 14)
-            }
-        }
-    }
-
-    /// One trust pillar on the veil (the same shape as Settings → Give AIs Knowledge's pillars,
-    /// so the story reads identically wherever the user meets it).
-    private func veilPillar(_ icon: String, _ text: String) -> some View {
-        Label {
-            Text(text).font(.callout).foregroundStyle(.secondary)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
-        } icon: {
-            Image(systemName: icon).foregroundStyle(.green)
+                .frame(maxWidth: 440, alignment: .leading)
+
+                HStack(spacing: Space.m) {
+                    Button("Not Now") { dismiss() }
+                        .buttonStyle(.bordered)
+                        .keyboardShortcut(.cancelAction)
+                        .disabled(busy)
+                    Button { connect() } label: {
+                        if busy {
+                            HStack(spacing: Space.s) {
+                                ProgressView().controlSize(.small)
+                                Text("Connecting…")
+                            }
+                        } else {
+                            Text("Turn On Sharing")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(busy)
+                }
+                .controlSize(.large)
+
+                if let errorLine {
+                    StatusLabel(errorLine, tone: .error)
+                        .frame(maxWidth: 440)
+                }
+            }
         }
     }
 
-    // MARK: - Sharing on: the per-AI guide
+    // MARK: - Sharing on: the guide
 
     private var guide: some View {
-        VStack(spacing: 0) {
-            Picker("AI", selection: $tab) {
-                ForEach(AITab.allCases) { Text($0.rawValue).tag($0) }
+        PaneForm {
+            Section {
+                Picker("AI", selection: $tab) {
+                    ForEach(AITab.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            } header: {
+                Text("Connect Your AIs")
+            } footer: {
+                Text("Offer your knowledge base to ChatGPT, Claude, and every AI you use. Private, over MCP, in two steps.")
             }
-            .pickerStyle(.segmented).labelsHidden().fixedSize()
-            .padding(.top, 24)
-            ZStack {
-                switch tab {
-                case .chatgpt: videoRow(Self.chatgptGuide)
-                case .claude:  videoRow(Self.claudeGuide)
-                case .other:   otherPair
+
+            Section("Your Private Link") {
+                LabeledContent {
+                    Button(copiedLink ? "Copied" : "Copy Link") { copy(shareURL ?? "", flag: $copiedLink) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                } label: {
+                    Text(MirrorClient.maskedURL(shareURL))
+                        .font(.body.monospaced())
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+                LabeledContent {
+                    Button(copiedPrompt ? "Copied" : "Copy Instructions") { copy(MirrorClient.systemPrompt, flag: $copiedPrompt) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                } label: {
+                    Text("Instructions for Your AI")
                 }
             }
-            .padding(.top, 20)
-            Text("Then ask it: \u{201C}What do you know about me?\u{201D}")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .padding(.top, 24)
+
+            stepSections(for: spec(tab))
+
+            Section {} footer: {
+                Text("Then ask it: \u{201C}What do you know about me?\u{201D}")
+            }
         }
     }
 
-    /// One card of an AI's guide: the take-me-there link above it, the video, the copy control.
+    private func spec(_ tab: AITab) -> GuideSpec {
+        switch tab {
+        case .claude: Self.claudeGuide
+        case .chatgpt: Self.chatgptGuide
+        case .other: Self.otherGuide
+        }
+    }
+
+    /// One numbered Section per step. A step's copy control (`GuideStep.Control`) is the private
+    /// link section above, so steps carry none of their own.
+    @ViewBuilder private func stepSections(for g: GuideSpec) -> some View {
+        ForEach(Array(g.steps.enumerated()), id: \.offset) { i, s in
+            Section {
+                Text(s.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !s.linkURL.isEmpty, let url = URL(string: s.linkURL) {
+                    Link(s.linkLabel, destination: url)
+                        .buttonStyle(.link)
+                }
+                if !g.videoPrefix.isEmpty {
+                    StepVideo(resource: "\(g.videoPrefix)-\(i + 1)", aspect: g.videoAspect)
+                        .frame(maxWidth: 420)
+                        .frame(maxWidth: .infinity)
+                }
+            } header: {
+                Text("\(i + 1). \(s.title)")
+            } footer: {
+                if !g.footer.isEmpty && i == g.steps.count - 1 {
+                    Text(g.footer)
+                }
+            }
+        }
+    }
+
+    /// One step of an AI's guide.
     private struct GuideStep {
         enum Control { case none, link, prompt }
         let title: String
@@ -170,13 +211,14 @@ struct ConnectAIsView: View {
         let control: Control
     }
 
-    /// One AI's guide: its cards in order (videos load as "<videoPrefix>-<n>.mp4"), at the
-    /// recordings' own aspect so aspect-fill never crops.
+    /// One AI's guide: its steps in order (videos load as "<videoPrefix>-<n>.mp4"), at the
+    /// recordings' own aspect so nothing is cropped. An empty prefix means no videos.
     private struct GuideSpec {
         let name: String
         let videoPrefix: String
         let videoAspect: CGFloat
         let steps: [GuideStep]
+        var footer: String = ""
     }
 
     private static let chatgptGuide = GuideSpec(
@@ -212,65 +254,17 @@ struct ConnectAIsView: View {
                       linkURL: "https://claude.ai/new#settings/general",
                       control: .prompt),
         ])
-
-    /// ChatGPT / Claude: the guide's video steps side by side, a take-me-there link above each.
-    private func videoRow(_ g: GuideSpec) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            ForEach(Array(g.steps.enumerated()), id: \.offset) { i, s in
-                VStack(alignment: .leading, spacing: 12) {
-                    StepLink(title: s.linkLabel, urlString: s.linkURL)
-                    videoStep(i + 1, s.title, video: "\(g.videoPrefix)-\(i + 1)",
-                              aspect: g.videoAspect, caption: s.caption) {
-                        stepControl(s.control)
-                    }
-                }
-            }
-        }
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
-    @ViewBuilder private func stepControl(_ c: GuideStep.Control) -> some View {
-        switch c {
-        case .link:   linkRow
-        case .prompt: promptButton
-        case .none:   EmptyView()
-        }
-    }
-
-    /// Other AIs: the same two steps, compact, no videos.
-    private var otherPair: some View {
-        VStack(spacing: 11) {
-            step(1, "Copy your private link",
-                 "Add it as a connector wherever your AI takes MCP servers.") { linkRow }
-            step(2, "Tell your AI to use it",
-                 "Paste this into its instructions so it checks your knowledge base.") { promptButton }
-            Text("Works with any AI that speaks MCP.")
-                .font(.caption).foregroundStyle(.tertiary)
-                .padding(.top, 10)
-        }
-    }
-
-    // MARK: - The two shared controls (every tab pastes the same two things)
-
-    private var linkRow: some View {
-        HStack(spacing: 8) {
-            Text(MirrorClient.maskedURL(shareURL))
-                .font(.callout.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1).truncationMode(.middle)
-            Button { copy(shareURL ?? "", flag: $copiedLink) } label: {
-                Label(copiedLink ? "Copied" : "Copy Link", systemImage: copiedLink ? "checkmark" : "doc.on.doc")
-            }
-            .buttonStyle(.bordered)
-        }
-    }
-
-    private var promptButton: some View {
-        Button { copy(MirrorClient.systemPrompt, flag: $copiedPrompt) } label: {
-            Label(copiedPrompt ? "Copied" : "Copy Instructions", systemImage: copiedPrompt ? "checkmark" : "doc.on.doc")
-        }
-        .buttonStyle(.bordered)
-    }
+    private static let otherGuide = GuideSpec(
+        name: "Other AIs", videoPrefix: "", videoAspect: 1,
+        steps: [
+            GuideStep(title: "Copy your private link",
+                      caption: "Add it as a connector wherever your AI takes MCP servers.",
+                      linkLabel: "", linkURL: "", control: .link),
+            GuideStep(title: "Tell your AI to use it",
+                      caption: "Paste this into its instructions so it checks your knowledge base.",
+                      linkLabel: "", linkURL: "", control: .prompt),
+        ],
+        footer: "Works with any AI that speaks MCP.")
 
     private func copy(_ text: String, flag: Binding<Bool>) {
         NSPasteboard.general.clearContents()
@@ -279,65 +273,21 @@ struct ConnectAIsView: View {
         Task { try? await Task.sleep(for: .seconds(1.8)); flag.wrappedValue = false }
     }
 
-    // MARK: - The step cards
-
-    /// A video step (ChatGPT / Claude tabs): clip on top, whisper + title + controls + caption below.
-    private func videoStep<Controls: View>(_ n: Int, _ title: String, video: String, aspect: CGFloat,
-                                           caption: String,
-                                           @ViewBuilder controls: () -> Controls) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            StepVideo(resource: video, aspect: aspect)
-            Text("Step \(n)").font(.caption.weight(.medium)).foregroundStyle(.secondary)
-                .padding(.top, 12)
-            Text(title).font(.headline)
-                .padding(.top, 2)
-            controls().padding(.top, 10)
-            Text(caption).font(.callout).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 8)
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .frame(width: 330, alignment: .leading)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.stroke, lineWidth: 0.5))
-    }
-
-    /// A compact numbered step (the Other AIs tab).
-    private func step<Controls: View>(_ n: Int, _ title: String, _ sub: String,
-                                      @ViewBuilder controls: () -> Controls) -> some View {
-        HStack(alignment: .top, spacing: 13) {
-            Image(systemName: "\(n).circle.fill")
-                .font(.title2)
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title).font(.headline)
-                controls()
-                Text(sub).font(.callout).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .frame(width: 460, alignment: .leading)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.stroke, lineWidth: 0.5))
-    }
-
-    // MARK: - The sharing toggle (toolbar, sharing ON only): the synced stamp as its label, and a
-    // real switch; off goes through the confirm.
+    // MARK: - The sharing switch (toolbar, sharing ON only): the synced stamp as its label
 
     private var sharingToggle: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.s) {
             if busy { ProgressView().controlSize(.small) }
-            Text(pillLabel).font(.callout).foregroundStyle(.secondary)
-            // The setter never writes `enabled` itself — flipping off only raises the confirm,
+            Text(syncedLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            // The setter never writes `enabled` itself: flipping off only raises the confirm,
             // so "Keep Sharing" leaves the switch on; disconnect() is what actually turns it off.
             Toggle("Sharing", isOn: Binding(
                 get: { enabled },
                 set: { requested in if !requested { confirmOff = true } }))
-                .labelsHidden().toggleStyle(.switch)
+                .toggleStyle(.switch)
+                .labelsHidden()
                 .disabled(busy)
         }
         .help("Share your knowledge base with your AIs over MCP")
@@ -345,12 +295,11 @@ struct ConnectAIsView: View {
 
     /// The synced stamp (the last successful push) answers "is my AIs' copy current?" at a
     /// glance; no stamp = enabled but not yet pushed.
-    private var pillLabel: String {
-        guard let pushed = MirrorClient.lastPush else { return "Sharing on" }
-        return "Synced \(pushed.glanceStamp)"
+    private var syncedLabel: String {
+        MirrorClient.lastPush.map { "Synced \($0.glanceStamp)" } ?? "Sharing on"
     }
 
-    // MARK: - MirrorClient plumbing (the SAME path Settings + the popover drive)
+    // MARK: - MirrorClient plumbing (the SAME path Settings and the popover drive)
 
     @MainActor private func refresh() async {
         enabled = await MirrorClient.shared.isEnabled
@@ -388,42 +337,23 @@ struct ConnectAIsView: View {
     }
 }
 
-// MARK: - The take-me-there link (under each video card)
-
-/// The take-me-there link above each card: opens the AI's own screen in the browser.
-private struct StepLink: View {
-    let title: String
-    let urlString: String
-
-    var body: some View {
-        if let url = URL(string: urlString) {
-            Link(destination: url) {
-                HStack(spacing: 3) {
-                    Text(title)
-                    Image(systemName: "arrow.up.right").imageScale(.small)
-                }
-            }
-            .font(.callout)
-        }
-    }
-}
-
 // MARK: - The tutorial clip
 
-/// A looping, muted tutorial clip loaded from the bundle by resource name. Until the Screen
-/// Studio recordings land, a missing file renders a placeholder, so the page ships now and the
-/// .mp4s drop in later with zero code changes.
+/// A looping, muted tutorial clip loaded from the bundle by resource name, in a rounded frame at
+/// the recording's own aspect. A missing file renders a placeholder, so the .mp4s can drop in
+/// later with no code change.
 private struct StepVideo: View {
     let resource: String   // e.g. "connect-chatgpt-1" → connect-chatgpt-1.mp4 in the bundle
-    let aspect: CGFloat    // the recordings' own shape (GuideSpec.videoAspect) so fill never crops
+    let aspect: CGFloat    // the recordings' own shape (GuideSpec.videoAspect)
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.thumbnail, style: .continuous)
         Group {
             if let url = Bundle.main.url(forResource: resource, withExtension: "mp4") {
                 LoopingVideo(url: url)
             } else {
                 ZStack {
-                    Rectangle().fill(.quaternary)
+                    Rectangle().fill(.background.secondary)
                     Image(systemName: "play.circle")
                         .font(.largeTitle.weight(.light))
                         .foregroundStyle(.tertiary)
@@ -431,13 +361,13 @@ private struct StepVideo: View {
             }
         }
         .aspectRatio(aspect, contentMode: .fit)
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.stroke, lineWidth: 0.5))
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(.separator))
+        .accessibilityLabel("Tutorial video")
     }
 }
 
-/// AVPlayerLayer in an NSView — chromeless, muted, seamlessly looping (AVPlayerLooper).
+/// AVPlayerLayer in an NSView: chromeless, muted, seamlessly looping (AVPlayerLooper).
 private struct LoopingVideo: NSViewRepresentable {
     let url: URL
 
@@ -480,6 +410,12 @@ private struct LoopingVideo: NSViewRepresentable {
     }
 }
 
-#Preview("Connect your AIs") {
-    ConnectAIsView().frame(width: 920, height: 760)
+#Preview("Connect Your AIs") {
+    HStack(spacing: 0) {
+        ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+            NavigationStack { ConnectAIsView() }
+                .frame(width: 720, height: 760)
+                .environment(\.colorScheme, scheme)
+        }
+    }
 }

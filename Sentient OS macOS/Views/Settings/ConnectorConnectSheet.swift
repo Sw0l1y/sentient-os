@@ -1,7 +1,8 @@
 //
 // ConnectorConnectSheet.swift
-// Hosted connection popups verify native linked-account metadata before saving selection. Direct accounts retain their
-// browser OAuth, account IDs, knowledge toggle and cancellation lifecycle.
+// The Internet Accounts add-account sheet for a connector source. Hosted connections verify native
+// linked-account metadata before saving selection. Direct accounts retain their browser OAuth,
+// account IDs, knowledge toggle and cancellation lifecycle.
 // Doc: Documentation - Settings.md
 //
 
@@ -24,6 +25,7 @@ struct ConnectorConnectSheet: View {
     @State private var verifyingHosted = false
     @State private var message: String?
     @State private var operation: Task<Void, Never>?
+    @State private var confirmDisconnect = false
     @AppStorage private var hostedSelected: Bool
     @AppStorage(ModelBackend.key) private var backendRaw = ModelBackend.chatgpt.rawValue
     private let hostedBackend: ModelBackend
@@ -66,10 +68,10 @@ struct ConnectorConnectSheet: View {
     private var busy: Bool { connecting || disconnecting || verifyingHosted }
     private var connectTitle: String {
         switch connectionPhase {
-        case .openingBrowser: "Opening sign-in…"
-        case .waitingForBrowser: "Waiting for sign-in…"
-        case .savingConnection: "Saving connection…"
-        case .checkingTools: "Preparing tools…"
+        case .openingBrowser: "Opening Sign-In…"
+        case .waitingForBrowser: "Waiting for Sign-In…"
+        case .savingConnection: "Saving Connection…"
+        case .checkingTools: "Preparing Tools…"
         case nil: connector == nil ? "Connect \(name)" : "Reconnect \(name)"
         }
     }
@@ -86,73 +88,31 @@ struct ConnectorConnectSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            serviceIcon
-            Text(usesDirect ? "Connect \(name)" : name)
-                .display(20).foregroundStyle(Theme.Ink.statusInk)
-                .multilineTextAlignment(.center)
-
-            if usesDirect {
-                VStack(alignment: .leading, spacing: 9) {
-                    bullet("link", "Sign in to \(name) in your browser")
-                    bullet("lock", "Your connection stays in this Mac's Keychain")
-                    bullet("sparkles", "Your selected AI processes the content you request")
+            ConnectorSheetHeader(usesDirect ? "Connect \(name)" : name, message: headerLine) {
+                ConnectorSheetLogo(asset: source.isCurated ? source.logoAsset : nil)
+            }
+            Form {
+                if usesDirect {
+                    directSections
+                } else {
+                    hostedSections
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 14)
-
-                if let direct {
-                    VStack(spacing: 4) {
-                        Text(direct.label).foregroundStyle(Theme.Ink.bright)
-                        Text(direct.accountLabel ?? "Uses the account you approved in the browser.")
-                            .foregroundStyle(Theme.Ink.body)
-                    }
-                    .font(.subheadline).multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 16)
-                }
-
-                if ConnectorRegistry.kbEligible(selectionSlug) {
-                    if context == .settings || direct != nil {
-                        ConnectorKnowledgeControl(slug: selectionSlug)
-                            .disabled(busy)
-                            .padding(.top, 20)
-                    }
-                } else if connector != nil {
-                    taskOnlyNotice
-                        .padding(.top, 20)
-                }
-
-                if startedDirectConnection {
-                    Text("Sign in to \(name) in your browser, and then come back to Sentient.")
-                        .font(.callout.weight(.bold)).foregroundStyle(Theme.Ink.body)
-                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 14)
-                }
-
-                ConnectorActionButton(title: connectTitle, isLoading: connecting, action: connect)
-                    .padding(.top, 26)
-                    .disabled(busy)
-                if startedDirectConnection {
-                    ConnectorActionButton(title: "Done", kind: .done, action: done)
-                        .padding(.top, 14).disabled(busy)
-                }
-
-                statusLine.padding(.top, 14).frame(minHeight: 42, alignment: .top)
-
-                if direct != nil {
-                    Button(disconnecting ? "Disconnecting…" : "Disconnect account", action: disconnect)
-                        .buttonStyle(.plain).font(.subheadline)
-                        .foregroundStyle(Theme.Ink.deepMuted)
-                        .padding(.top, 18).disabled(busy)
-                }
-            } else {
-                hostedControls
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+            ConnectorSheetFooter {
+                footerLeading
+            } trailing: {
+                footerTrailing
             }
         }
-        .padding(.horizontal, 36).padding(.top, 40).padding(.bottom, 24)
-        .frame(width: 400).background(Theme.bg)
-        .overlay(alignment: .topLeading) {
-            CloseHoverButton { dismiss() }.padding(12).disabled(disconnecting)
+        .frame(minWidth: 460, idealWidth: 480, minHeight: 360, idealHeight: 440)
+        .presentationSizing(.form)
+        .confirmationDialog("Disconnect \(name)?", isPresented: $confirmDisconnect) {
+            Button("Disconnect", role: .destructive, action: disconnect)
+        } message: {
+            Text("Sentient removes this account’s access from this Mac.")
         }
         .onChange(of: connector?.id, initial: true) { _, id in
             // Once linked, never silently move this popup to another account of the service.
@@ -162,55 +122,128 @@ struct ConnectorConnectSheet: View {
         .onDisappear(perform: cancelOperation)
     }
 
-    private var hostedControls: some View {
-        VStack(spacing: 0) {
-            if hostedSelected && !hostedCanRead {
-                Text("This selected source is unavailable with your current AI. Choose a supported connection or stop reading it here.")
-                    .font(.callout).foregroundStyle(Theme.Ink.body)
-                    .multilineTextAlignment(.center).padding(.top, 14)
-                Button("Stop reading \(name)", action: stopHostedReading)
-                    .buttonStyle(.plain).font(.subheadline).padding(.top, 14)
-            }
-            if !hostedConnected {
-                Text(hostedInstructions)
-                    .font(.callout.weight(.bold)).foregroundStyle(Theme.Ink.body)
-                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 14)
+    // MARK: - Direct path (a Granola, Notion or other direct-MCP account)
 
-                if hostedBackend == .claude && ["outlook-mail", "outlook-calendar"].contains(source.serviceSlug) {
-                    Text("Uses Microsoft 365 with a work or school account.")
-                        .font(.subheadline).foregroundStyle(Theme.faint)
-                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 12)
-                }
+    @ViewBuilder private var directSections: some View {
+        Section {
+            Label {
+                Text("Your connection stays in this Mac’s Keychain")
+            } icon: {
+                Image(systemName: "lock").foregroundStyle(.secondary)
             }
-
-            ConnectorActionButton(title: hostedConnected ? "Open connector settings" : "Connect \(name)",
-                                  action: connect)
-                .padding(.top, 26)
-                .disabled(hostedBackend == .custom || (hostedSelected && !hostedCanRead))
-
-            if hostedConnected {
-                if hostedCanRead {
-                    Button("Stop reading \(name)", action: stopHostedReading)
-                        .buttonStyle(.plain).font(.subheadline)
-                        .foregroundStyle(Theme.Ink.deepMuted)
-                        .padding(.top, 18)
-                } else if !hostedSelected {
-                    taskOnlyNotice
-                        .padding(.top, 18)
-                }
-            }
-            if openedConnectorPage {
-                ConnectorActionButton(title: verifyingHosted ? "Checking connection…" : "Done", kind: .done,
-                    isLoading: verifyingHosted, action: done)
-                    .padding(.top, 14).disabled(busy)
-            }
-            if let message {
-                Text(message).font(.callout).foregroundStyle(Theme.Ink.amber)
-                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, 14)
+            Label {
+                Text("Your selected AI processes the content you request")
+            } icon: {
+                Image(systemName: "sparkles").foregroundStyle(.secondary)
             }
         }
+        if let direct {
+            Section("Account") {
+                StatusRow(direct.label, detail: direct.accountLabel ?? "Uses the account you approved in the browser.",
+                          tone: .ok) {
+                    if disconnecting {
+                        HStack(spacing: Space.s) {
+                            ProgressView().controlSize(.small)
+                            Text("Disconnecting…").font(.callout).foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Button("Disconnect…", role: .destructive) { confirmDisconnect = true }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(busy)
+                            .accessibilityIdentifier("connector.disconnect")
+                    }
+                }
+            }
+        }
+        if ConnectorRegistry.kbEligible(selectionSlug) {
+            if context == .settings || direct != nil {
+                ConnectorKnowledgeControl(slug: selectionSlug)
+                    .disabled(busy)
+            }
+        } else if connector != nil {
+            taskOnlySection
+        }
+        if message != nil || connectionPhase != nil || startedDirectConnection {
+            Section("Status") {
+                if let message {
+                    StatusLabel(message, tone: .error)
+                } else if connectionPhase != nil {
+                    StatusRow(phaseLine, tone: .working)
+                } else {
+                    StatusLabel("Sign in in your browser, then press Done.", tone: .info)
+                }
+            }
+        }
+    }
+
+    /// The phase half of the OAuth progress, as status copy.
+    private var phaseLine: String {
+        switch connectionPhase {
+        case .openingBrowser: "Opening \(name)’s sign-in page…"
+        case .waitingForBrowser: "Finish signing in in your browser."
+        case .savingConnection: "Saving your sign-in…"
+        case .checkingTools: "Signed in. Checking available tools. This can take a moment."
+        case nil: ""
+        }
+    }
+
+    // MARK: - Hosted path (a ChatGPT or Claude connector)
+
+    @ViewBuilder private var hostedSections: some View {
+        let lines = hostedFooterLines
+        if lines.isEmpty {
+            Section {
+                StatusRow("\(reader) Connector", detail: connectionDetail, tone: connectionTone)
+            }
+        } else {
+            Section {
+                StatusRow("\(reader) Connector", detail: connectionDetail, tone: connectionTone)
+            } footer: {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    ForEach(lines, id: \.self) { Text($0) }
+                }
+            }
+        }
+        if hostedConnected {
+            if !hostedCanRead && !hostedSelected { taskOnlySection }
+        }
+    }
+
+    private var connectionDetail: String {
+        if verifyingHosted { return "Checking connection…" }
+        if hostedSelected && !hostedCanRead { return "Unavailable with your current AI" }
+        if message != nil { return "Not verified" }
+        if hostedConnected { return "Connected" }
+        if openedConnectorPage { return "Waiting for you in \(reader)" }
+        return "Not connected"
+    }
+
+    private var connectionTone: StatusTone {
+        if verifyingHosted { return .working }
+        if hostedSelected && !hostedCanRead { return .warning }
+        if message != nil { return .warning }
+        if hostedConnected { return .ok }
+        if openedConnectorPage { return .info }
+        return .off
+    }
+
+    private var hostedFooterLines: [String] {
+        var lines: [String] = []
+        if hostedSelected && !hostedCanRead {
+            lines.append("This selected source is unavailable with your current AI. Choose a supported connection or stop reading it here.")
+        }
+        if let message { lines.append(message) }
+        if !hostedConnected && hostedBackend == .claude
+            && ["outlook-mail", "outlook-calendar"].contains(source.serviceSlug) {
+            lines.append("Uses Microsoft 365 with a work or school account.")
+        }
+        return lines
+    }
+
+    /// Union of the two places the hosted sheet offers to stop reading.
+    private var showsStopReading: Bool {
+        (hostedSelected && !hostedCanRead) || (hostedConnected && hostedCanRead)
     }
 
     private var hostedInstructions: String {
@@ -222,50 +255,57 @@ struct ConnectorConnectSheet: View {
             : "Enable \(name) in your \(reader) connectors and sign in there, then press Done to use it for tasks."
     }
 
-    private var taskOnlyNotice: some View {
-        Text("Available for tasks. This app does not support knowledge-base analysis.")
-            .font(.subheadline).foregroundStyle(Theme.Ink.body)
-            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+    // MARK: - Shared pieces
+
+    private var headerLine: String {
+        if usesDirect { return "Sign in to \(name) in your browser, and then come back to Sentient." }
+        if !hostedConnected { return hostedInstructions }
+        return hostedCanRead
+            ? "Sentient reads \(name) through your \(reader) connector."
+            : "Available for tasks through your \(reader) connector."
     }
 
-    @ViewBuilder private var serviceIcon: some View {
-        if source.isCurated, let asset = source.logoAsset {
-            ConnectorLogo(asset: asset)
-                .padding(.bottom, 18)
+    private var taskOnlySection: some View {
+        Section {
+            LabeledContent("Knowledge Base") {
+                StatusLabel("Tasks only", tone: .off)
+            }
+        } footer: {
+            Text("Available for tasks. This app does not support knowledge-base analysis.")
         }
     }
 
-    private func bullet(_ icon: String, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 9) {
-            Image(systemName: icon).font(.subheadline.weight(.medium))
-                .foregroundStyle(Theme.faint).frame(width: 16)
-            Text(text).font(.callout).foregroundStyle(Theme.Ink.body)
-                .fixedSize(horizontal: false, vertical: true)
+    @ViewBuilder private var footerLeading: some View {
+        if !usesDirect && showsStopReading {
+            Button("Stop Reading \(name)", action: stopHostedReading)
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("connector.stopReading")
         }
     }
 
-    private var statusLine: some View {
-        Group {
-            if let message {
-                Text(message).foregroundStyle(Theme.Ink.amber)
-            } else if let connectionPhase {
-                switch connectionPhase {
-                case .openingBrowser:
-                    Text("Opening \(name)'s sign-in page…").foregroundStyle(Theme.Ink.body)
-                case .waitingForBrowser:
-                    Text("Finish signing in in your browser.").foregroundStyle(Theme.Ink.body)
-                case .savingConnection:
-                    Text("Saving your sign-in…").foregroundStyle(Theme.Ink.body)
-                case .checkingTools:
-                    Text("Signed in. Checking available tools. This can take a moment.").foregroundStyle(Theme.Ink.body)
-                }
-            } else {
-                Text("Sign in in your browser, then press Done.")
-                    .foregroundStyle(Theme.faint)
+    @ViewBuilder private var footerTrailing: some View {
+        Button("Cancel", role: .cancel) { dismiss() }
+            .keyboardShortcut(.cancelAction)
+            .disabled(disconnecting)
+            .accessibilityIdentifier("connector.cancel")
+        if usesDirect {
+            ConnectorActionButton(title: connectTitle, kind: startedDirectConnection ? .again : .connect,
+                                  isLoading: connecting, action: connect)
+                .disabled(busy)
+            if startedDirectConnection {
+                ConnectorActionButton(title: "Done", kind: .done, action: done)
+                    .disabled(busy)
+            }
+        } else {
+            ConnectorActionButton(title: hostedConnected ? "Open connector settings" : "Connect \(name)",
+                                  kind: openedConnectorPage ? .again : .connect, action: connect)
+                .disabled(hostedBackend == .custom || (hostedSelected && !hostedCanRead))
+            if openedConnectorPage {
+                ConnectorActionButton(title: verifyingHosted ? "Checking Connection…" : "Done", kind: .done,
+                                      isLoading: verifyingHosted, action: done)
+                    .disabled(busy)
             }
         }
-        .font(.subheadline.weight(.medium))
-        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
     }
 
     private func connect() {
@@ -310,7 +350,7 @@ struct ConnectorConnectSheet: View {
             } catch {
                 guard !Task.isCancelled else { return }
                 message = (error as? DirectMCPError)?.errorDescription
-                    ?? "Sign-in couldn't be completed. Please try again."
+                    ?? "Sign-in couldn’t be completed. Please try again."
             }
         }
     }
@@ -387,7 +427,7 @@ struct ConnectorConnectSheet: View {
                 _ = try await DirectMCPConnections.shared.disconnect(direct.id)
                 dismiss()
             } catch {
-                message = "Local access couldn't be fully removed. Please try again."
+                message = "Local access couldn’t be fully removed. Please try again."
             }
             disconnecting = false
         }
@@ -403,18 +443,11 @@ private struct ConnectorKnowledgeControl: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            SettingsHairline()
-            HStack(spacing: 12) {
-                Text("Use for knowledge base")
-                    .font(.body.weight(.medium)).foregroundStyle(.primary)
-                Spacer(minLength: 12)
-                Toggle("Use for knowledge base", isOn: $enabled)
-                    .labelsHidden().toggleStyle(.switch).tint(Theme.Ink.green)
-            }
+        Section {
+            Toggle("Use for Knowledge Base", isOn: $enabled)
+                .accessibilityIdentifier("connector.knowledgeToggle")
+        } footer: {
             Text("Include this app in your analysis and nightly updates.")
-                .font(.subheadline).foregroundStyle(Theme.Ink.body)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
