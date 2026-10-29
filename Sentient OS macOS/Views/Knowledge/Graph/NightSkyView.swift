@@ -107,8 +107,21 @@ private extension View {
 
 // MARK: - The painter
 
-/// Draws the map in painter's order: edges, domain labels, nodes and their rings, note titles.
+/// Draws the map in painter's order: edges, domain label plates, title halos, nodes and their
+/// rings, title text. Text always sits on a backing in the document background colour, so edges
+/// never cut through it; labels are placed clear of the nodes (SkyRenderer), and a title's halo
+/// sits under the nodes so it never hides one.
 private enum KnowledgeGraphPainter {
+    /// The page background (NightSkyView's own), used for text backings in both appearances.
+    private static var backing: Color { Color(nsColor: .textBackgroundColor) }
+
+    private struct PlacedTitle {
+        let text: GraphicsContext.ResolvedText
+        let anchor: CGPoint
+        let size: CGSize
+        let opacity: Double
+    }
+
     static func draw(_ ctx: GraphicsContext, size: CGSize, model: NightSkyModel, graph: SkyGraph) {
         guard let sim = model.sim, sim.pos.count == graph.nodes.count else { return }
         let zf = SkyRenderer.sizeFactor(model)
@@ -120,9 +133,11 @@ private enum KnowledgeGraphPainter {
         let positions = graph.nodes.indices.map { model.toScreen(sim.pos[$0], size: size) }
 
         drawEdges(ctx, graph: graph, positions: positions, accentIndices: accentIndices)
-        drawDomainLabels(ctx, model: model, graph: graph, positions: positions)
+        let labelPlates = drawDomainLabels(ctx, size: size, model: model, graph: graph, positions: positions)
+        let titles = layoutTitles(ctx, size: size, model: model, graph: graph, avoiding: labelPlates)
+        drawTitleHalos(ctx, titles)
         drawNodes(ctx, size: size, model: model, graph: graph, positions: positions, zf: zf, focusSet: focusSet)
-        drawTitles(ctx, size: size, model: model, graph: graph)
+        drawTitleText(ctx, titles)
     }
 
     /// Hairline edges in the separator colour; edges touching the hovered or highlighted note
@@ -143,32 +158,45 @@ private enum KnowledgeGraphPainter {
         ctx.stroke(lit, with: .color(Color.accentColor), lineWidth: 1)
     }
 
-    /// Each domain's name at its nodes' centroid, with a dot in the domain colour. Labels fade as
-    /// you zoom in (titles take over) and while a note is hovered.
-    private static func drawDomainLabels(_ ctx: GraphicsContext, model: NightSkyModel, graph: SkyGraph,
-                                         positions: [CGPoint]) {
+    /// Each domain's name with a dot in the domain colour, on a thin capsule plate in the page
+    /// background (hairline separator border) so edges pass under it. SkyRenderer places the plate
+    /// clear of the nodes (under the domain's hub when there is room). Labels fade as you zoom in
+    /// (titles take over) and while a note is hovered. Returns the plates still clearly showing,
+    /// for the titles to avoid.
+    private static func drawDomainLabels(_ ctx: GraphicsContext, size: CGSize, model: NightSkyModel,
+                                         graph: SkyGraph, positions: [CGPoint]) -> [CGRect] {
         let zoom = Double(model.camera.zoom)
         let opacity = max(0, min(1, (1.9 - zoom) / 0.9)) * (1 - 0.5 * model.focusBlend)
-        guard opacity > 0.02, !graph.domains.isEmpty else { return }
-        var sums = [CGPoint](repeating: .zero, count: graph.domains.count)
-        var counts = [Int](repeating: 0, count: graph.domains.count)
-        for (i, n) in graph.nodes.enumerated() where n.domain >= 0 && n.domain < graph.domains.count {
-            sums[n.domain] += positions[i]
-            counts[n.domain] += 1
-        }
+        guard opacity > 0.02, !graph.domains.isEmpty else { return [] }
         var layer = ctx
         layer.opacity = opacity
-        for (d, name) in graph.domains.enumerated() where counts[d] > 0 {
-            let center = sums[d] * (1 / CGFloat(counts[d]))
-            let text = layer.resolve(Text(name).font(.caption.weight(.semibold)).foregroundStyle(.secondary))
-            let sz = text.measure(in: CGSize(width: 320, height: 40))
-            let dot: CGFloat = 6, gap: CGFloat = 5
-            let total = dot + gap + sz.width
-            let left = center.x - total / 2
-            layer.fill(Path(ellipseIn: CGRect(x: left, y: center.y - dot / 2, width: dot, height: dot)),
-                       with: .color(SkyRenderer.domainColor(d)))
-            layer.draw(text, at: CGPoint(x: left + dot + gap, y: center.y), anchor: .leading)
+        let dot: CGFloat = 6, gap: CGFloat = 5, padX: CGFloat = 8, padY: CGFloat = 3
+        var texts: [Int: (text: GraphicsContext.ResolvedText, size: CGSize)] = [:]
+        func text(_ d: Int) -> (text: GraphicsContext.ResolvedText, size: CGSize) {
+            if let t = texts[d] { return t }
+            let resolved = layer.resolve(Text(graph.domains[d]).font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary))
+            let t = (text: resolved, size: resolved.measure(in: CGSize(width: 320, height: 40)))
+            texts[d] = t
+            return t
         }
+        let slots = SkyRenderer.domainLabelPlacements(model: model, graph: graph, positions: positions,
+                                                      size: size) { d in
+            let sz = text(d).size
+            return CGSize(width: ceil(padX + dot + gap + sz.width + padX),
+                          height: ceil(max(sz.height, dot) + padY * 2))
+        }
+        for slot in slots {
+            let plate = slot.plate
+            let shape = Path(roundedRect: plate, cornerRadius: plate.height / 2, style: .continuous)
+            layer.fill(shape, with: .color(backing.opacity(0.92)))
+            layer.stroke(shape, with: .color(Color(nsColor: .separatorColor)), lineWidth: 0.5)
+            let left = plate.minX + padX
+            layer.fill(Path(ellipseIn: CGRect(x: left, y: plate.midY - dot / 2, width: dot, height: dot)),
+                       with: .color(SkyRenderer.domainColor(slot.domain)))
+            layer.draw(text(slot.domain).text, at: CGPoint(x: left + dot + gap, y: plate.midY), anchor: .leading)
+        }
+        return opacity > 0.35 ? slots.map(\.plate) : []
     }
 
     /// Filled circles in the domain colour, sized by degree. Notes outside the hovered
@@ -197,8 +225,10 @@ private enum KnowledgeGraphPainter {
         }
     }
 
-    /// Note titles where SkyRenderer's collision-aware placement allows them.
-    private static func drawTitles(_ ctx: GraphicsContext, size: CGSize, model: NightSkyModel, graph: SkyGraph) {
+    /// Note titles where SkyRenderer's collision-aware placement allows them (clear of each other,
+    /// the hover card and the domain label plates).
+    private static func layoutTitles(_ ctx: GraphicsContext, size: CGSize, model: NightSkyModel, graph: SkyGraph,
+                                     avoiding labelPlates: [CGRect]) -> [PlacedTitle] {
         var resolved: [Int: GraphicsContext.ResolvedText] = [:]
         func text(_ i: Int) -> GraphicsContext.ResolvedText {
             if let t = resolved[i] { return t }
@@ -208,13 +238,34 @@ private enum KnowledgeGraphPainter {
             resolved[i] = t
             return t
         }
-        let placements = SkyRenderer.titlePlacements(model: model, size: size) { i in
-            text(i).measure(in: CGSize(width: 360, height: 60))
+        let measureBox = CGSize(width: 360, height: 60)
+        let placements = SkyRenderer.titlePlacements(model: model, size: size, avoiding: labelPlates) { i in
+            text(i).measure(in: measureBox)
         }
-        for placement in placements {
+        return placements.map { p in
+            let t = text(p.index)
+            return PlacedTitle(text: t, anchor: p.anchor, size: t.measure(in: measureBox), opacity: p.opacity)
+        }
+    }
+
+    /// A soft plate in the page background behind each title (a halo: invisible on the empty page,
+    /// it only shows where it masks an edge). Drawn before the nodes, so it never covers one.
+    private static func drawTitleHalos(_ ctx: GraphicsContext, _ titles: [PlacedTitle]) {
+        for title in titles {
+            let rect = CGRect(x: title.anchor.x - title.size.width / 2, y: title.anchor.y - title.size.height / 2,
+                              width: title.size.width, height: title.size.height).insetBy(dx: -4, dy: -1.5)
             var layer = ctx
-            layer.opacity = placement.opacity
-            layer.draw(text(placement.index), at: placement.anchor, anchor: .center)
+            layer.opacity = title.opacity
+            layer.fill(Path(roundedRect: rect, cornerRadius: 4, style: .continuous),
+                       with: .color(backing.opacity(0.85)))
+        }
+    }
+
+    private static func drawTitleText(_ ctx: GraphicsContext, _ titles: [PlacedTitle]) {
+        for title in titles {
+            var layer = ctx
+            layer.opacity = title.opacity
+            layer.draw(title.text, at: title.anchor, anchor: .center)
         }
     }
 }

@@ -115,26 +115,50 @@ struct HomeView: View {
 
     /// The middle of the page (Today, the conversation, or an example), with the notice row
     /// docked above it and the Ask field floating below it.
+    ///
+    /// The notice row is stacked above the page, not a top safe-area inset of it: as an inset it
+    /// made the scroll view's top edge the bottom of the notice row, and the system's top scroll
+    /// edge effect draws its dividing line along that edge (the row is opaque, so nothing ever
+    /// scrolled under it anyway). Without a notice the page meets the toolbar like every other page.
     private var homePage: some View {
-        Group {
-            if let feature = selectedPersonalFeature {
-                featurePreview(feature)
-            } else if inConversation {
-                transcript
-            } else {
-                today
+        VStack(spacing: 0) {
+            notices
+            Group {
+                if let feature = selectedPersonalFeature {
+                    featurePreview(feature)
+                } else if inConversation {
+                    transcript
+                        .transition(pageSwap)
+                } else {
+                    today
+                        .transition(pageSwap)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { previewAreaHeight = $0 }
+            .floatingBar(edge: .bottom) { askBar }
+            .softScrollEdge(.bottom)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { previewAreaHeight = $0 }
-        .safeAreaInset(edge: .top, spacing: 0) { notices }
-        .floatingBar(edge: .bottom) { askBar }
-        .softScrollEdge(.bottom)
         .background(Color(nsColor: .textBackgroundColor))
         .pageSubtitle(subtitle, page: .home)
         .animation(standardMotion, value: presentation.surface)
         .animation(standardMotion, value: selectedPersonalFeature)
     }
+
+    /// Switching what the page shows (Today, the conversation, an example) is a swap, not a
+    /// crossfade: the outgoing page fades out first and the incoming one fades in after it, the way
+    /// Messages changes conversations, so no frame shows both texts at once. Each half carries its
+    /// own animation, so the swap is the same whichever transaction triggered it; Reduce Motion
+    /// (or Low Power Mode) makes it an instant swap.
+    private var pageSwap: AnyTransition {
+        guard let fadeOut = Motion.gated(Motion.quick, reduceMotion: reducedMotion),
+              let fadeIn = Motion.gated(Motion.standard.delay(Self.pageSwapFadeOut), reduceMotion: reducedMotion)
+        else { return .identity }
+        return .asymmetric(insertion: .opacity.animation(fadeIn), removal: .opacity.animation(fadeOut))
+    }
+
+    /// `Motion.quick`'s duration: the incoming page waits until the outgoing one has faded out.
+    private static let pageSwapFadeOut: TimeInterval = 0.15
 
     /// The window subtitle: what this page is and its state, never an action.
     private var subtitle: String {
@@ -556,6 +580,7 @@ struct HomeView: View {
         HomePersonalFeaturePreview(feature: feature, onClose: closePersonalFeature,
                                    isActive: isPresented && presentation.windowActive,
                                    availableHeight: previewAreaHeight)
+            .transition(pageSwap)          // also between two examples: one leaves, then the next appears
             .id(feature)                   // a different feature starts from its first page
     }
 

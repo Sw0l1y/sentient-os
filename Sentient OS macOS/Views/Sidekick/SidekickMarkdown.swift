@@ -250,6 +250,7 @@ struct SidekickSelectableMarkdown: NSViewRepresentable {
         }
         view.onReply = onReply; view.onReplyToMessage = onReplyToMessage; view.onSelectionChange = onSelectionChange
         view.source = source; view.fragment = fragment
+        view.wrapsToFrame = wrapping
         guard view.rendered != fragment.attributed || view.style != style else { return }
         let sameText = view.string == fragment.text
         let selection = view.selectedRange()
@@ -290,9 +291,17 @@ struct SidekickSelectableMarkdown: NSViewRepresentable {
             width = max(1, ceil(naturalWidth()) + 2)
         }
         let size = NSSize(width: width, height: .greatestFiniteMagnitude)
+        // Resizing the container makes AppKit re-apply the frame, which must not snap the
+        // container back to the placed width in the middle of this measurement.
+        view.measuring = true
         if container.containerSize != size { container.containerSize = size }
         layout.ensureLayout(for: container)
         let height = max(ceil(style.pointSize * 1.25), ceil(layout.usedRect(for: container).height) + 1)
+        view.measuring = false
+        // SwiftUI also asks for probe sizes (an unspecified or infinite width measures at
+        // 320 pt above) after it has placed the view. Measuring must not leave the drawn
+        // text wrapped at the probe's width, so wrap back to the placed frame.
+        view.wrapContainerToFrame()
         return CGSize(width: width, height: height)
     }
     static func dismantleNSView(_ view: SidekickMarkdownTextView, coordinator: ()) {
@@ -356,8 +365,22 @@ final class SidekickMarkdownTextView: NSTextView, NSTextViewDelegate {
     var chromeIsBubble: Bool?
     /// AppKit's own selection attributes, restored when a view stops being a bubble.
     var systemSelectedTextAttributes: [NSAttributedString.Key: Any]?
+    /// Wrapping text always lays out at the width SwiftUI placed it at; the measurement in
+    /// sizeThatFits only borrows the container. Horizontal (code) text keeps its natural width.
+    var wrapsToFrame = false
+    fileprivate var measuring = false
     private var reportedSelection = false
     private var selectionReplyDelay: Task<Void, Never>?
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        wrapContainerToFrame()
+    }
+    func wrapContainerToFrame() {
+        guard wrapsToFrame, !measuring, frame.width >= 1, let container = textContainer,
+              container.containerSize.width != frame.width else { return }
+        container.containerSize = NSSize(width: frame.width, height: .greatestFiniteMagnitude)
+    }
     private var draggingSelection = false
 
     override var acceptsFirstResponder: Bool { interactionEnabled && super.acceptsFirstResponder }

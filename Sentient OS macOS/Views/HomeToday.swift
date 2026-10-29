@@ -35,6 +35,13 @@ struct HomeToday: View {
     let onShowConversation: () -> Void
     let onStarter: (String) -> Void
 
+    /// The scroll view's visible height (between the notice row and the Ask bar). Today's column is
+    /// at least this tall and bottom-aligned inside it, so the scroll view never has to align short
+    /// content itself. When `defaultScrollAnchor(.bottom)`'s alignment role did it, the top scroll
+    /// edge effect reached from the top inset all the way down to the content's top edge and drew
+    /// its dividing line across the page there (FIX1-NOTES, Home).
+    @State private var viewportHeight: CGFloat = 0
+
     private var showsRows: Bool { !needsPersonalSetup && !entries.isEmpty }
 
     var body: some View {
@@ -64,9 +71,11 @@ struct HomeToday: View {
             .padding(.horizontal, Space.xl)
             .padding(.vertical, Space.xl)
             .centeredColumn(maxWidth: PageMetrics.readingColumn)
+            .frame(minHeight: viewportHeight, alignment: .bottom)
             .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: entries.map(\.id))
         }
         .defaultScrollAnchor(.bottom)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
     }
 
     /// One line under the greeting, by state (first match wins).

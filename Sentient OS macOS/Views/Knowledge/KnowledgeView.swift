@@ -90,6 +90,8 @@ struct KnowledgeView: View {
         }
         .frame(minWidth: 680, minHeight: 480)
         .toolbar { knowledgeToolbar }
+        // Showing or hiding the page's toolbar items is never animated: they go with the page.
+        .transaction(value: isPresented) { $0.disablesAnimations = true; $0.animation = nil }
         .pageSubtitle(vault == nil ? "No notes yet" : countText, page: .knowledge)
         .allowsHitTesting(isPresented)
         .disabled(!isPresented)
@@ -218,12 +220,26 @@ struct KnowledgeView: View {
     private func deactivate() {
         showCreatePrompt = false; showDiscardPrompt = false
         editorFocused = false; createFieldFocused = false
-        searchFocusTick = 0       // the field is rebuilt on return; it takes focus only when asked
+        // The Search Notes field is hidden with the toolbar, not rebuilt, so `searchFocusTick` keeps
+        // its value (any change is a focus request, which would land in the hidden field); the
+        // return trip bumps it. A field that still holds the keyboard gives it back.
+        releaseSearchField()
         cancelPendingNavigation()
         MainNavigation.shared.leaveKnowledge = nil
         VaultActivity.shared.editorBusy = false
         skyModel.endDrag(); skyModel.clearHover()
         // Do not clear entranceReady here: the outgoing sky must survive the reverse reveal.
+    }
+
+    /// Ends editing in the toolbar's Search Notes field (id "knowledge.search") if it has the
+    /// keyboard, so typing on another page never goes into the hidden field.
+    private func releaseSearchField() {
+        for window in NSApp.windows {
+            guard let editor = window.firstResponder as? NSText,
+                  let field = editor.delegate as? NSSearchField,
+                  field.accessibilityIdentifier() == "knowledge.search" else { continue }
+            window.makeFirstResponder(nil)
+        }
     }
 
     // MARK: Navigation + a wikilink back-trail
@@ -533,79 +549,87 @@ struct KnowledgeView: View {
 
     // MARK: Toolbar
 
-    /// Knowledge's window-toolbar items. Empty while another page is showing: the page stays
-    /// mounted behind the others, and its items must not leak into their toolbars.
+    /// Knowledge's window-toolbar items. Hidden while another page is showing: the page stays
+    /// mounted behind the others, and its items must not leak into their toolbars. They are hidden
+    /// (`.hidden`, one stable identity per item) rather than removed: removing them made the window
+    /// keep their empty Liquid Glass capsules on the destination page for about a second, because
+    /// each item's content was torn down at once while its glass platter animated out. A hidden
+    /// item takes its content and its platter away together. The ⇧⌘G stand-in is disabled while
+    /// hidden, and `deactivate()` takes the keyboard back from the hidden Search Notes field.
     @ToolbarContentBuilder private var knowledgeToolbar: some ToolbarContent {
-        if isPresented {
+        knowledgeToolbarItems.hidden(!isPresented)
+    }
+
+    @ToolbarContentBuilder private var knowledgeToolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button {
+                withAnimation(Motion.gated(Motion.standard, reduceMotion: reduce)) { sidebarVisible.toggle() }
+            } label: {
+                Label(sidebarVisible ? "Hide Notes List" : "Show Notes List", systemImage: "sidebar.left")
+            }
+            .help(sidebarVisible ? "Hide Notes List" : "Show Notes List")
+            .disabled(mode == .sky)
+        }
+        if mode == .reader && (canGoBack || cameFromSky) {
             ToolbarItem(placement: .navigation) {
-                Button {
-                    withAnimation(Motion.gated(Motion.standard, reduceMotion: reduce)) { sidebarVisible.toggle() }
-                } label: {
-                    Label(sidebarVisible ? "Hide Notes List" : "Show Notes List", systemImage: "sidebar.left")
-                }
-                .help(sidebarVisible ? "Hide Notes List" : "Show Notes List")
-                .disabled(mode == .sky)
+                Button(action: requestBack) { Label("Back", systemImage: "chevron.left") }
+                    .help(canGoBack ? "Previous Note" : "Back to Graph")
             }
-            if mode == .reader && (canGoBack || cameFromSky) {
-                ToolbarItem(placement: .navigation) {
-                    Button(action: requestBack) { Label("Back", systemImage: "chevron.left") }
-                        .help(canGoBack ? "Previous Note" : "Back to Graph")
-                }
+        }
+        ToolbarItem(placement: .principal) {
+            Picker("View", selection: Binding(get: { mode }, set: { requestMode($0) })) {
+                Text("Reader").tag(Mode.reader)
+                Text("Graph").tag(Mode.sky)
             }
-            ToolbarItem(placement: .principal) {
-                Picker("View", selection: Binding(get: { mode }, set: { requestMode($0) })) {
-                    Text("Reader").tag(Mode.reader)
-                    Text("Graph").tag(Mode.sky)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .help("Switch Views (⇧⌘G)")
-                .background {
-                    Button("Switch View") { requestMode(mode == .reader ? .sky : .reader) }
-                        .keyboardShortcut("g", modifiers: [.command, .shift])
-                        .hidden()
-                }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .help("Switch Views (⇧⌘G)")
+            .background {
+                Button("Switch View") { requestMode(mode == .reader ? .sky : .reader) }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                    .disabled(!isPresented)
+                    .hidden()
+            }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button("New Note…") { promptCreate(folder: false, in: createParentForSelection) }
+                Button("New Folder…") { promptCreate(folder: true, in: createParentForSelection) }
+            } label: {
+                Label("New", systemImage: "square.and.pencil")
+            }
+            .help("New Note or Folder")
+            .disabled(vault == nil || editing)
+        }
+        if mode == .reader, let sel = selection {
+            ToolbarItem(placement: .primaryAction) {
+                Button(editing ? "Done" : "Edit") { if editing { save() } else { beginEdit() } }
+                    .help(editing ? "Save Changes" : "Edit This Note")
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button("New Note…") { promptCreate(folder: false, in: createParentForSelection) }
-                    Button("New Folder…") { promptCreate(folder: true, in: createParentForSelection) }
+                    Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([sel]) }
+                    Divider()
+                    Button("Move to Trash", role: .destructive) { deleteItem(sel) }
+                        .disabled(editing || sel == vault?.readme)
                 } label: {
-                    Label("New", systemImage: "square.and.pencil")
+                    Label("More", systemImage: "ellipsis.circle")
                 }
-                .help("New Note or Folder")
-                .disabled(vault == nil || editing)
+                .help("More")
             }
-            if mode == .reader, let sel = selection {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(editing ? "Done" : "Edit") { if editing { save() } else { beginEdit() } }
-                        .help(editing ? "Save Changes" : "Edit This Note")
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([sel]) }
-                        Divider()
-                        Button("Move to Trash", role: .destructive) { deleteItem(sel) }
-                            .disabled(editing || sel == vault?.readme)
-                    } label: {
-                        Label("More", systemImage: "ellipsis.circle")
-                    }
-                    .help("More")
-                }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            ToolbarSearchField(text: $search, prompt: "Search Notes", identifier: "knowledge.search",
+                               width: 200, focusRequest: searchFocusTick,
+                               onSubmit: { if let first = searchResults.first { requestOpen(first.url) } })
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button { showInfo.toggle() } label: {
+                Label("Note Info", systemImage: "info.circle")
             }
-            ToolbarItem(placement: .primaryAction) {
-                ToolbarSearchField(text: $search, prompt: "Search Notes", identifier: "knowledge.search",
-                                   width: 200, focusRequest: searchFocusTick,
-                                   onSubmit: { if let first = searchResults.first { requestOpen(first.url) } })
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button { showInfo.toggle() } label: {
-                    Label("Note Info", systemImage: "info.circle")
-                }
-                .help(showInfo ? "Hide Note Info" : "Show Note Info")
-                .disabled(mode == .sky || selection == nil)
-            }
+            .help(showInfo ? "Hide Note Info" : "Show Note Info")
+            .disabled(mode == .sky || selection == nil)
         }
     }
 
