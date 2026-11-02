@@ -32,8 +32,10 @@ extension IterativeRun {
             SchoolFeedSource.recordSuccess(snapshot)
             SchoolFeedSource.publishToVault(snapshot)
             let count = snapshot.assignments.count, classes = snapshot.courses.count
+            // Schoology's own feed names no class, so "across 0 classes" would be noise.
+            let across = classes == 0 ? "" : " across \(classes == 1 ? "1 class" : "\(classes) classes")"
             p.finishSourceRead(name: name, label: name,
-                               summary: count == 0 ? nil : "\(RunIssue.count(count, "assignment")) across \(classes == 1 ? "1 class" : "\(classes) classes"), from the past week through the next \(SchoolSnapshot.futureDays) days.",
+                               summary: count == 0 ? nil : "\(RunIssue.count(count, "assignment"))\(across), from the past week through the next \(SchoolSnapshot.futureDays) days.",
                                items: count)
             if count == 0 {
                 p.quietReads += 1

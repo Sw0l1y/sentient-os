@@ -107,10 +107,17 @@ import Foundation
         check(titled("Quiz: Cell structure")?.course == "Biology", "a generic category is skipped for the course")
         check(titled("Read chapter 5")?.course == "English 10", "course from a trailing [Course] in SUMMARY")
         check(titled("Essay outline")?.course == "Course 9009", "an unnamed Schoology course keeps its ID")
-        check(titled("Spirit Day")?.course == SchoolCourse.unsorted && titled("Spirit Day")?.isEvent == true, "no course: Unsorted; a /event/ page is an event")
-        check(snapshot.courses == ["Algebra II", "Biology", "Course 9009", "English 10", "World History", "Unsorted"], "courses in order, Unsorted last")
+        check(titled("Spirit Day")?.course == SchoolCourse.unsorted && titled("Spirit Day")?.isEvent == true, "no class given: the unsorted marker; a /event/ page is an event")
+        check(snapshot.courses == ["Algebra II", "Biology", "Course 9009", "English 10", "World History"], "the named classes in order; an item with no class is not a class")
         check(titled("Worksheet 4.2: Systems of Equations, Part 2 (this title is folded across two lines)")?.link == "https://app.schoology.com/course/7001234/assignments/1001", "item links drop their query and fragment")
-        check(titled("Map project")?.link == nil, "an http item link is dropped")
+        check(titled("Map project")?.link == "https://app.schoology.com/assignment/5002", "an http item link is upgraded to https (Schoology writes http)")
+        check(SchoolFeedLink.excerpt("Bring your notes - Link: http://x.schoology.com/assignment/9", feed: feedLink) == "Bring your notes"
+              && SchoolFeedLink.excerpt(" - Link: http://x.schoology.com/assignment/9", feed: feedLink) == nil
+              && SchoolFeedLink.excerpt("Pages 3 - 5 today", feed: feedLink) == "Pages 3 - 5 today"
+              && SchoolFeedLink.excerpt("Read it - Link: " + feedLink.absoluteString, feed: feedLink) == "Read it", "Schoology's trailing ' - Link: <page>' leaves the excerpt, other dashes stay")
+        check(SchoolFeedLink.safeItemLink("http://app.schoology.com/share/" + secret, feed: feedLink) == nil
+              && SchoolFeedLink.safeItemLink("http://app.schoology.com:80/assignment/1", feed: feedLink) == "https://app.schoology.com/assignment/1",
+              "an upgraded http link still drops the feed's token, and loses the http port")
         let leak = titled("Calendar sync check")
         check(leak?.link == nil && leak?.details == "Subscribe with [link removed] today", "the feed link is never an item link and is removed from descriptions")
         check(SchoolFeedLink.safeItemLink("https://app.schoology.com/share/" + secret, feed: feedLink) == nil
@@ -147,13 +154,17 @@ import Foundation
         check(cycle.allSatisfy { $0.sourceID.hasPrefix("school-feed:") }, "cycle notes share one source ID namespace")
         check(cycle.contains { $0.title == "Worksheet 4.2: Systems of Equations, Part 2 (this title is folded across two lines) (Algebra II): due tomorrow" && $0.folder == "Algebra II" }, "a cycle note names the class and how soon it is due")
         check(cycle.contains { $0.text.contains("past due: was due 5 days ago. Submission status unknown.") }, "a past-due note says submission is unknown")
+        check(cycle.contains { $0.title == "Spirit Day: in 4 days" && $0.folder == "Schoology" && !$0.text.contains("Class:") }, "an item with no class names none and files under the source")
 
         // MARK: Vault notes
         let files = SchoolVaultNotes.render(snapshot, now: now, calendar: calendar)
-        check(files.map(\.name) == ["School", "Algebra II", "Biology", "Course 9009", "English 10", "World History", "Unsorted"], "an overview and one note per class")
+        check(files.map(\.name) == ["School", "Algebra II", "Biology", "Course 9009", "English 10", "World History"], "an overview and one note per named class, none for items without one")
         let overview = files[0].markdown, algebra = files[1].markdown
         check(overview.hasPrefix("# School\n") && overview.contains("## Due in the next 7 days") && overview.contains("[[Algebra II]]")
               && overview.contains("- [[Algebra II]]: 2 upcoming, 1 recently due"), "overview: this week across classes, with links")
+        check(overview.contains("- **Fri, Nov 6** · Spirit Day (event) · [Open in Schoology](https://app.schoology.com/event/4001)\n")
+              && overview.contains("- 1 item gives no class and is listed above.") && !overview.contains("Unsorted"),
+              "an item with no class is listed in the overview with its page, never as a class")
         check(algebra.contains("## Upcoming\n- **Tue, Nov 3, 8:59 PM** · Worksheet 4.2: Systems of Equations, Part 2 (this title is folded across two lines) · [Open in Schoology](https://app.schoology.com/course/7001234/assignments/1001)"),
               "course note: due date, title and link")
         check(algebra.contains("## Recently due\n- **Wed, Oct 28** · Unit 3 test corrections"), "course note: recently due")
@@ -161,6 +172,31 @@ import Foundation
         check(cycle.allSatisfy { !$0.text.contains(secret) && !$0.title.contains(secret) && !$0.text.contains("calendar/feed") }, "no cycle note carries the feed link")
         check(SchoolVaultNotes.escape("a*b_[c]") == "a\\*b\\_\\[c\\]", "titles are Markdown-escaped")
         check(SchoolVaultNotes.baseName("AP Bio: Period 3/4") == "AP Bio- Period 3-4" && SchoolVaultNotes.baseName("School") == "School (class)", "safe file names")
+
+        // MARK: A feed that names no class (Schoology's real student feed)
+        let soon = SchoolAssignment(id: "s", title: "Recipe Book Day 9", course: SchoolCourse.unsorted, due: local(2026, 11, 4, 23, 59), allDay: false,
+                                    link: "https://district.schoology.com/assignment/7", isEvent: false, details: nil)
+        let far = SchoolAssignment(id: "f", title: "Country project", course: SchoolCourse.unsorted, due: local(2026, 11, 20, 23, 59), allDay: false,
+                                   link: nil, isEvent: false, details: nil)
+        let bare = SchoolSnapshot(capturedAt: now, lower: snapshot.lower, upper: snapshot.upper, assignments: [soon, far])
+        let bareFiles = SchoolVaultNotes.render(bare, now: now, calendar: calendar)
+        let bareOverview = bareFiles.first?.markdown ?? ""
+        check(bareFiles.map(\.name) == ["School"] && bare.courses.isEmpty, "no named class: only the overview note")
+        check(bareOverview.contains("## Due in the next 7 days\n- **Wed, Nov 4, 11:59 PM** · Recipe Book Day 9 · [Open in Schoology](https://district.schoology.com/assignment/7)\n")
+              && bareOverview.contains("## Later\n- **Fri, Nov 20, 11:59 PM** · Country project\n")
+              && bareOverview.contains("does not say which class each item is for") && !bareOverview.contains("[["),
+              "no named class: this week and later both in the overview, each with its page, no class links")
+        let bareCycle = SchoolCycleNotes.notes(bare, now: now, calendar: calendar)
+        check(bareCycle.count == 2 && bareCycle.first?.text.contains("; the feed does not say which class each item is for.") == true
+              && bareCycle.dropFirst().allSatisfy { !$0.text.contains("Class:") && $0.folder == "Schoology" }, "no named class: the proactive notes claim none (\(bareCycle.count))")
+        check(SchoolCycleNotes.notes(SchoolSnapshot.build([], now: now, calendar: calendar), now: now, calendar: calendar).first?.text.contains("class") == false,
+              "an empty snapshot makes no claim about classes")
+        let classed = SchoolAssignment(id: "c", title: "Worksheet", course: "Algebra II", due: local(2026, 11, 3, 9), allDay: false, link: nil, isEvent: false, details: nil)
+        let mixedOverview = SchoolVaultNotes.render(SchoolSnapshot(capturedAt: now, lower: snapshot.lower, upper: snapshot.upper, assignments: [soon, classed, far]),
+                                                    now: now, calendar: calendar).first?.markdown ?? ""
+        check(mixedOverview.contains("## Later, with no class given\n- **Fri, Nov 20, 11:59 PM** · Country project\n")
+              && mixedOverview.contains("- [[Algebra II]]: 1 upcoming\n- 2 items give no class and are listed above."),
+              "with classes too, a later item with no class still has a home in the overview")
 
         // MARK: Vault writer
         let fm = FileManager.default
@@ -177,7 +213,7 @@ import Foundation
         let written = try String(contentsOf: school.appendingPathComponent("School.md"), encoding: .utf8)
         check(written.contains("[[Biology (Schoology)]]") && !written.contains("[[Biology]]"), "the overview links the names actually written")
         check(SchoolFeedVault.ownedPaths(in: vault) == Set(["School/School.md", "School/Algebra II.md", "School/Biology (Schoology).md", "School/Course 9009.md",
-              "School/English 10.md", "School/World History.md", "School/Unsorted.md"]), "the manifest lists exactly Sentient's notes")
+              "School/English 10.md", "School/World History.md"]), "the manifest lists exactly Sentient's notes")
         let later = SchoolSnapshot.build(feed.items.filter { !$0.categories.contains("World History") }, now: now, calendar: calendar, feedLink: feedLink)
         try SchoolFeedVault.publish(later, root: vault, now: now, calendar: calendar)
         check(!fm.fileExists(atPath: school.appendingPathComponent("World History.md").path)
