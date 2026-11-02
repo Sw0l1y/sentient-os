@@ -1,5 +1,5 @@
-// The expanded notch as an interactive Live Activity: a status-labelled error or a clarification
-// with two choice tiles, plus a Messages-style capsule field for typed guidance.
+// The expanded notch as an interactive Live Activity: a status label row, then an error or a
+// clarification with two choice tiles, plus a Messages-style capsule field for typed guidance.
 // Draft and timing live in SidekickRecovery, so dismissing or moving displays cannot erase them.
 // Doc: Documentation - Sidekick - Notch Window & Visual.md
 import SwiftUI
@@ -49,19 +49,21 @@ struct SidekickRecoveryLayout {
         } ?? 0
         let questionAndAnswersHeight = questionHeight + answersHeight + 2 * Self.scrollVPad
             + (content.question == nil ? 0 : Self.sectionSpacing) + upgradeHeight
-        let errorChrome = Self.labelHeight + 6 + (content.question == nil ? 0 : Self.sectionSpacing)
+        // Both variants open with the label row and its 6-point gap; an error above a question adds a section gap.
+        let labelChrome = Self.labelHeight + 6
+        let errorChrome = content.question == nil ? 0 : Self.sectionSpacing
         // Give the question and answers room first. A long error can scroll in the remaining
         // space; long questions/answers still scroll as a group above the fixed input.
         errorHeight = content.error.map {
             let lineHeight = Self.errorLineHeight
             let available = min(content.question == nil ? availableScrollHeight : 64, max(lineHeight + 2 * Self.errorVPad,
-                                       availableScrollHeight - questionAndAnswersHeight - errorChrome))
+                                       availableScrollHeight - questionAndAnswersHeight - labelChrome - errorChrome))
             let lines = max(1, floor((available - 2 * Self.errorVPad) / lineHeight))
             // Whole lines and an inset keep the first/last lines clear of the scroll edges.
             return min(Self.height($0, font: Self.errorFont, width: textWidth), lines * lineHeight)
                 + 2 * Self.errorVPad
         } ?? 0
-        let contentHeight = questionAndAnswersHeight + (content.error == nil ? 0 : errorChrome + errorHeight)
+        let contentHeight = labelChrome + questionAndAnswersHeight + (content.error == nil ? 0 : errorChrome + errorHeight)
         scrollHeight = min(contentHeight, availableScrollHeight)
         size = CGSize(width: maximum.width, height: chromeHeight + scrollHeight)
     }
@@ -89,11 +91,12 @@ struct SidekickRecoveryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: SidekickRecoveryLayout.fieldSpacing) {
             ScrollView {
-                VStack(alignment: .leading, spacing: SidekickRecoveryLayout.sectionSpacing) {
-                    // The error block exists only with an error: the layout counts its chrome only then.
-                    if let error = content.error {
-                        VStack(alignment: .leading, spacing: 6) {
-                            statusLabel
+                // One label row heads both variants, so a question is named as plainly as an error.
+                VStack(alignment: .leading, spacing: 6) {
+                    statusLabel
+                    VStack(alignment: .leading, spacing: SidekickRecoveryLayout.sectionSpacing) {
+                        // The error block exists only with an error: the layout counts its chrome only then.
+                        if let error = content.error {
                             ScrollView {
                                 Text(error)
                                     .font(Font(SidekickRecoveryLayout.errorFont))
@@ -108,29 +111,29 @@ struct SidekickRecoveryView: View {
                             .mask { scrollEdges }
                             .accessibilityLabel("Complete error")
                         }
-                    }
-                    if content.upgradeOffer != nil {
-                        SidekickUpgradeActions(recovery: recovery, content: content)
-                            .tint(NotchTone.accent)
-                    }
-                    if let question = content.question {
-                        Text(question.question)
-                            .font(Font(SidekickRecoveryLayout.questionFont))
-                            .foregroundStyle(.white)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
-                        HStack(alignment: .top, spacing: SidekickRecoveryLayout.answerSpacing) {
-                            ForEach(question.answers.indices, id: \.self) { index in
-                                Button { recovery.answer(id: question.id, choice: index) } label: {
-                                    Text(question.answers[index])
-                                        .font(Font(SidekickRecoveryLayout.answerFont))
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .frame(maxWidth: .infinity, minHeight: 18, alignment: .leading)
-                                        .padding(SidekickRecoveryLayout.answerPadding)
-                                        .frame(width: layout.answerWidth, alignment: .leading)
+                        if content.upgradeOffer != nil {
+                            SidekickUpgradeActions(recovery: recovery, content: content)
+                                .tint(NotchTone.accent)
+                        }
+                        if let question = content.question {
+                            Text(question.question)
+                                .font(Font(SidekickRecoveryLayout.questionFont))
+                                .foregroundStyle(.white)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                            HStack(alignment: .top, spacing: SidekickRecoveryLayout.answerSpacing) {
+                                ForEach(question.answers.indices, id: \.self) { index in
+                                    Button { recovery.answer(id: question.id, choice: index) } label: {
+                                        Text(question.answers[index])
+                                            .font(Font(SidekickRecoveryLayout.answerFont))
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, minHeight: 18, alignment: .leading)
+                                            .padding(SidekickRecoveryLayout.answerPadding)
+                                            .frame(width: layout.answerWidth, alignment: .leading)
+                                    }
+                                    .buttonStyle(NotchControlStyle(kind: .quiet, shape: .tile))
+                                    .accessibilityHint("Answer Sidekick and continue this task")
                                 }
-                                .buttonStyle(NotchControlStyle(kind: .quiet, shape: .tile))
-                                .accessibilityHint("Answer Sidekick and continue this task")
                             }
                         }
                     }

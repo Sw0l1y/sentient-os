@@ -4,11 +4,12 @@
 //
 //  The notch overlay's content, in the Dynamic Island's grammar. `NotchView` is the thin reactive
 //  binder (reads CommandCoordinator); `NotchContent` is the pure, previewable visual: the morphing
-//  black NotchShape, the identity mark on the leading side of the camera, the controls on the trailing
-//  side, and below the camera band the Live Activity content (field row, status caption, message
-//  preview, recovery). Colour comes only from tinted glyphs: the notch accent marks the identity and
-//  the thing to press next, system green/orange/red mark status, everything else is white at a fixed
-//  opacity (NotchTone). There is no edge glow; "working" is the identity mark turning.
+//  black NotchShape, a status glyph on the leading side of the camera (a notice's reason, recovery's
+//  back, the system spinner while a task runs, otherwise nothing), the controls on the trailing side,
+//  and below the camera band the Live Activity content (field row, status caption, message preview,
+//  recovery). Colour comes only from tinted glyphs: the notch accent marks the thing to press next,
+//  system green/orange/red mark status, everything else is white at a fixed opacity (NotchTone).
+//  There is no edge glow.
 //
 //  The shape, size, radii and content all animate together off `phase` (one spring) so nothing ever
 //  hard-cuts. Only the controls are hit-testable (the type field with its mic button, the send
@@ -29,11 +30,11 @@ struct NotchMetrics: Equatable {
     var baseWidth: CGFloat { max(hardwareNotch?.width ?? 0, 200) }
     var baseHeight: CGFloat { max(hardwareNotch?.height ?? 0, 32) }
 
-    var topRowHeight: CGFloat { baseHeight }   // the camera band — logo/control sit at its level
+    var topRowHeight: CGFloat { baseHeight }   // the camera band — leading glyph/controls sit at its level
     var captionHeight: CGFloat { 18 }          // the status text row — kept tight so the notch stays short
-    var centerGap: CGFloat { 64 }              // keep logo/control clear of the camera
-    var hPad: CGFloat { 18 }                   // clearance so the logo/mic clear the rounded corners
-    var controlSlot: CGFloat { 17 }            // the square both the logo AND every right control fill, so they twin exactly (same size, same optical center)
+    var centerGap: CGFloat { 64 }              // keep leading glyph/controls clear of the camera
+    var hPad: CGFloat { 18 }                   // clearance so the leading glyph/mic clear the rounded corners
+    var controlSlot: CGFloat { 17 }            // the square both the leading glyph AND every right control fill, so they twin exactly (same size, same optical center)
     var topPad: CGFloat { 0 }
     var bottomPad: CGFloat { 4 }
     var fieldRowHeight: CGFloat { 30 }         // the type field row (below the camera band); listening/transcribing keep it
@@ -345,9 +346,9 @@ struct NotchContent: View {
         }
     }
 
-    /// The identity mark turns only while work is happening; this freezes it under Reduce Motion and
-    /// Low Power Mode, and stops its clock entirely when the notch is hidden.
-    private var identityAnimationPaused: Bool { reduceMotion || lowPowerMode || phase == .hidden }
+    /// A task is running behind a visible notch. The hidden notch keeps no spinner, so no clock runs
+    /// behind an ordered-out panel.
+    private var working: Bool { phase != .hidden && (phase == .running || isTaskRunning) }
 
     private var morph: Animation {
         // Longer + bouncier than a flat ease — fast out of the gate, then a gentle overshoot-and-settle
@@ -371,7 +372,7 @@ struct NotchContent: View {
 
     private func content(size: CGSize) -> some View {
         VStack(spacing: 0) {
-            // The camera band: compact leading (identity, a notice's reason symbol, or recovery's back)
+            // The camera band: compact leading (a notice's reason symbol, recovery's back, or the work spinner)
             // and compact trailing (open-conversation, then the phase's one control).
             HStack(spacing: 0) {
                 if phase == .recovery {
@@ -385,19 +386,21 @@ struct NotchContent: View {
                     .buttonStyle(.plain)
                     .help(isTaskRunning ? "Stop this task and write a new request" : "Write a new request")
                     .accessibilityLabel(isTaskRunning ? "Stop this task and write a new request" : "Write a new request")
-                } else if let notice = noticeSymbol, let name = notice.systemName {
-                    Image(systemName: name)
+                } else if let notice = noticeSymbol {
+                    Image(systemName: notice.systemName)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(notice.tint)
                         .frame(width: metrics.controlSlot, height: metrics.controlSlot)
                         .accessibilityHidden(true)
                         .allowsHitTesting(false)
                         .transition(.opacity)
-                } else {
-                    NotchIdentityMark(size: metrics.controlSlot,
-                                      working: phase == .running || isTaskRunning,
-                                      animated: !identityAnimationPaused,
-                                      compact: phase == .opening)
+                } else if working {
+                    // Work in progress gets the system spinner, which only ever means "busy". A small
+                    // brand ring here read as a stalled spinner, so the slot stays empty otherwise.
+                    ProgressView().controlSize(.small).tint(.white)
+                        .frame(width: metrics.controlSlot, height: metrics.controlSlot)
+                        .accessibilityHidden(true)
+                        .allowsHitTesting(false)
                         .transition(.opacity)
                 }
                 Spacer(minLength: metrics.centerGap)
@@ -795,9 +798,10 @@ struct NotchContent: View {
 /// A Dynamic Island system alert names its reason with one coloured symbol. NotchPhase.notice carries
 /// only the coordinator's message, so the symbol is chosen by matching that text (first match wins;
 /// "downloading" precedes "voice" because the download notice mentions the voice model). Orange asks
-/// the user to act; the accent asks them to wait. Unknown messages keep the identity mark.
+/// the user to act; the accent asks them to wait. Unknown messages get a plain information symbol in
+/// the notch's quiet white, which asks for neither.
 private enum NotchNoticeSymbol {
-    case microphone, downloading, plus, onboarding, voice, brand
+    case microphone, downloading, plus, onboarding, voice, info
 
     init(message: String) {
         let m = message.lowercased()
@@ -806,51 +810,30 @@ private enum NotchNoticeSymbol {
         else if m.contains("chatgpt plus") { self = .plus }
         else if m.contains("onboarding") { self = .onboarding }
         else if m.contains("voice") || m.contains("catch that") { self = .voice }
-        else { self = .brand }
+        else { self = .info }
     }
 
-    /// nil = the leading slot keeps the static identity mark.
-    var systemName: String? {
+    var systemName: String {
         switch self {
         case .microphone: return "mic.slash.fill"
         case .downloading: return "arrow.down.circle"
         case .plus: return "lock.fill"
         case .onboarding: return "checklist"
         case .voice: return "exclamationmark.circle.fill"
-        case .brand: return nil
+        case .info: return "info.circle.fill"
         }
     }
 
     var tint: Color {
         switch self {
-        case .downloading, .onboarding, .brand: return NotchTone.accent
+        case .downloading, .onboarding: return NotchTone.accent
         case .microphone, .plus, .voice: return .orange
+        case .info: return NotchTone.primary
         }
     }
 }
 
-// MARK: - The notch's interactive elements (each fills the 17 pt control slot, like the mark)
-
-/// The compact-leading identity: the BrandMark in the notch accent. It stands still at rest and turns
-/// only while work is happening; Reduce Motion, Low Power Mode and the hidden notch freeze it.
-private struct NotchIdentityMark: View {
-    let size: CGFloat
-    let working: Bool
-    let animated: Bool
-    /// Opening draws the mark at 14 pt inside the 17 pt slot, so the morph spring carries the size into typing.
-    let compact: Bool
-    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
-    private var reduceMotion: Bool { motionOverride ?? systemReduceMotion }
-
-    var body: some View {
-        SpinningLogo(size: size, fast: working, paused: reduceMotion || !animated, tint: NotchTone.accent)
-            .scaleEffect(compact ? 14.0 / 17.0 : 1)
-            .frame(width: size, height: size)
-            .accessibilityHidden(true)
-            .allowsHitTesting(false)
-    }
-}
+// MARK: - The notch's interactive elements (each fills the 17 pt control slot)
 
 /// The running STOP: a quiet circle filling the slot, because it interrupts the work.
 private struct NotchStopButton: View {

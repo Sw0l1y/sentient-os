@@ -4,7 +4,7 @@ The **Knowledge** page in the main window (the home's Knowledge door and onboard
 shows the user their own knowledge base at `~/Sentient OS - Knowledge Base/`. Two faces over
 the same folder:
 
-- **The Constellation View, the default face.** The knowledge base as a living night sky: every note a star (sized by wikilink degree, twinkling on a stable per-note phase), every resolved `[[wikilink]]` a thread, top-level folders as hue-tinted labeled constellations, and the root README as the sun (the notch's `SpinningLogo`, slow, floating on the pinned center). The first assembly entrance lets stars glide in from beyond the rim and settle; within a session the sky keeps its camera and positions across Home and reader trips.
+- **The Constellation View, the default face.** The knowledge base as a living night sky: every note a star (sized by wikilink degree, twinkling on a stable per-note phase), every resolved `[[wikilink]]` a thread, top-level folders as hue-tinted labeled constellations, and the root README as the sun, pinned at the center. The first assembly entrance lets stars glide in from beyond the rim and settle; within a session the sky keeps its camera and positions across Home and reader trips.
 - **The reader:** an Obsidian-style split view: a folder-tree sidebar and rendered markdown, with editing, creation, and deletion.
 
 Native toolbar buttons (`SkyDoor`, wearing a muted moving gradient rim so the other face is
@@ -101,4 +101,4 @@ voice. `WindowChrome` forces the transparent title bar at launch.
 
 ## Related docs
 
-`Vault/Documentation - Knowledge Base (Vault).md` (what writes the folder), `Cloud/Documentation - Cloud - MCP Mirror.md`, `Notch Magic/Documentation - Sidekick - Notch Window & Visual.md` (`SpinningLogo`), `Views/Documentation - Views - Home, Processing & Shared UI.md` (`Theme`, `Orb` performance rules).
+`Vault/Documentation - Knowledge Base (Vault).md` (what writes the folder), `Cloud/Documentation - Cloud - MCP Mirror.md`, `Views/Documentation - Views - Home, Processing & Shared UI.md` (`Theme`, `Orb` performance rules).

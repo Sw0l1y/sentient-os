@@ -2,6 +2,8 @@
 """Measure production notch message layout against its real native Markdown renderer.
 
 No app/window/provider launch. TextKit measurement and the bounded layout/cache are real.
+The recovery card's layout (question, question with an error, error alone) is checked against
+the real SidekickRecoveryView laid out in a window that is never ordered in.
 """
 from pathlib import Path
 import subprocess
@@ -77,6 +79,69 @@ import AppKit
 '''
 
 
+RECOVERY_FIXTURE = r'''
+import AppKit
+import SwiftUI
+extension EnvironmentValues { @Entry var sidekickReduceMotionOverride: Bool? = nil }
+enum Motion { static func gated(_ animation: Animation, reduceMotion: Bool) -> Animation? { reduceMotion ? nil : animation } }
+enum CodexAuth { static let upgradeURL = URL(string: "https://example.invalid")! }
+enum SettingsPane { case frontierModel }
+enum HomeWindowOpening { enum Page { case settings }; static func open(_ page: Page, settingsPane: SettingsPane) {} }
+enum NotchPhase { case recovery }
+// The production values the recovery layout reads (NotchView.swift: hPad 18, topPad 0, bottomPad 4,
+// a 32 pt camera band, and the 520 x 240 recovery maximum on a 1440 x 900 display).
+struct NotchMetrics {
+    var hPad: CGFloat { 18 }
+    var topRowHeight: CGFloat { 32 }
+    var topPad: CGFloat { 0 }
+    var bottomPad: CGFloat { 4 }
+    func size(for phase: NotchPhase) -> CGSize { CGSize(width: 520, height: 240) }
+}
+
+@main @MainActor enum RecoveryLayoutTests {
+    static func scrollViews(_ view: NSView) -> [NSScrollView] {
+        ((view as? NSScrollView).map { [$0] } ?? []) + view.subviews.flatMap(scrollViews)
+    }
+    /// The layout's scroll and view heights against the drawn view's: the label row, the error and
+    /// the question must all be in both, or the card clips or leaves a gap.
+    static func check(_ name: String, _ content: SidekickRecoveryContent) {
+        let metrics = NotchMetrics()
+        let recovery = SidekickRecovery()
+        recovery.present(content) { _ in }
+        let layout = SidekickRecoveryLayout(content: content, metrics: metrics)
+        let width = layout.size.width - 2 * metrics.hPad
+        let host = NSHostingView(rootView: SidekickRecoveryView(recovery: recovery, content: content, layout: layout)
+            .frame(width: width).background(.black))
+        // Never ordered in: an offscreen window only gives the hosting view a layout pass.
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 400),
+                              styleMask: [.borderless], backing: .buffered, defer: true)
+        window.contentView = host
+        host.frame = NSRect(x: 0, y: 0, width: width, height: host.fittingSize.height)
+        host.layoutSubtreeIfNeeded()
+        guard let outer = scrollViews(host).max(by: { $0.frame.height < $1.frame.height }), let document = outer.documentView else {
+            fatalError("FAIL: \(name): the recovery view drew no scroll view")
+        }
+        let view = host.fittingSize.height
+        let expected = layout.size.height - metrics.topRowHeight - metrics.topPad - metrics.bottomPad
+        guard abs(document.frame.height - layout.scrollHeight) <= 1, abs(view - expected) <= 1 else {
+            fatalError("FAIL: \(name): layout scroll \(layout.scrollHeight) / view \(expected), drawn \(document.frame.height) / \(view)")
+        }
+        recovery.cancel()
+        window.contentView = nil
+    }
+    static func main() throws {
+        check("question", .clarification(try SidekickQuestion(error: nil,
+            question: "Would you like me to protect the longer afternoon block or keep your calendar open?",
+            answers: ["Protect the afternoon", "Keep it open"])))
+        check("question+error", .clarification(try SidekickQuestion(error: "The calendar refused the first write.",
+            question: "Should I try the other calendar?", answers: ["Yes", "No"])))
+        check("error", .failure(id: UUID(), error: "I couldn’t finish this step. Add a detail to help me continue."))
+        print("PASS: 3 notch recovery layout checks")
+    }
+}
+'''
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="sentient-notch-layout-test-") as temporary:
         directory = Path(temporary)
@@ -92,6 +157,23 @@ def main() -> None:
             "-o", str(executable),
         ], check=True, timeout=60)
         subprocess.run([str(executable)], check=True, timeout=20)
+
+        recovery_fixture = directory / "RecoveryLayoutTests.swift"
+        recovery_fixture.write_text(RECOVERY_FIXTURE)
+        recovery = directory / "recovery-layout-tests"
+        subprocess.run([
+            "swiftc", *platform_plugin_flags(), "-swift-version", "5", "-default-isolation", "MainActor",
+            "-enable-upcoming-feature", "NonisolatedNonsendingByDefault", "-parse-as-library",
+            str(APP / "Notch Magic/SidekickConversationStore.swift"),
+            str(APP / "Views/Sidekick/SidekickMarkdownDocument.swift"),
+            str(APP / "Views/Sidekick/SidekickMarkdown.swift"),
+            str(APP / "Notch Magic/SidekickNotchMessageLayout.swift"),
+            str(APP / "Notch Magic/SidekickNotchMessageView.swift"),
+            str(APP / "Notch Magic/SidekickRecovery.swift"),
+            str(APP / "Notch Magic/SidekickRecoveryView.swift"), str(recovery_fixture),
+            "-o", str(recovery),
+        ], check=True, timeout=120)
+        subprocess.run([str(recovery)], check=True, timeout=20)
 
 
 if __name__ == "__main__":

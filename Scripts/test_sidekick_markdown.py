@@ -68,6 +68,8 @@ import Foundation
         check(table.columns.map(\.alignment) == [.left, .right], "table alignment")
         check(table.rows[1].cells[1].fragment.text == "2", "table inline formatting")
         check(table.rows[2].cells[0].fragment.text == "pipe | inside", "escaped table pipe")
+        let plain = SidekickMarkdownDocument(markdown: "Your **afternoon** has [room](https://example.com).\n\n1. Finish the `calendar` research\n\n| A | B |\n|---|---|\n| x | **y** |\n\n---").plainText
+        check(plain == "Your afternoon has room.\n1. Finish the calendar research\nA B\nx y", "search plain text keeps Markdown syntax")
 
         let codeSource = "```swift\nlet greeting = \"hello\"\nprint(greeting)\n```"
         let codeDocument = SidekickMarkdownDocument(markdown: codeSource)
@@ -187,6 +189,14 @@ import Foundation
         let leftAnchor = NSRect(x: -1600, y: 450, width: 80, height: 16)
         let leftPopup = SidekickSelectionReplyPlacement.frame(anchor: leftAnchor, owner: leftOwner, screen: leftDisplay)!
         check(leftPopup.minY > leftAnchor.maxY && leftOwner.contains(leftPopup), "negative-origin monitor placement")
+        // Given the selection's last line, the chip goes under it, so it never covers the line above
+        // the selection (a "Worked for" status, the previous message); above only without room below.
+        let lastLine = NSRect(x: 300, y: 260, width: 60, height: 20)
+        let under = SidekickSelectionReplyPlacement.frame(anchor: middle, end: lastLine, owner: owner, screen: screen)!
+        check(under.maxY < lastLine.minY && under.midX == lastLine.midX, "floating reply sits under the selection's last line")
+        let nearBottom = NSRect(x: 300, y: 118, width: 60, height: 20)
+        let flipped = SidekickSelectionReplyPlacement.frame(anchor: nearBottom, end: nearBottom, owner: owner, screen: screen)!
+        check(flipped.minY > nearBottom.maxY && owner.contains(flipped), "no room below moves the reply above, inside the visible area")
         check(SidekickSelectionReplyPlacement.frame(anchor: .zero, owner: owner, screen: screen) == nil,
               "empty anchor cannot open a popup")
         check(SidekickSelectionReplyPlacement.frame(anchor: NSRect(x: 2000, y: 2000, width: 20, height: 20), owner: owner, screen: screen) == nil,

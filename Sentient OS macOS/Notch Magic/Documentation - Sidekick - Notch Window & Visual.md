@@ -13,7 +13,6 @@ lets you type, streams the work, and retracts back into the cutout. This doc is 
 | `NotchView.swift` | `NotchMetrics` (per-phase and hover sizing), `NotchView` (the thin binder over the coordinator), `NotchContent` (the pure, previewable visual: morph, shadow bed, layered glow, captions, the type field), `NotchStopButton`, the blur-dissolve transition. |
 | `NotchShape.swift` | The silhouette (animatable corner radii) and `NotchSkirtShape`, its open twin the glow strokes (concave top corners + sides + rounded bottom, never the flat top edge). |
 | `NotchSpace.swift` | A SkyLight private-API wrapper that pins the panel into a top-level window-server space so it never slides during the Spaces swipe. Best-effort; nil falls back to the public behavior. |
-| `SpinningLogo.swift` | The 2D spectrum-ring logo (matches the app icon), 13 s idle / 2 s while running. Also the Constellation View's sun. |
 
 Design language: OLED black as a material; the AI spectrum is `GlowHalo.stops` (the same stops the
 website logo spins); serif italic only for the notch's read-back and notices; mono for the machine
@@ -45,7 +44,7 @@ asymmetric (quick with a tiny overshoot in, slower and fully damped out, because
 lands inside the black cutout where a bounce reads as a hard cut). The swell is disabled while
 onboarding is before the film's notch beat (a button must never tease a dead click).
 
-## The visual (`NotchView`, `NotchMetrics`, `NotchShape`, `SpinningLogo`)
+## The visual (`NotchView`, `NotchMetrics`, `NotchShape`)
 
 `NotchMetrics` derives every size from the display's real notch (`auxiliaryTopLeftArea`), or a
 default pill on notch-less displays: base ≥ 200 × 32; opening / listening / transcribing = base + 76
@@ -63,7 +62,9 @@ glow passes (a wide soft halo, a dense halo, then over the fill a crisp bright r
 `AngularGradient(GlowHalo.stops)` masked by a `NotchSkirtShape` stroke, so the glow warps into the
 concave corners but never lights the bezel line, and morphs in lockstep with the fill because the mask
 lives in the body, not inside the per-frame `TimelineView`); the black shell (tappable only as the
-hover affordance); and the content: `SpinningLogo` on the left, a right control in the same 17 pt slot
+hover affordance); and the content: a leading status glyph (a notice's reason symbol, recovery's back
+control, or the system `ProgressView` while a task runs; otherwise empty, never the brand mark, whose
+small ring reads as a stalled spinner), a right control in the same 17 pt slot
 (mic → spinner → return glyph → STOP → outcome glyph), and the caption row: the serif-italic
 read-back in curly quotes, or the gradient "Remembering ‹note›" bloom while codex reads the knowledge
 base, or the mono status line with glyph-level `contentTransition(.interpolate)`, swapped with a
@@ -71,13 +72,6 @@ blur-dissolve-pop. One spring (`response 0.52, damping 0.72`) drives size, radii
 together; reduced motion → a 0.24 s ease. The edge glow is present in every visible state from the
 moment the notch appears; each glow layer expands its gradient past the stroke + blur on every edge so
 the bottom is not thinner than the sides.
-
-`SpinningLogo`: a soft additive bloom, a thick sharp saturated color band (the visible color; ONE
-additive pass, since stacking blows the pale stop to white), a fine white ring, and the white planet
-dot. The palette is `GlowHalo.stops` with the pale warm-yellow seam stop deepened to gold so the tight
-ring reads as a full rainbow rather than a near-white spot. Wall-clock spin via `TimelineView` with an
-anchor that re-bases on speed changes, and `.transaction { $0.animation = nil }` so the notch's morph
-spring can never interpolate the gradient angle and reverse-spin the logo.
 
 ## Lessons (please do not re-break these)
 
@@ -87,7 +81,7 @@ spring can never interpolate the gradient angle and reverse-spin the logo.
 4. The shape sits flush at the bezel and the glow strokes the skirt, so the bezel line never lights.
 5. The glow morphs in lockstep via a `.mask` in the body, never a shape built inside the `TimelineView`.
 6. Expand each glow gradient past the stroke + blur on every edge.
-7. `SpinningLogo`: one additive color pass and `.transaction { animation = nil }`.
+7. No brand mark in the 17 pt leading slot: the system spinner while working, otherwise nothing.
 8. No `@State` writes per frame; wall-clock `TimelineView` only.
 9. `RenderPreview` is broken on this target; build, then test motion live.
 10. Off-main code (the audio tap) is `nonisolated` and captures locals, never `self`; the project uses default-MainActor isolation.

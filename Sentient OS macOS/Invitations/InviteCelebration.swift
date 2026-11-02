@@ -1,6 +1,7 @@
 // The verified invitation's gift sheet: a 72 pt gift tile with one bounce, a bold title, one
 // sentence, a flat pass once claimed, and Close / Continue. It follows the system appearance and
 // sizes itself as a form sheet, so every caller presents it with `.sheet` and no frame of its own.
+// Any other host (a window, a popover) gets the content's own bounded size.
 // Presentation only: claiming or dismissing never changes the server-confirmed entitlement.
 // Doc: ../Views/Onboarding/Documentation - Onboarding.md
 
@@ -95,9 +96,14 @@ struct InviteCelebration: View {
             .padding(.top, Space.xs)
         }
         .opacity(arrived ? 1 : 0)
-        .frame(maxWidth: 440)
+        // The column always has a width to wrap in. Offered none (a window measuring its minimum
+        // size), the fixed-height texts set a word per line and the content asked its window for
+        // about 2,700 pt of height.
+        .frame(minWidth: 360, idealWidth: 440, maxWidth: 440)
         .padding(Space.xxl)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Centred in a larger host (a form sheet). A window or popover sizes to the content and
+        // can grow no taller than 720 pt.
+        .frame(maxWidth: .infinity, maxHeight: 720)
         .presentationSizing(.form)
         .onExitCommand(perform: onClose)
         .task { await reveal() }

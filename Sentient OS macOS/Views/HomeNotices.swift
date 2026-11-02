@@ -88,11 +88,12 @@ struct HomeNotices: View {
                     }
                 }
             }
-            .frame(maxWidth: PageMetrics.readingColumn)
+            // The page margin sits inside the reading column, as in Today and the conversation, so the
+            // notice shares their edges at every width.
             .padding(.horizontal, Space.xl)
             .padding(.top, Space.m)
             .padding(.bottom, Space.s)
-            .frame(maxWidth: .infinity)
+            .centeredColumn()
             // Today's text must not show through the gutters around the docked row.
             .background(Color(nsColor: .textBackgroundColor))
             .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: rankKey)

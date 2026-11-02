@@ -33,6 +33,12 @@ final class SidekickPresentation {
     var search = ""
     var searchShown = false
     var searchResults: [SidekickConversationStore.Record] = []
+    /// Older messages also match beyond the newest `searchLimit` shown.
+    private(set) var searchHasMore = false
+    /// Each result's exchange by task: the text of the request that began it (its subject line).
+    /// Read with the results, so a row never grows a line after it appears.
+    private(set) var searchRequests: [UUID: String] = [:]
+    static let searchLimit = 30
     var rows: [SidekickConversationStore.Record] = []
     var taskStates: [UUID: SidekickConversationStore.TranscriptTaskState] = [:]
     var expandedWorkTasks = Set<UUID>()
@@ -242,13 +248,27 @@ final class SidekickPresentation {
         searchToken &+= 1
         let token = searchToken
         let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty, let store = conversation.store else { searchResults = []; return }
+        guard !query.isEmpty, let store = conversation.store else { searchResults = []; searchHasMore = false; return }
         let expected = conversation.generation
+        let limit = Self.searchLimit
         do {
             try await Task.sleep(for: .milliseconds(240))
-            let found = try await Task.detached(priority: .userInitiated) { try store.searchTranscript(query, limit: 30) }.value
+            // One extra row says whether more match than are shown. Sentient-initiated exchanges
+            // (a briefing) have no request and show no subject line.
+            let (found, requests) = try await Task.detached(priority: .userInitiated) {
+                let found = try store.searchTranscript(query, limit: limit + 1).filter { $0.event.kind != .checkpoint }
+                var requests: [UUID: String] = [:]
+                for task in Set(found.prefix(limit).map(\.event.taskID)) {
+                    if let request = try store.records(taskID: task, limit: 8).first(where: { $0.event.kind == .userMessage }) {
+                        requests[task] = request.event.text
+                    }
+                }
+                return (found, requests)
+            }.value
             guard token == searchToken, !Task.isCancelled, conversation.generation == expected else { return }
-            searchResults = found.filter { $0.event.kind != .checkpoint }
+            searchResults = Array(found.prefix(limit))
+            searchHasMore = found.count > limit
+            searchRequests = requests
             error = nil
         } catch is CancellationError { }
         catch {
@@ -335,7 +355,7 @@ final class SidekickPresentation {
         activeWorkTaskID = nil; automaticallyExpandedWorkTaskID = nil
         followsLatest = true; browsingWorkTasks.removeAll(); workPages.removeAll(); readingIntentRevision &+= 1
         latestWorkPageRevision &+= 1
-        searchResults = []; search = ""; selectedMessages.removeAll()
+        searchResults = []; searchHasMore = false; searchRequests = [:]; search = ""; selectedMessages.removeAll()
         hasEarlier = false; hasLater = false; newMessages = false; navigationTarget = nil
         error = nil; generation = next; lastVisitedAttention = 0
     }

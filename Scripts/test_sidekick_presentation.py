@@ -185,6 +185,15 @@ typealias Presentation = SidekickPresentation
         await model.find(conversation: conversation)
         try check(model.searchResults.map(\.event.id) == ["request-history-86"] && model.error == nil,
                   "successful search replaces results and clears stale search error")
+        try check(!model.searchHasMore && model.searchRequests[model.searchResults[0].event.taskID] == "Request 86, search-beta",
+                  "a short search reads more than it found, or lost its exchange's request")
+        model.search = "Response"
+        await model.find(conversation: conversation)
+        try check(model.searchResults.count == Presentation.searchLimit && model.searchHasMore
+                  && model.searchResults.first?.event.id == "response-history-94",
+                  "a search past the limit shows the newest page and says more match")
+        try check(model.searchResults.allSatisfy { model.searchRequests[$0.event.taskID]?.hasPrefix("Request ") == true },
+                  "a result arrived without its exchange's request (the row would grow a line later)")
 
         model.search = "search-alpha"
         let oldQuery = Task { await model.find(conversation: conversation) }
@@ -199,7 +208,7 @@ typealias Presentation = SidekickPresentation
         model.search = " \n "
         await model.find(conversation: conversation)
         await clearedQuery.value
-        try check(model.searchResults.isEmpty, "clearing query invalidates already debouncing result")
+        try check(model.searchResults.isEmpty && !model.searchHasMore, "clearing query invalidates already debouncing result")
 
         model.setSelection(true, messageID: "one")
         model.setSelection(true, messageID: "two")

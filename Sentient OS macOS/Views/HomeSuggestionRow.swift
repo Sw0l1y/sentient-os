@@ -321,9 +321,50 @@ struct HomeSuggestionTile: View {
         } else if let action {
             methodTile(action)
         } else {
+            namedSourceTile
+        }
+    }
+
+    /// A row without an action (demo decks, showcases) still names its source in the kicker
+    /// ("Overdue · 2 days · Gmail"): that source's icon as the Knowledge Sources rows draw it, or
+    /// the method's glyph. The sparkles glyph only when the kicker names nothing.
+    @ViewBuilder private var namedSourceTile: some View {
+        switch Self.namedSource(in: briefing.kicker) {
+        case .logo(let asset)?:
+            KnowledgeSourcePill.icon(asset: asset, size: size)
+        case .method(let method)?:
+            IconTile(.method(method), size: size)
+        case nil:
             IconTile(.demoSuggestion, size: size)
         }
     }
+
+    enum NamedSource: Equatable {
+        case logo(String)                   // a KnowledgeSourcePill asset name
+        case method(PreparedAction.Method)
+    }
+
+    /// The source a kicker names. Provenance comes last ("Press · Early next week · WhatsApp"), so
+    /// the parts are read from the end; in a joined part ("iMessage + Calendar") the first name wins.
+    static func namedSource(in kicker: String) -> NamedSource? {
+        for part in kicker.split(separator: "·").reversed() {
+            for name in part.split(separator: "+") {
+                if let source = namedSources[key(String(name))] { return source }
+            }
+        }
+        return nil
+    }
+
+    /// Kicker names, as Briefing.kickerLine writes the methods and the demo decks write their
+    /// sources. Gmail and Calendar match `methodTile`'s logos.
+    private static let namedSources: [String: NamedSource] = [
+        "gmail": .logo("GmailMark"),
+        "calendar": .logo("GoogleCalendarMark"),
+        "whatsapp": .logo("WhatsAppMark"),
+        "imessage": .logo("IMessageMark"),
+        "computer use": .method(.computer),
+        "researched": .method(.research),
+    ]
 
     @ViewBuilder private func methodTile(_ action: PreparedAction) -> some View {
         switch action.method {

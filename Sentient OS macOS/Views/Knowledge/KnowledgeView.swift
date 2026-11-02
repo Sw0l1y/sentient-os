@@ -16,6 +16,9 @@
 //  first note, search stays inside it and the subtitle counts its notes. nil = the whole vault,
 //  with Overview.
 //
+//  No vault yet: the page is one centred empty state whose action shows Analysis, and the toolbar
+//  keeps none of the page's items (there is nothing to switch, create, edit or search).
+//
 //  Data: VaultTree.swift · rendering: MarkdownView.swift.
 //  Doc: Views/Knowledge/Documentation - Knowledge Window (Constellation & Reader).md
 //
@@ -183,7 +186,7 @@ struct KnowledgeView: View {
     /// in from the leading edge and keeps the width its divider was dragged to.
     private var readerSplit: some View {
         HStack(spacing: 0) {
-            if sidebarVisible && !(loaded && vault == nil) {
+            if sidebarVisible && !vaultMissing {
                 HStack(spacing: 0) {
                     KnowledgeNotesList(vault: vault, scope: scopeNode, selection: selection, search: search,
                                        expanded: $expanded,
@@ -209,11 +212,12 @@ struct KnowledgeView: View {
         }
         // Window-open focus lands in Search Notes. AppKit assigns the initial key view a beat after
         // SwiftUI's appear, so the request waits 100 ms. Only in Reader mode: the graph keeps the
-        // keyboard for Esc.
+        // keyboard for Esc. Never without a vault: the field is hidden then, and a request would
+        // land in it unseen or wait to steal focus when the vault appears.
         .task(id: isPresented) {
             guard isPresented else { return }
             do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, !vaultMissing else { return }
             searchFocusTick += 1
         }
     }
@@ -232,11 +236,18 @@ struct KnowledgeView: View {
         return [g.nodes.count, g.edges.count]
     }
 
+    /// No knowledge base: the page is the empty state alone. Before the first scan, the folder's
+    /// absence answers (one stat), so a first open never shows the page's toolbar items for a beat.
+    private var vaultMissing: Bool { loaded ? vault == nil : !KnowledgeVault.exists }
+
     private func loadVault() async {
         // A plain directory walk (~a handful of folders) — cheap enough to do inline on open.
         let v = KnowledgeVault.load()
         vault = v
         loaded = true
+        // The Reader / Graph switch is hidden without a vault, so the page never stays in a graph
+        // it could not leave.
+        if v == nil { mode = .reader }
         // The scoped folder vanished (trashed in Finder, renamed, replaced by analysis): fall
         // back to All Knowledge so the title, the sidebar selection and the list agree, instead
         // of a folder title over the whole vault. Through the shell's route, so the leave guard
@@ -662,8 +673,9 @@ struct KnowledgeView: View {
     /// switching to the Graph (a heavy first build) cannot leave their capsules behind either.
     /// Each item states its whole condition: an inner `.hidden(false)` overrides an outer
     /// `.hidden(true)` (measured), so the page gate is repeated on every item, never wrapped.
-    /// The ⇧⌘G stand-in is disabled while hidden, and `deactivate()` takes the keyboard back from
-    /// the hidden Search Notes field.
+    /// The gate also closes while there is no knowledge base, so the empty state stands alone
+    /// under the title. The ⇧⌘G stand-in is disabled while hidden, and `deactivate()` takes the
+    /// keyboard back from the hidden Search Notes field.
     @ToolbarContentBuilder private var knowledgeToolbar: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
             Button {
@@ -674,12 +686,12 @@ struct KnowledgeView: View {
             .help(sidebarVisible ? "Hide Notes List" : "Show Notes List")
             .disabled(mode == .sky)
         }
-        .hidden(!isPresented)
+        .hidden(!showsPageItems)
         ToolbarItem(placement: .navigation) {
             Button(action: requestBack) { Label("Back", systemImage: "chevron.left") }
                 .help(canGoBack ? "Previous Note" : "Back to Graph")
         }
-        .hidden(!isPresented || !(mode == .reader && (canGoBack || cameFromSky)))
+        .hidden(!showsPageItems || !(mode == .reader && (canGoBack || cameFromSky)))
         ToolbarItem(placement: .principal) {
             Picker("View", selection: Binding(get: { mode }, set: { requestMode($0) })) {
                 Text("Reader").tag(Mode.reader)
@@ -692,11 +704,11 @@ struct KnowledgeView: View {
             .background {
                 Button("Switch View") { requestMode(mode == .reader ? .sky : .reader) }
                     .keyboardShortcut("g", modifiers: [.command, .shift])
-                    .disabled(!isPresented)
+                    .disabled(!showsPageItems)
                     .hidden()
             }
         }
-        .hidden(!isPresented)
+        .hidden(!showsPageItems)
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button("New Note…") { promptCreate(folder: false, in: createParentForSelection) }
@@ -707,12 +719,12 @@ struct KnowledgeView: View {
             .help("New Note or Folder")
             .disabled(vault == nil || editing)
         }
-        .hidden(!isPresented)
+        .hidden(!showsPageItems)
         ToolbarItem(placement: .primaryAction) {
             Button(editing ? "Done" : "Edit") { if editing { save() } else { beginEdit() } }
                 .help(editing ? "Save Changes" : "Edit This Note")
         }
-        .hidden(!isPresented || !showsNoteActions)
+        .hidden(!showsPageItems || !showsNoteActions)
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button("Reveal in Finder") {
@@ -726,13 +738,13 @@ struct KnowledgeView: View {
             }
             .help("More")
         }
-        .hidden(!isPresented || !showsNoteActions)
+        .hidden(!showsPageItems || !showsNoteActions)
         ToolbarItem(placement: .primaryAction) {
             ToolbarSearchField(text: $search, prompt: "Search Notes", identifier: "knowledge.search",
                                width: 200, focusRequest: searchFocusTick,
                                onSubmit: { if let first = searchResults.first { requestOpen(first.url) } })
         }
-        .hidden(!isPresented)
+        .hidden(!showsPageItems)
         ToolbarItem(placement: .primaryAction) {
             Button { showInfo.toggle() } label: {
                 Label("Note Info", systemImage: "info.circle")
@@ -740,8 +752,11 @@ struct KnowledgeView: View {
             .help(showInfo ? "Hide Note Info" : "Show Note Info")
             .disabled(mode == .sky || selection == nil)
         }
-        .hidden(!isPresented)
+        .hidden(!showsPageItems)
     }
+
+    /// The page gate: Knowledge is the page on show and has a knowledge base to act on.
+    private var showsPageItems: Bool { isPresented && !vaultMissing }
 
     /// Edit and More act on the open note, in the Reader only.
     private var showsNoteActions: Bool { mode == .reader && selection != nil }
@@ -754,9 +769,17 @@ struct KnowledgeView: View {
             editorView(url)
         } else if let note, let url = selection {
             readerDocument(url, note)
-        } else if loaded && vault == nil {
-            ContentUnavailableView("No Knowledge Base Yet", systemImage: "books.vertical",
-                                   description: Text("Your knowledge will appear here after analysis. You can use Sidekick while it’s being built."))
+        } else if vaultMissing {
+            // The page's one job until analysis builds the vault: the Analysis page says what it
+            // still needs (setup, a first run) or how far it has got.
+            ContentUnavailableView {
+                Label("No Knowledge Base Yet", systemImage: "books.vertical")
+            } description: {
+                Text("Your knowledge will appear here after analysis. You can use Sidekick while it’s being built.")
+            } actions: {
+                Button("Show Analysis") { MainNavigation.shared.show(.analysis) }
+                    .buttonStyle(.borderedProminent)
+            }
         } else if loaded, let node = scopeNode, vault?.landingNote(in: node) == nil {
             ContentUnavailableView("No Notes", systemImage: "folder",
                                    description: Text("“\(node.name)” has no notes yet."))

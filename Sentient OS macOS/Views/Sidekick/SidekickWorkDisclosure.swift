@@ -21,6 +21,25 @@ struct SidekickWorkDisclosure: View {
     @State private var earlier = false
     private var currentPage: Page { presentation.workPage(taskID) ?? (running ? .latest : .after(0)) }
     private func selectPage(_ page: Page) { presentation.setWorkPage(page, taskID: taskID) }
+    /// The page a paging button asked for, until it has loaded: that button's row shows a mini
+    /// progress indicator and the paging buttons wait (SPEC-D2). Live refreshes never set it, so
+    /// they never blink the buttons.
+    @State private var pagingTo: Page?
+    private var pagingEarlier: Bool { if case .before? = pagingTo { true } else { false } }
+    private func request(_ page: Page) {
+        if page != currentPage { pagingTo = page }
+        selectPage(page)
+    }
+    /// The latest page shows only its newest steps, nearest the answer; the rest wait behind
+    /// Earlier Steps above them, so a long run never pushes its answer off screen.
+    private static let recentSteps = 4
+    /// The reader opened the steps hidden above the newest ones.
+    @State private var showsHiddenSteps = false
+    private var shownSteps: ArraySlice<SidekickActivityPresentation.Step> {
+        currentPage == .latest && !showsHiddenSteps ? steps.suffix(Self.recentSteps) : steps[...]
+    }
+    /// Where a frozen window starts: the first step on screen, so freezing never reveals more.
+    private var firstShownSequence: Int64? { shownSteps.first?.firstSequence ?? records.first?.sequence }
     @State private var more = false
     @State private var loading = false
     @State private var hasLoaded = false
@@ -33,6 +52,14 @@ struct SidekickWorkDisclosure: View {
     private var reduced: Bool { motionOverride ?? systemReduced }
     private var canExpand: Bool { running || state?.hasActivity == true || !steps.isEmpty || failureDescription != nil || failed }
     private var revealed: Bool { expanded && canExpand }
+    /// Whether a header has anything to report: live work, an outcome, or recorded activity. A
+    /// task that has only asked a question has none of these, and a question is not "Activity".
+    /// `latestRun` (the session's most recent run, live or just ended) bridges the moment between
+    /// the run ending and its saved outcome loading, so the header never drops out and comes back.
+    static func hasSummary(state: SidekickConversationStore.TranscriptTaskState?, running: Bool,
+                           latestRun: Bool = false) -> Bool {
+        running || latestRun || state?.finished != nil || state?.hasActivity == true
+    }
     private var progressNote: String? {
         guard running, !waiting, let note = SidekickTranscriptLayout.progressNote(liveStatus) else { return nil }
         let latest = conversation.messages.last { $0.event.taskID == taskID && $0.event.kind == .assistantMessage }
@@ -68,8 +95,8 @@ struct SidekickWorkDisclosure: View {
             // Freeze the existing visible window as soon as the reader takes control.
             // Future commits can update its statuses without pushing its first rows away.
             if running, hasLoaded, currentPage == .latest, !presentation.canFollowLatest,
-               let first = records.first {
-                selectPage(.after(max(0, first.sequence - 1)))
+               let first = firstShownSequence {
+                selectPage(.after(max(0, first - 1)))
             }
         }
         .onChange(of: presentation.canFollowLatest) { _, follows in
@@ -78,8 +105,11 @@ struct SidekickWorkDisclosure: View {
             }
         }
         .onChange(of: presentation.latestWorkPageRevision) { _, _ in
+            showsHiddenSteps = false
             if running { selectPage(.latest); revision &+= 1 }
         }
+        // The live disclosure under the transcript is reused by the next run.
+        .onChange(of: taskID) { _, _ in showsHiddenSteps = false }
         .onChange(of: progressNote) { _, _ in
             guard running, active else { return }
             presentation.activityDidChange(taskID: taskID, generation: conversation.generation,
@@ -173,12 +203,63 @@ struct SidekickWorkDisclosure: View {
         }
     }
 
+    /// Oldest at the top, newest at the bottom beside the answer: Earlier Steps, the visible steps,
+    /// forward paging, then the live note.
     private var activity: some View {
-        VStack(alignment: .leading, spacing: Space.s) {
+        let shown = shownSteps
+        let hidden = steps.count - shown.count
+        return VStack(alignment: .leading, spacing: Space.s) {
             if let failureDescription {
                 Text(String(failureDescription.prefix(800))).font(.callout)
                     .foregroundStyle(.secondary).textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if steps.isEmpty && (failed || (!running && (loading || !hasLoaded))) {
+                HStack(spacing: Space.s) {
+                    if failed {
+                        StatusLabel("Activity couldn’t be loaded.", tone: .error)
+                        Button("Try Again") { revision &+= 1 }
+                            .buttonStyle(.borderless).controlSize(.small)
+                    } else {
+                        if expanded { ProgressView().controlSize(.mini) }
+                        Text("Loading activity…").font(.callout).foregroundStyle(.secondary)
+                    }
+                }.frame(minHeight: 16)
+            }
+            if hidden > 0 || earlier {
+                HStack(spacing: Space.m) {
+                    Button("Earlier Steps") {
+                        // Opening the hidden steps is reading: following pauses, so they appear
+                        // under this button instead of growing out of view above it.
+                        if hidden > 0 { showsHiddenSteps = true; presentation.browseWork(taskID) }
+                        else if let first = records.first { presentation.browseWork(taskID); request(.before(first.sequence)) }
+                    }
+                    if pagingEarlier { ProgressView().controlSize(.mini) }
+                }
+                .buttonStyle(.borderless).controlSize(.small)
+                .disabled(pagingTo != nil)
+            }
+            ForEach(shown) { step in
+                SidekickActivityRow(step: step, running: running)
+            }
+            if more || (running && currentPage != .latest) {
+                HStack(spacing: Space.m) {
+                    if more {
+                        Button("Next Steps") {
+                            guard let last = records.last else { return }
+                            presentation.browseWork(taskID); request(.after(last.sequence))
+                        }
+                    }
+                    if running && currentPage != .latest {
+                        Button("Latest Steps") {
+                            showsHiddenSteps = false
+                            presentation.followLatestWork(taskID); request(.latest)
+                        }
+                    }
+                    if pagingTo != nil && !pagingEarlier { ProgressView().controlSize(.mini) }
+                }
+                .buttonStyle(.borderless).controlSize(.small)
+                .disabled(pagingTo != nil)
             }
             if let progressNote {
                 HStack(alignment: .firstTextBaseline, spacing: Space.s) {
@@ -194,45 +275,6 @@ struct SidekickWorkDisclosure: View {
                         .accessibilityIdentifier("sidekick.thinking")
                 }
                 .font(.callout).foregroundStyle(.secondary)
-            }
-            if steps.isEmpty && (failed || (!running && (loading || !hasLoaded))) {
-                HStack(spacing: Space.s) {
-                    if failed {
-                        StatusLabel("Activity couldn’t be loaded.", tone: .error)
-                        Button("Try Again") { revision &+= 1 }
-                            .buttonStyle(.borderless).controlSize(.small)
-                    } else {
-                        if expanded { ProgressView().controlSize(.mini) }
-                        Text("Loading activity…").font(.callout).foregroundStyle(.secondary)
-                    }
-                }.frame(minHeight: 16)
-            }
-            ForEach(steps) { step in
-                SidekickActivityRow(step: step, running: running)
-            }
-            if earlier || more || (running && currentPage != .latest) {
-                HStack(spacing: Space.m) {
-                    if earlier {
-                        Button("Earlier Steps") {
-                            guard let first = records.first else { return }
-                            presentation.browseWork(taskID); selectPage(.before(first.sequence))
-                        }
-                    }
-                    if more {
-                        Button("Next Steps") {
-                            guard let last = records.last else { return }
-                            presentation.browseWork(taskID); selectPage(.after(last.sequence))
-                        }
-                    }
-                    if running && currentPage != .latest {
-                        Button("Latest Steps") {
-                            presentation.followLatestWork(taskID); selectPage(.latest)
-                        }
-                    }
-                    if expanded && loading { ProgressView().controlSize(.mini) }
-                }
-                .buttonStyle(.borderless).controlSize(.small)
-                .disabled(loading)
             }
             if failed && !steps.isEmpty {
                 HStack(spacing: Space.s) {
@@ -250,7 +292,7 @@ struct SidekickWorkDisclosure: View {
 
     private func load() async {
         guard let store = conversation.store, let generation = conversation.generation else {
-            failed = true
+            failed = true; pagingTo = nil
             return
         }
         loadToken &+= 1
@@ -258,7 +300,7 @@ struct SidekickWorkDisclosure: View {
         let intent = presentation.readingIntentRevision
         let following = running && active && requestedPage == .latest && presentation.canFollowLatest
         loading = true
-        defer { if loadToken == token { loading = false } }
+        defer { if loadToken == token { loading = false; pagingTo = nil } }
         do {
             let (result, projected) = try await Task.detached(priority: .userInitiated) {
                 let result: SidekickConversationStore.TranscriptPage
@@ -272,15 +314,15 @@ struct SidekickWorkDisclosure: View {
             guard !Task.isCancelled, token == loadToken, conversation.generation == generation,
                   result.generation == generation else { return }
             if requestedPage == .latest, hasLoaded, intent != presentation.readingIntentRevision,
-               !presentation.canFollowLatest, let first = records.first {
-                selectPage(.after(max(0, first.sequence - 1)))
+               !presentation.canFollowLatest, let first = firstShownSequence {
+                selectPage(.after(max(0, first - 1)))
                 return
             }
             let changed = records != result.records
             if changed { records = result.records; steps = projected }
             earlier = result.hasEarlier; more = result.hasLater
-            if requestedPage == .latest, !presentation.canFollowLatest, let first = records.first {
-                selectPage(.after(max(0, first.sequence - 1)))
+            if requestedPage == .latest, !presentation.canFollowLatest, let first = firstShownSequence {
+                selectPage(.after(max(0, first - 1)))
             } else { selectPage(requestedPage) }
             failed = false; hasLoaded = true
             if changed && following {
@@ -294,8 +336,9 @@ struct SidekickWorkDisclosure: View {
     }
 }
 
-/// A Reminders-style checklist row: state glyph, the app's real icon, title over app name, and a
-/// trailing status tag. "Details" opens the raw tool call in monospaced inset boxes.
+/// A Reminders-style checklist row: state glyph, the app's real icon and the title, with the app
+/// name and any status as trailing detail across the column, one line per step. "Details" opens
+/// the raw tool call in monospaced inset boxes.
 private struct SidekickActivityRow: View {
     let step: SidekickActivityPresentation.Step
     let running: Bool
@@ -320,14 +363,9 @@ private struct SidekickActivityRow: View {
                     .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
                 SidekickActivityIcon(identifier: step.appIdentifier, symbol: step.symbol)
                     .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(step.title).font(.subheadline)
-                    if let app = step.appName, !step.title.localizedCaseInsensitiveContains(app) {
-                        Text(app).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
+                Text(step.title).font(.subheadline)
                 Spacer(minLength: Space.s)
-                if let tag { Text(tag).font(.caption).foregroundStyle(.secondary) }
+                if let trailing { Text(trailing).font(.caption).foregroundStyle(.secondary).fixedSize() }
             }
         }
         .tint(.secondary)
@@ -356,6 +394,13 @@ private struct SidekickActivityRow: View {
         case .started: "Started"
         case .completed, nil: nil
         }
+    }
+
+    /// The app (unless the title already names it), then the status tag.
+    private var trailing: String? {
+        let app = step.appName.flatMap { step.title.localizedCaseInsensitiveContains($0) ? nil : $0 }
+        let parts = [app, tag].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private func detail(_ text: String) -> some View {

@@ -2,10 +2,10 @@ import SwiftUI
 import AppKit
 
 /// The Home conversation, laid out like Messages: your messages are accent bubbles on the right,
-/// Sentient's answers are plain document text on the left under a brand-mark gutter, in a
-/// 680 pt reading column on the system text background (HomeView supplies the background and
-/// the floating Ask bar; this view draws none). While the toolbar search has text, a results
-/// list replaces the transcript.
+/// Sentient's answers are plain document text at the column's leading edge, with no avatar (the
+/// bubbles already tell the speakers apart), in a 680 pt reading column on the system text
+/// background (HomeView supplies the background and the floating Ask bar; this view draws none).
+/// While the toolbar search has text, a results list replaces the transcript.
 struct SidekickTranscript: View {
     let conversation: SidekickConversation
     let coordinator: CommandCoordinator
@@ -40,6 +40,10 @@ struct SidekickTranscript: View {
                        && presentation.newMessages && presentation.canFollowLatest)
     }
     private var searching: Bool { presentation.searchShown && !presentation.search.isEmpty }
+    /// The question the Ask bar's card is asking; while it waits there, the card is its one place.
+    private var pendingQuestionID: String? {
+        SidekickTranscriptLayout.pendingQuestion(presentation.rows, id: coordinator.run.recovery.content?.question?.id)
+    }
     private var showsLatestButton: Bool {
         presentation.hasLater || (presentation.newMessages && !presentation.atLatest)
             || (!presentation.followsLatest && presentation.activeWorkTaskID != nil)
@@ -88,7 +92,8 @@ struct SidekickTranscript: View {
         // Capture rows and their generation together. A retained old row must not borrow
         // the conversation's newer identity while Clear chat is replacing the viewport.
         let generation = presentation.generation
-        let display = SidekickTranscriptLayout.rows(presentation.rows)
+        let pending = pendingQuestionID
+        let display = SidekickTranscriptLayout.rows(presentation.rows.filter { $0.event.id != pending })
         let leaders = Self.runLeaders(display)
         return ScrollViewReader { proxy in
             ScrollView {
@@ -116,7 +121,7 @@ struct SidekickTranscript: View {
                                     .frame(maxWidth: .infinity).padding(.vertical, Space.s)
                             }
                             SidekickMessageRow(record: row.record, showsWork: row.showsWork,
-                                leadsRun: leaders.contains(row.id), bubbleWidth: columnWidth * 0.75,
+                                bubbleWidth: columnWidth * 0.75,
                                 generation: generation, conversation: conversation, coordinator: coordinator,
                                 presentation: presentation, active: active)
                         }
@@ -138,7 +143,7 @@ struct SidekickTranscript: View {
                             state: presentation.taskStates[coordinator.run.runID], presentation: presentation,
                             running: true, waiting: coordinator.run.recovery.isPending, active: active,
                             liveStatus: coordinator.run.statusLine)
-                            .padding(.leading, 24).padding(.top, Space.m)
+                            .padding(.top, Space.m)
                     }
                     Color.clear.frame(height: 1).id("sidekick-bottom")
                 }
@@ -194,7 +199,9 @@ struct SidekickTranscript: View {
                 do { try await Task.sleep(for: .milliseconds(20)) } catch { return }
                 guard !Task.isCancelled, request == presentation.scrollRequest,
                       let requestedTarget = requestedDestination else { return }
-                let target = SidekickTranscriptLayout.destination(requestedTarget, records: presentation.rows)
+                var target = SidekickTranscriptLayout.destination(requestedTarget, records: presentation.rows)
+                // The pending question has no row; the card asking it sits under the latest message.
+                if target == pendingQuestionID { target = "sidekick-bottom" }
                 guard !automatic || (active && intent == presentation.readingIntentRevision
                     && presentation.canFollowLatest) else { return }
                 let tail = target == "sidekick-bottom" || target.hasPrefix("sidekick-work-bottom-")
@@ -391,7 +398,6 @@ struct SidekickTranscript: View {
 private struct SidekickMessageRow: View {
     let record: SidekickConversationStore.Record
     let showsWork: Bool
-    let leadsRun: Bool
     let bubbleWidth: CGFloat
     let generation: UUID?
     let conversation: SidekickConversation
@@ -408,8 +414,6 @@ private struct SidekickMessageRow: View {
     private var user: Bool { event.kind == .userMessage || event.kind == .answer }
     private var incoming: Bool { event.kind == .assistantMessage || event.kind == .question }
     private var running: Bool { coordinator.run.isRunning && coordinator.run.runID == event.taskID }
-    /// The brand-mark gutter that Sentient's text, status lines and work line up past.
-    private static let gutter: CGFloat = 24
     private struct ReadReceiptKey: Equatable {
         let generation: UUID?
         let messageID: String
@@ -418,17 +422,17 @@ private struct SidekickMessageRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
-            if showsWork {
+            if showsWork, SidekickWorkDisclosure.hasSummary(state: presentation.taskStates[event.taskID], running: running,
+                                                            latestRun: coordinator.run.runID == event.taskID) {
                 SidekickWorkDisclosure(conversation: conversation, taskID: event.taskID,
                     state: presentation.taskStates[event.taskID], presentation: presentation,
                     running: running, waiting: running && coordinator.run.recovery.isPending, active: active,
                     liveStatus: running ? coordinator.run.statusLine : "")
-                    .padding(.leading, Self.gutter)
             }
             if event.kind == .taskFinished {
                 if let status = standaloneStatus {
                     Text(status).font(.callout).foregroundStyle(.secondary)
-                        .textSelection(.enabled).padding(.leading, Self.gutter)
+                        .textSelection(.enabled)
                 }
             } else { message }
         }
@@ -461,20 +465,14 @@ private struct SidekickMessageRow: View {
                     .frame(maxWidth: bubbleWidth, alignment: .trailing)
                 }
             } else {
-                // Sentient's: unboxed document text, with the mark once per run in the gutter.
-                HStack(alignment: .top, spacing: 0) {
-                    Group {
-                        if leadsRun { BrandMarkView(size: 16).padding(.top, 2) }
-                    }
-                    .frame(width: Self.gutter, alignment: .leading)
-                    .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        replyReference
-                        SidekickMarkdown(markdown: event.text, compact: event.messageKind == .update,
-                            onReply: reply, onReplyToMessage: { reply(nil) },
-                            onSelectionChange: { presentation.setSelection($0, messageID: event.id) })
-                            .opacity(event.messageKind == .update ? 0.76 : 1)
-                    }
+                // Sentient's: unboxed document text on the column's leading edge, the same edge as
+                // its work disclosure, tables and code. No avatar, like Messages and ChatGPT.
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    replyReference
+                    SidekickMarkdown(markdown: event.text, compact: event.messageKind == .update,
+                        onReply: reply, onReplyToMessage: { reply(nil) },
+                        onSelectionChange: { presentation.setSelection($0, messageID: event.id) })
+                        .opacity(event.messageKind == .update ? 0.76 : 1)
                 }
             }
         }
@@ -521,7 +519,6 @@ private struct SidekickMessageRow: View {
                 .accessibilityLabel(copied ? "Copied" : "Copy message")
             }
             .foregroundStyle(.secondary)
-            .padding(.leading, user ? 0 : Self.gutter)
             .transition(.opacity)
         }
     }
@@ -541,8 +538,10 @@ private struct SidekickMessageRow: View {
     }
 }
 
-/// Messages-style search results: sender, time and a snippet with the match in bold. A click
-/// opens the transcript around that message. No selection binding, so arrow keys never navigate.
+/// Search results laid out like Mail's: per message, the sender and time, the request that began
+/// its exchange (the subject line), then a plain-text snippet in secondary with each match in bold.
+/// A click opens the transcript around that message. No selection binding, so arrow keys never
+/// navigate.
 private struct SidekickSearchResults: View {
     let conversation: SidekickConversation
     @Bindable var presentation: SidekickPresentation
@@ -561,7 +560,7 @@ private struct SidekickSearchResults: View {
                 ContentUnavailableView.search(text: presentation.search)
             } else {
                 List {
-                    Section("From Your Saved Conversation") {
+                    Section {
                         ForEach(presentation.searchResults, id: \.event.id) { record in
                             Button {
                                 presentation.search = ""; presentation.searchShown = false
@@ -569,6 +568,14 @@ private struct SidekickSearchResults: View {
                             } label: { row(record) }
                             .buttonStyle(.plain)
                             .contentShape(Rectangle())
+                            .help("Show in Conversation")
+                        }
+                    } header: {
+                        // The search reads a bounded page, newest first: past it, say which ones these are.
+                        if presentation.searchHasMore {
+                            Text("\(presentation.searchResults.count) Most Recent Messages")
+                        } else {
+                            Text("^[\(presentation.searchResults.count) Message](inflect: true)")
                         }
                     }
                 }
@@ -583,6 +590,8 @@ private struct SidekickSearchResults: View {
 
     private func row(_ record: SidekickConversationStore.Record) -> some View {
         let you = record.event.kind == .userMessage || record.event.kind == .answer
+        // A request found by the search is its own subject; a reply shows what it answered.
+        let request = record.event.kind == .userMessage ? nil : presentation.searchRequests[record.event.taskID]
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline) {
                 Text(you ? "You" : "Sentient").font(.headline)
@@ -591,33 +600,31 @@ private struct SidekickSearchResults: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .help(record.event.createdAt.formatted(date: .complete, time: .shortened))
             }
-            Text(Self.snippet(record.event.text, query: presentation.search))
-                .font(.callout).lineLimit(3)
+            if let request {
+                Text(SidekickTranscriptLayout.excerpt(request, query: "")).font(.subheadline).lineLimit(1)
+            }
+            Text(Self.snippet(record.event, query: presentation.search))
+                .font(.callout).foregroundStyle(.secondary).lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 2)
         }
-        .padding(.vertical, Space.xs)
+        .padding(.vertical, Space.s)
         .accessibilityElement(children: .combine)
     }
 
-    /// The first 700 characters, starting a little before a late match, with every
-    /// case-insensitive match set in bold.
-    static func snippet(_ text: String, query: String) -> AttributedString {
+    /// The words around the first match as the transcript shows them: Sentient's Markdown as text
+    /// (never its syntax), your messages literally. Each case-insensitive match is bold and primary.
+    static func snippet(_ event: SidekickConversationEvent, query: String) -> AttributedString {
+        let rendered = event.kind == .assistantMessage || event.kind == .question
+        let plain = rendered ? SidekickMarkdownCache.shared.document(event.text).plainText : event.text
+        var result = AttributedString(SidekickTranscriptLayout.excerpt(plain, query: query))
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        var excerpt = Substring(text)
-        var prefix = ""
-        if !needle.isEmpty, let first = text.range(of: needle, options: .caseInsensitive) {
-            let offset = text.distance(from: text.startIndex, to: first.lowerBound)
-            if offset > 80 {
-                excerpt = text[text.index(first.lowerBound, offsetBy: -60)...]
-                prefix = "…"
-            }
-        }
-        var result = AttributedString(prefix + String(excerpt.prefix(700)))
         guard !needle.isEmpty else { return result }
         var searchStart = result.startIndex
         while searchStart < result.endIndex,
               let match = result[searchStart...].range(of: needle, options: .caseInsensitive) {
             result[match].inlinePresentationIntent = .stronglyEmphasized
+            result[match].foregroundColor = Color.primary
             searchStart = match.upperBound
         }
         return result

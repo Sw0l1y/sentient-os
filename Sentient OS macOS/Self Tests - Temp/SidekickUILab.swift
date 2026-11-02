@@ -338,12 +338,12 @@ import SwiftUI
         let question = try SidekickQuestion(error: nil, question: "Would you like me to protect the longer afternoon block or keep your calendar open?", answers: ["Protect the afternoon", "Keep it open"])
         _ = try store.append(.init(id: "ui.question.start", taskID: questionTask, kind: .taskStarted, source: source), expectedGeneration: generation)
         _ = try store.append(.init(id: "ui.question.request", taskID: questionTask, kind: .userMessage, text: "Help me choose what to do with that time.", source: source), expectedGeneration: generation)
-        _ = try store.append(.init(id: "ui.question", taskID: questionTask, kind: .question, text: question.question, source: source, choices: question.answers), expectedGeneration: generation)
+        _ = try store.append(.init(id: "question:\(question.id)", taskID: questionTask, kind: .question, text: question.question, source: source, choices: question.answers), expectedGeneration: generation)
         coordinator.run.recovery.present(.clarification(question)) { resolution in
             guard case .answered(let answer) = resolution else { return }
             do {
                 _ = try store.append(.init(id: "ui.question.answer", taskID: questionTask, kind: .answer,
-                    text: answer.text, source: source, reply: .init(messageID: "ui.question")), expectedGeneration: generation)
+                    text: answer.text, source: source, reply: .init(messageID: "question:\(question.id)")), expectedGeneration: generation)
                 _ = try store.append(.init(id: "ui.question.finish", taskID: questionTask, kind: .taskFinished,
                     text: "Answered", source: source, outcome: .success), expectedGeneration: generation)
             } catch { checks["ui_question_persisted"] = false }

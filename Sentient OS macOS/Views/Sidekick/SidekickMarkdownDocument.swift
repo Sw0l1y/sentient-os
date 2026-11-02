@@ -129,6 +129,22 @@ nonisolated struct SidekickMarkdownDocument: Sendable {
         blocks = result.isEmpty ? [.text(.plain(prefix), Decoration())] : result
     }
 
+    /// The words as the transcript draws them, without Markdown syntax: one block per line, list
+    /// markers kept, table cells in reading order, rules left out. Search snippets read this.
+    var plainText: String {
+        var lines: [String] = []
+        for block in blocks {
+            switch block {
+            case .text(let fragment, let decoration): lines.append((decoration.marker.map { $0 + " " } ?? "") + fragment.text)
+            case .code(let fragment, _, _): lines.append(fragment.text)
+            case .table(let table, _): lines += table.rows.map { $0.cells.map(\.fragment.text).joined(separator: " ") }
+            case .rule: break
+            }
+        }
+        if let remainder { lines.append(remainder.text) }
+        return lines.joined(separator: "\n")
+    }
+
     private struct Leaf {
         let components: [PresentationIntent.IntentType]
         var fragment: Fragment

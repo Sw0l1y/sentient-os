@@ -152,7 +152,7 @@ private struct SettingsModeList: View {
             Section {
                 ForEach(SettingsView.Pane.allCases) { pane in
                     Label(pane.title, systemImage: TileSpec.pane(pane).symbol)
-                        .badge(pane == .health ? navigation.healthIssueCount : 0)
+                        .badge(pane == .health ? HealthBoard.shared.badgeCount : 0)
                         .tag(pane)
                 }
             }
@@ -290,12 +290,13 @@ private struct AnalysisStatusButton: View {
     }
 }
 
-/// Opens Settings mode at the last pane. A red count marks Permissions & Health issues.
+/// Opens Settings mode at the last pane. A red count marks Permissions & Health issues, the same
+/// count the Permissions & Health row shows (HealthBoard).
 private struct SettingsGearButton: View {
     private let navigation = MainNavigation.shared
 
     var body: some View {
-        let issues = navigation.healthIssueCount
+        let issues = HealthBoard.shared.badgeCount
         Button {
             navigation.show(.settings, settingsPane: navigation.lastSettingsPane)
         } label: {

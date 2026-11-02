@@ -458,39 +458,34 @@ struct HomeSidekickShowcase: View {
                     .padding(.vertical, Space.s)
                     .background(Color.accentColor, in: RoundedRectangle(cornerRadius: Radius.bubble, style: .continuous))
                     .frame(maxWidth: .infinity, alignment: .trailing)
-                // Sidekick's turn: document text beside the brand mark, as in a Home conversation.
-                HStack(alignment: .top, spacing: Space.s) {
-                    BrandMarkView(size: 16)
-                        .frame(width: 24, alignment: .leading)
-                        .padding(.top, 2)
-                    VStack(alignment: .leading, spacing: compact ? Space.s : Space.m) {
-                        Text("Alex wants to expand the pilot. SSO is the last blocker, and you promised the checklist before Thursday’s review.")
-                            .font(.body)
-                            .lineSpacing(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if !compact {
-                            ShowcaseSources(first: "Pilot notes", firstSymbol: "doc.text", second: "Alex’s email", secondSymbol: "envelope")
-                        }
-                        HomeInsetGroup {
-                            HStack(spacing: Space.m) {
-                                Image(systemName: "doc.text.fill")
-                                    .font(.title2)
+                // Sidekick's turn: document text, unadorned, as in a Home conversation.
+                VStack(alignment: .leading, spacing: compact ? Space.s : Space.m) {
+                    Text("Alex wants to expand the pilot. SSO is the last blocker, and you promised the checklist before Thursday’s review.")
+                        .font(.body)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !compact {
+                        ShowcaseSources(first: "Pilot notes", firstSymbol: "doc.text", second: "Alex’s email", secondSymbol: "envelope")
+                    }
+                    HomeInsetGroup {
+                        HStack(spacing: Space.m) {
+                            Image(systemName: "doc.text.fill")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Northstar call brief").font(.headline)
+                                Text("3 talking points")
+                                    .font(.subheadline)
                                     .foregroundStyle(.secondary)
-                                    .accessibilityHidden(true)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Northstar call brief").font(.headline)
-                                    Text("3 talking points")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: Space.s)
-                                Button("Open Brief") { change { briefOpen = true } }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                    .accessibilityIdentifier("personalSetup.sidekick.openBrief")
                             }
-                            .padding(Space.m)
+                            Spacer(minLength: Space.s)
+                            Button("Open Brief") { change { briefOpen = true } }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .accessibilityIdentifier("personalSetup.sidekick.openBrief")
                         }
+                        .padding(Space.m)
                     }
                 }
             }

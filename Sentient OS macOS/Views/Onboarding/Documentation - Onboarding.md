@@ -70,11 +70,17 @@ V2 narration follows the unsprung, linear film clock, independently of the camer
 The final Sidekick park is `0.999`, followed by the native Double Tap lesson. The current native
 sequence does not visit the website's Under-the-hood exhibit, FAQ or footer. The film is passive;
 native controls handle progression.
-`OnboardingSidekickInvitation` keeps the Messages request fully visible with one prominent native CTA at the
-very top: Click your notch, or Press right Command with a compact keycap. Its straight vertical arrow
-is a separate transparent, click-through `NSPanel`. The measured CTA aligns to the hardware's
-centerline, with 12 pt between its top edge and the arrow's tail and 10 pt below the notch at the tip.
-The arrow resizes when the app moves; the native film reserves a clear header above Messages. It cannot become key, hides when onboarding loses focus, and is removed as Sidekick opens
+`OnboardingSidekickInvitation` keeps the Messages request visible with one native CTA on the popover's
+own material (not custom glass, which SPEC-00 1.6 keeps to four floating controls). Where the leader
+line can reach the notch, the CTA heads the film: Click your notch, and after a mistaken key press the
+keyboard cue in the same place (only the words change; the line hides). Without a reachable notch it
+reads Press right Command with the keycap, in the film's free band near the bottom: the keyboard door
+has nothing above to point at, and in a small window the header above Messages is no taller than the
+keycap. At the top, clearing Messages depends on the header the web film leaves; at the app's smallest
+canvas (1040 x 800) the measured captures clear it by 60 to 90 pt. The callout draws no arrow of its
+own; the one arrow is the straight vertical leader line, a separate transparent, click-through `NSPanel`. The
+measured CTA aligns to the hardware's centerline, with 12 pt between its top edge and the arrow's tail and 10 pt below the notch at the tip.
+The arrow resizes when the app moves. It cannot become key, hides when onboarding loses focus, and is removed as Sidekick opens
 or the step exits. Display changes and disabled notch clicks switch to the keyboard instruction.
 The arrow draws once and respects Reduce Motion. The website hides its older text/chevron only when
 the new `invitation=native` parameter accompanies the embedded notch cut; older apps keep their cues.
@@ -198,6 +204,8 @@ Both the Sidekick invitation and the waiting phases of the native Double Tap les
 right Command, sweeps the Sentient spectrum across only “right” for one second. Repeated wrong
 taps coalesce into one sweep. Reduce Motion uses a still color highlight for the same duration.
 On a notch-equipped Mac, a mistaken keyboard tap switches the invitation to the keyboard cue.
+The invitation's keycap wears its accent ring only for that second, so a correction never looks
+like the resting instruction.
 
 The monitor is local to the owning key window and exists only while its instruction can accept
 input. It returns every NSEvent unchanged. It never reads typed characters, adds a global key

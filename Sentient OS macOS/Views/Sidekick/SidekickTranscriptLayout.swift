@@ -34,6 +34,36 @@ nonisolated enum SidekickTranscriptLayout {
         return result
     }
 
+    /// The question the Ask bar's card is asking right now. The transcript leaves it out while the
+    /// card shows it (nothing in two places); answered or dismissed, it is ordinary history again.
+    /// The run records the card's question as `question:<id>` (SidekickConversationRun); only that
+    /// row is left out, never another one with the same words.
+    static func pendingQuestion(_ records: [Record], id: UUID?) -> String? {
+        guard let id else { return nil }
+        let recorded = "question:" + id.uuidString
+        return records.contains(where: { $0.event.id == recorded && $0.event.kind == .question }) ? recorded : nil
+    }
+
+    /// A search result's excerpt of already-plain text: up to `length` characters starting a
+    /// little before the first case-insensitive match, cut between words, with an ellipsis
+    /// wherever the message goes on. Line breaks and runs of spaces read as one space.
+    static func excerpt(_ text: String, query: String, lead: Int = 48, length: Int = 220) -> String {
+        let words = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        var start = words.startIndex
+        if !needle.isEmpty, let match = words.range(of: needle, options: .caseInsensitive) {
+            start = words.index(match.lowerBound, offsetBy: -lead, limitedBy: words.startIndex) ?? words.startIndex
+            // Begin at a word, never inside one; the match itself is the latest possible start.
+            if start > words.startIndex, words[words.index(before: start)] != " " {
+                start = words[start..<match.lowerBound].firstIndex(of: " ").map { words.index(after: $0) } ?? match.lowerBound
+            }
+        }
+        var end = words.index(start, offsetBy: length, limitedBy: words.endIndex) ?? words.endIndex
+        if end < words.endIndex, words[end] != " ", let space = words[start..<end].lastIndex(of: " ") { end = space }
+        let body = String(words[start..<end])
+        return (start > words.startIndex ? "…" : "") + body + (end < words.endIndex ? "…" : "")
+    }
+
     /// A hidden success/footer event still has a valid history-search destination.
     static func destination(_ id: String, records: [Record]) -> String {
         guard let ending = records.first(where: { $0.event.id == id }), ending.event.kind == .taskFinished else { return id }

@@ -13,7 +13,7 @@ import SwiftUI
 /// The notch's fixed palette. The notch is always OLED black in both system appearances,
 /// so these are literals by design. Never used outside the notch files.
 enum NotchTone {
-    /// The one accent: the identity mark and the thing to press next (Send). Does not follow the system accent.
+    /// The one accent: the thing to press next (Send) and Sidekick's own status glyphs. Does not follow the system accent.
     static let accent = Color(red: 0.604, green: 0.651, blue: 1.0)   // #9AA6FF
     static let strong = Color.white.opacity(0.90)      // notice text, read-back
     static let primary = Color.white.opacity(0.85)     // status lines, captions, quiet control glyphs

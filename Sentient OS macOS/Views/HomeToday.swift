@@ -37,7 +37,7 @@ struct HomeToday: View {
 
     /// The scroll view's visible height (between the notice row and the Ask bar). Today's column is
     /// at least this tall and bottom-aligned inside it, so the scroll view never has to align short
-    /// content itself. When `defaultScrollAnchor(.bottom)`'s alignment role did it, the top scroll
+    /// content itself. When `defaultScrollAnchor`'s alignment role did it, the top scroll
     /// edge effect reached from the top inset all the way down to the content's top edge and drew
     /// its dividing line across the page there (FIX1-NOTES, Home).
     @State private var viewportHeight: CGFloat = 0
@@ -55,18 +55,18 @@ struct HomeToday: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                     .accessibilityAddTraits(.isHeader)
-                HomeAssistantTurn {
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        Text(greeting)
-                            .font(.title3.weight(.semibold))
-                            .accessibilityAddTraits(.isHeader)
-                        bodyLine
-                    }
-                    if let analysisBlock { analysisBlock }
-                    if showsRows { suggestionRows }
-                    if let kbOnlyBlock { kbOnlyBlock }
-                    if !kbOnly { HomeSidekickSuggestions(onSelect: onStarter) }
+                // The assistant's turn stands unadorned on the column's edge, as in Messages: the
+                // user's bubbles already tell the speakers apart.
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text(greeting)
+                        .font(.title3.weight(.semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    bodyLine
                 }
+                if let analysisBlock { analysisBlock }
+                if showsRows { suggestionRows }
+                if let kbOnlyBlock { kbOnlyBlock }
+                if !kbOnly { HomeSidekickSuggestions(onSelect: onStarter) }
             }
             .padding(.horizontal, Space.xl)
             .padding(.vertical, Space.xl)
@@ -74,7 +74,12 @@ struct HomeToday: View {
             .frame(minHeight: viewportHeight, alignment: .bottom)
             .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: entries.map(\.id))
         }
-        .defaultScrollAnchor(.bottom)
+        // Today opens at its end and, like the transcript, keeps that end in view through size
+        // changes (the window shrinking, a notice docking above, rows arriving after the first
+        // layout), so the starters never slip under the Ask bar. The plain anchor kept the top
+        // offset through them.
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .defaultScrollAnchor(.bottom, for: .sizeChanges)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
     }
 
@@ -109,7 +114,6 @@ struct HomeToday: View {
     private func earlierConversation(_ last: SidekickConversation.Record) -> some View {
         HomeInsetGroup {
             HStack(spacing: Space.m) {
-                BrandMarkView(size: 16)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Earlier Conversation")
                         .font(.subheadline.weight(.semibold))
@@ -144,20 +148,6 @@ struct HomeToday: View {
         let text = String(event.text.prefix(600)).replacingOccurrences(of: "\n", with: " ")
         guard event.kind == .assistantMessage else { return AttributedString(text) }
         return (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
-    }
-}
-
-/// Sentient's speaker convention: the brand mark in a 24 pt gutter, then the turn's content.
-private struct HomeAssistantTurn<Content: View>: View {
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        HStack(alignment: .top, spacing: Space.s) {
-            BrandMarkView(size: 16)
-                .frame(width: 24, height: 24)
-            VStack(alignment: .leading, spacing: Space.l) { content }
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 }
 

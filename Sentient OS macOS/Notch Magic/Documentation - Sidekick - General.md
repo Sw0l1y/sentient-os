@@ -31,7 +31,7 @@ UI work; these backend seams already survive provider-process and Home-view life
 | `ScreenCapture.swift` | A still of EVERY display at fire time (main first), attached to the codex run so "finish this" resolves against real pixels. |
 | `SidekickInteraction.swift` · `SidekickToolServer.swift` | Per-attempt recovery tools, instruction updates, reporting capability, waiting state and task/attempt correlation. |
 | `SidekickTaskSummary.swift` | Stages intent/final workflow phrases, validates their format locally and reports one task outcome and description without additional inference. |
-| `NotchWindowController.swift` · `NotchView.swift` · `NotchShape.swift` · `NotchSpace.swift` · `SpinningLogo.swift` | The window and visual (the other doc). |
+| `NotchWindowController.swift` · `NotchView.swift` · `NotchShape.swift` · `NotchSpace.swift` | The window and visual (the other doc). |
 
 `AppState` owns one `CommandCoordinator` and one `NotchWindowController`. It starts both once at normal launch, or defers both until an eligible pending computer-use upgrade finishes. Closing/minimizing setup cannot start them; native migration can explicitly defer setup while first-use gates remain enforced.
 
@@ -151,10 +151,9 @@ latest-activity row for the active task; it never scans the full activity histor
 blur-dissolve (fade with Reduce Motion). Agent narration, connection notices, read-back and memory
 status retain their existing priority. Ending/resetting a task clears its live activity projection.
 
-The notch always uses the full `SpinningLogo` brand mark, including idle and reduced-motion states.
-It rotates slowly before work (13 seconds per turn, 30 Hz) and faster while running (2 seconds,
-60 Hz). Hidden, Reduce Motion and Low Power states pause the same artwork rather than substituting
-a different ring/dot design. Pausing/resuming retains the current angle.
+The notch shows no brand mark: at 17 pt the ring with a gap read as a stalled loading spinner beside
+finished content. Its leading slot shows the system `ProgressView` while a task runs, a notice's reason
+symbol, or recovery's back control, and is otherwise empty.
 
 Both ChatGPT and Claude computer runs emit activity through `ComputerUseStream`; Claude's bridge
 provides narration only. `SidekickActivityLab` (`SENTIENT_SELFTEST=sidekickbackend`,

@@ -178,7 +178,8 @@ struct SidekickMarkdown: View {
     }
 }
 
-@MainActor private final class SidekickMarkdownCache {
+/// Parsed documents by source, shared by the transcript's messages and its search snippets.
+@MainActor final class SidekickMarkdownCache {
     static let shared = SidekickMarkdownCache()
     private final class Entry: NSObject {
         let value: SidekickMarkdownDocument
@@ -500,21 +501,23 @@ final class SidekickMarkdownTextView: NSTextView, NSTextViewDelegate {
             SidekickSelectionReply.shared.present(for: self)
         }
     }
-    /// First visible selected line, in view coordinates. Glyph layout (not character counts)
-    /// handles ligatures, Unicode, wrapped paragraphs and horizontal code/table scrolling.
-    func selectedGlyphRect() -> NSRect? {
+    /// First visible selected line, in view coordinates.
+    func selectedGlyphRect() -> NSRect? { selectedLineRects()?.first }
+    /// First and last visible selected lines, in view coordinates. Glyph layout (not character
+    /// counts) handles ligatures, Unicode, wrapped paragraphs and horizontal code/table scrolling.
+    func selectedLineRects() -> (first: NSRect, last: NSRect)? {
         let selection = selectedRange()
         guard selection.length > 0, selection.location != NSNotFound,
               NSMaxRange(selection) <= string.utf16.count,
               let layout = layoutManager, let container = textContainer else { return nil }
         layout.ensureLayout(for: container)
         let glyphs = layout.glyphRange(forCharacterRange: selection, actualCharacterRange: nil)
-        var anchor: NSRect?
-        layout.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: glyphs, in: container) { rect, stop in
+        var lines: (first: NSRect, last: NSRect)?
+        layout.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: glyphs, in: container) { rect, _ in
             let visible = rect.offsetBy(dx: self.textContainerOrigin.x, dy: self.textContainerOrigin.y).intersection(self.visibleRect)
-            if !visible.isEmpty { anchor = visible; stop.pointee = true }
+            if !visible.isEmpty { lines = (lines?.first ?? visible, visible) }
         }
-        return anchor
+        return lines
     }
     func reportSelection(_ selected: Bool) {
         guard selected != reportedSelection else { return }
@@ -532,14 +535,24 @@ final class SidekickMarkdownTextView: NSTextView, NSTextViewDelegate {
 }
 
 /// Pure placement is shared by the real popup and tests, including negative monitor origins.
+/// Screen coordinates. The chip goes under the selection's last visible line (`end`), so it never
+/// covers what comes before the selection (a work status line, the previous message); it goes
+/// above the first line (`anchor`) only when `owner`, the visible area, has no room below, or
+/// when no last line is given. Either way it stays inside `owner` and `screen`.
 nonisolated enum SidekickSelectionReplyPlacement {
-    static func frame(anchor: NSRect, owner: NSRect, screen: NSRect, size: NSSize = NSSize(width: 96, height: 32)) -> NSRect? {
+    static func frame(anchor: NSRect, end: NSRect? = nil, owner: NSRect, screen: NSRect,
+                      size: NSSize = NSSize(width: 96, height: 32)) -> NSRect? {
         let bounds = owner.intersection(screen).insetBy(dx: 6, dy: 6)
         guard !anchor.isEmpty, anchor.intersects(owner.intersection(screen)),
               bounds.width >= size.width, bounds.height >= size.height else { return nil }
-        let x = max(bounds.minX, min(anchor.midX - size.width / 2, bounds.maxX - size.width))
-        let y = max(bounds.minY, min(anchor.maxY + 7, bounds.maxY - size.height))
-        return NSRect(origin: NSPoint(x: x, y: y), size: size)
+        func clamped(midX: CGFloat, y: CGFloat) -> NSRect {
+            NSRect(x: max(bounds.minX, min(midX - size.width / 2, bounds.maxX - size.width)),
+                   y: max(bounds.minY, min(y, bounds.maxY - size.height)), width: size.width, height: size.height)
+        }
+        if let end, !end.isEmpty, end.minY - 7 - size.height >= bounds.minY {
+            return clamped(midX: end.midX, y: end.minY - 7 - size.height)
+        }
+        return clamped(midX: anchor.midX, y: anchor.maxY + 7)
     }
 }
 
@@ -566,10 +579,15 @@ nonisolated enum SidekickSelectionReplyPlacement {
         guard selectedView === view, let owner, view.window === owner, owner.isVisible,
               !view.isHiddenOrHasHiddenAncestor, view.onReply != nil,
               view.fragment.sourceQuote(for: view.selectedRange(), in: view.source) != nil,
-              let glyph = view.selectedGlyphRect() else { dismiss(); return }
-        let anchor = owner.convertToScreen(view.convert(glyph, to: nil))
+              let lines = view.selectedLineRects() else { dismiss(); return }
+        let anchor = owner.convertToScreen(view.convert(lines.first, to: nil))
+        let end = owner.convertToScreen(view.convert(lines.last, to: nil))
         let screen = NSScreen.screens.first { $0.frame.contains(NSPoint(x: anchor.midX, y: anchor.midY)) } ?? owner.screen
-        guard let screen, let frame = SidekickSelectionReplyPlacement.frame(anchor: anchor, owner: owner.frame, screen: screen.visibleFrame) else { dismiss(); return }
+        // A scroll area too short for the chip (a compact notch message) falls back to the window.
+        let area = Self.visibleArea(of: view, in: owner).map { $0.intersection(owner.frame) } ?? owner.frame
+        guard let screen, let frame = SidekickSelectionReplyPlacement.frame(anchor: anchor, end: end, owner: area, screen: screen.visibleFrame)
+                ?? SidekickSelectionReplyPlacement.frame(anchor: anchor, end: end, owner: owner.frame, screen: screen.visibleFrame)
+        else { dismiss(); return }
         let panel: SelectionPanel
         if let existing = self.panel { panel = existing }
         else {
@@ -613,6 +631,26 @@ nonisolated enum SidekickSelectionReplyPlacement {
     func dismiss(ifOwnedBy view: SidekickMarkdownTextView) {
         guard selectedView === view else { return }
         dismiss()
+    }
+    /// The visible part of the column, in screen coordinates: the outermost scroll view's clip
+    /// inside its content insets (under the toolbar, above the Ask bar). Code and table scrollers
+    /// nest inside it. Nil outside a scroll view, where the window bounds the chip.
+    private static func visibleArea(of view: NSView, in owner: NSWindow) -> NSRect? {
+        var outermost: NSScrollView?
+        var ancestor = view.superview
+        while let current = ancestor {
+            if let scroll = current as? NSScrollView { outermost = scroll }
+            ancestor = current.superview
+        }
+        guard let clip = outermost?.contentView else { return nil }
+        let insets = clip.contentInsets
+        var visible = clip.bounds
+        visible.origin.x += insets.left
+        visible.origin.y += clip.isFlipped ? insets.top : insets.bottom
+        visible.size.width -= insets.left + insets.right
+        visible.size.height -= insets.top + insets.bottom
+        guard visible.width > 0, visible.height > 0 else { return nil }
+        return owner.convertToScreen(clip.convert(visible, to: nil))
     }
     private func dismiss() {
         selectedView?.cancelSelectionReplyDelay()

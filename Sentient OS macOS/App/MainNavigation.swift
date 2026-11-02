@@ -25,11 +25,6 @@ final class MainNavigation {
     /// keeps its scope while hidden), and `reset()` clears it.
     private(set) var knowledgeScope: URL?
 
-    /// Count of problems Permissions & Health would show; drives the sidebar badge. Written by
-    /// HomeView after its HealthCaution probe (1 or 0) and by HealthPane with its bad-row count;
-    /// the last writer wins.
-    var healthIssueCount: Int = 0
-
     /// Developer Tools sheet flag (only DEBUG builds set it).
     var showDevTools = false
 

@@ -91,6 +91,31 @@ typealias Event = SidekickConversationEvent
         check(Layout.destination("final-answer", records: raw) == "final-answer", "ordinary message navigation changed")
         check(Layout.destination("unknown-id", records: raw) == "unknown-id", "unknown navigation guessed an unrelated response")
         check(Layout.rows([]).isEmpty, "empty transcript created synthetic chrome")
+
+        // The Ask bar's card is a waiting question's one place: the transcript leaves that row out.
+        let asking = UUID(), askingTask = UUID(), words = "Protect the afternoon or keep it open?"
+        let recorded = record("question:" + asking.uuidString, task: askingTask, kind: .question, text: "It failed.\n\n" + words)
+        check(Layout.pendingQuestion(raw + [recorded], id: asking) == recorded.event.id, "run-recorded pending question still drawn beside its card")
+        check(Layout.pendingQuestion(raw + [recorded, record("later-question", task: askingTask, kind: .question)], id: asking) == recorded.event.id,
+              "run-recorded question not found by its id")
+        check(Layout.pendingQuestion(raw + [recorded], id: nil) == nil, "no card, yet a question was hidden")
+        // Only the card's own row leaves: a question it is not (older, dismissed, or paged out of
+        // view while the card's row is) stays in history, even with the same words.
+        let sameWords = record("older-question", task: askingTask, kind: .question, text: words)
+        check(Layout.pendingQuestion(raw + [sameWords], id: asking) == nil, "a different row with the card's words was hidden")
+        check(Layout.pendingQuestion(raw + [sameWords, recorded], id: UUID()) == nil, "another card's question hid this one")
+
+        // Search excerpts: word boundaries, ellipses wherever the message goes on, one line of spaces.
+        let plan = "Your afternoon has room for one focused session.\n\n1. Finish the calendar research.\n• Compare the two open windows."
+        check(Layout.excerpt(plan, query: "calendar research") == "…has room for one focused session. 1. Finish the calendar research. • Compare the two open windows.",
+              "excerpt keeps line breaks")
+        check(Layout.excerpt(plan, query: "compare") == "…session. 1. Finish the calendar research. • Compare the two open windows.",
+              "excerpt starts mid-word (“…sed session”) or matches case-sensitively")
+        check(Layout.excerpt(plan, query: "afternoon") == "Your afternoon has room for one focused session. 1. Finish the calendar research. • Compare the two open windows.",
+              "early match gained a leading ellipsis")
+        let long = Layout.excerpt(String(repeating: "alpha beta ", count: 40), query: "", length: 30)
+        check(long == "alpha beta alpha beta alpha…", "excerpt cut mid-word or lost its trailing ellipsis")
+        check(Layout.excerpt("no match here", query: "absent") == "no match here", "missing match changed short text")
         check(Layout.progressNote("I'll check your calendar.\n→ sentient_native.get_app_state") == "I'll check your calendar.",
               "human progress survives while raw tool label stays in activity")
         check(Layout.progressNote("Thinking through your task") == nil, "generic thinking uses the friendly live placeholder")

@@ -609,10 +609,14 @@ struct HomeView: View {
 
     // MARK: Ask bar
 
+    /// HomeAskBar pads its field by the page margin inside whatever width it is given, so handing
+    /// it the reading column puts the field on the same edges as Today, the conversation and the
+    /// notice row at every window width.
     private var askBar: some View {
         HomeAskBar(coordinator: appState.commandCoordinator, presentation: presentation,
                    isPresented: isPresented, kbOnly: kbOnly, inConversation: inConversation,
                    focusRequest: composerFocusRequest, onAccepted: showConversation)
+            .centeredColumn()
     }
 
     // MARK: Toolbar
@@ -851,13 +855,17 @@ struct HomeView: View {
     /// cached codex login check (forced fresh while a codex notice is up, so a fix clears on the
     /// very next foreground). Quiet on pitch decks (demo cards must never share the stage with a
     /// health notice) and on the free home (HealthCaution guards kbOnly too — defense in depth).
-    /// The result also drives the sidebar's Permissions & Health badge.
+    /// It also refreshes HealthBoard, which alone owns the sidebar's Permissions & Health badge:
+    /// the notice is the top un-muted rung, the badge is the pane's own count.
     private func probeHealth(forceCodexRecheck: Bool = false) {
         guard deck == .real, !kbOnly, ProcessInfo.processInfo.environment["SENTIENT_SELFTEST"] == nil else { return }
         Task {
-            let issue = await HealthCaution.probe(forceCodexRecheck: forceCodexRecheck || liveIssue?.kindKey == "codex")
-            MainNavigation.shared.healthIssueCount = issue == nil ? 0 : 1
+            let force = forceCodexRecheck || liveIssue?.kindKey == "codex"
+            let issue = await HealthCaution.probe(forceCodexRecheck: force)
             withAnimation(standardMotion) { liveIssue = issue }
+            // While the notice is (or just was) about the engine, the board checks it afresh too,
+            // so a fix clears the badge with the notice and a new failure raises both.
+            await HealthBoard.shared.refresh(engineMaxAge: force || issue?.kindKey == "codex" ? 0 : 300)
         }
     }
 

@@ -6,8 +6,10 @@
 //  status rows, each with its tone glyph, a fix button while it is not OK, and its explanation
 //  in an ⓘ popover. Shared setup rows prepare native computer use for every backend; Claude
 //  users see both CLIs and only their Claude login. Required grants remain separate from
-//  optional voice and notifications (never red). Fixes use the existing setup engines. The pane
-//  reports its issue count to the sidebar badge (MainNavigation.healthIssueCount).
+//  optional voice and notifications (never red). Fixes use the existing setup engines.
+//
+//  Also here: HealthBoard, the counted checks and their issue count, kept once for the session.
+//  The pane draws those rows from it and the sidebar badge reads its count, so the two agree.
 //  Doc: Documentation - Settings.md
 //
 
@@ -25,6 +27,8 @@ struct HealthPane: View {
     @State private var codex = CodexSetup.shared
     @State private var claude = ClaudeSetup.shared
     private var computerGate: ComputerUseGate { .shared }
+    /// The counted checks (protected sources, overnight wake, login, the engine, sources to retry).
+    private var board: HealthBoard { .shared }
     /// The live frontier-model choice, observed so switching engines re-renders the pane's
     /// engine section in place.
     @AppStorage(ModelBackend.key) private var backendRaw = ModelBackend.chatgpt.rawValue
@@ -32,11 +36,7 @@ struct HealthPane: View {
     private var backend: ModelBackend { ModelBackend(rawValue: backendRaw) ?? .chatgpt }
     private var reduceMotion: Bool { motionOverride ?? systemReduced }
 
-    // Sentient's own grants
-    @State private var selectedProtectedSources: [ProtectedLocalSource] = []
-    @State private var unreadableProtectedSources: [ProtectedLocalSource] = []
-    @State private var wakeSetup = OvernightWakeSetup()
-    @State private var loginOn = LoginItem.cachedIsEnabled
+    // Sentient's own grants (the counted ones live on the board)
     @State private var micSpeech: MicSpeechState = .notAsked
     @State private var screenRec = Permissions.hasScreenRecording()   // Sentient's own grant: the driver's eyes
     @State private var notifStatus: UNAuthorizationStatus = .notDetermined
@@ -54,48 +54,22 @@ struct HealthPane: View {
 
     private enum MicSpeechState { case granted, notAsked, denied }
 
-    /// The live engine's whole stack, healthy: what the section's collapse and the pane's
-    /// all-clear judge. Per engine: ChatGPT = CLI + login; provider limits are enforced
-    /// when a task runs, not by a local plan label.
-    /// Claude = Claude Code + its login + Codex for computer tasks; custom = CLI + a proven endpoint (codex is the
-    /// harness there too). The computer-use driver rides every engine.
-    /// Computer use counts only when something is actually missing, denied or failing; helper
-    /// grants that are merely unverified since launch (proven when a task starts) are not issues.
-    private var engineAllGreen: Bool {
-        guard ComputerUseSetup.current.ready, !computerGate.hasConfirmedProblem else { return false }
-        switch backend {
-        case .chatgpt: return codex.installed && !codex.outdated
-                           && codex.loggedIn
-        case .claude:  return claude.installed && claude.loggedIn && codex.installed && !codex.outdated
-        case .custom:  return codex.installed && !codex.outdated
-                           && CustomProvider.current.isUsable
-        }
-    }
-
-    /// Exactly the terms of the old all-clear, so "All good" shows exactly when it did. Screen
-    /// Recording, Microphone & Speech and Notifications are not counted.
-    private var issueCount: Int {
-        (unreadableProtectedSources.isEmpty ? 0 : 1)
-            + (requiresOvernightSetup && !wakeSetup.ready ? 1 : 0)
-            + (requiresOvernightSetup && !loginOn ? 1 : 0)
-            + (engineAllGreen ? 0 : 1)
-            + sourceIssues.count
-    }
+    private var engineAllGreen: Bool { board.engineAllGreen }
 
     private var subtitle: String {
         if !checked { return "Checking…" }
-        switch issueCount {
+        switch board.issueCount {
         case 0: return "All good"
         case 1: return "1 needs attention"
-        default: return "\(issueCount) need attention"
+        default: return "\(board.issueCount) need attention"
         }
     }
 
     private var requiresOvernightSetup: Bool { HealthCaution.overnightRequested() }
 
     private var protectedAccessNote: String {
-        if selectedProtectedSources.isEmpty { return "Not needed for your selected sources" }
-        return unreadableProtectedSources.isEmpty ? "Selected sources are readable" : "Selected sources need access"
+        if board.selectedProtectedSources.isEmpty { return "Not needed for your selected sources" }
+        return board.unreadableProtectedSources.isEmpty ? "Selected sources are readable" : "Selected sources need access"
     }
 
     var body: some View {
@@ -107,7 +81,7 @@ struct HealthPane: View {
                 sidekickSection
                 NativeComputerUsePermissionRows(gate: computerGate)   // Section "Computer Use Helper" (WP12)
                 ComputerUseCheckRow()                                 // Section "Computer Use Check" (WP12)
-                if !sourceIssues.isEmpty { retrySection }
+                if !board.sourceIssues.isEmpty { retrySection }
                 engineSection
                 Section {} footer: {
                     Label(PrivacyCopy.trustRibbon, systemImage: "lock.shield")
@@ -123,11 +97,12 @@ struct HealthPane: View {
                 .help("Check Again")
             }
         }
-        .onChange(of: checked ? issueCount : nil, initial: true) { _, count in
-            if let count { MainNavigation.shared.healthIssueCount = count }
-        }
+        // A finished analysis rewrites the source health; recount so the list and the badge follow.
+        .onChange(of: sourceHealth) { board.recountSources() }
         .task { await refresh() }
-        .onChange(of: wakeSetup.ready) { _, ready in
+        // Initial too: the board's wake setup outlives the pane, so a helper Home's refresh already
+        // found ready reaches the scheduler on the next open, as each open's fresh probe did.
+        .onChange(of: board.wakeSetup.ready, initial: true) { _, ready in
             if ready && requiresOvernightSetup {
                 appState?.scheduler.reevaluate()
             }
@@ -180,42 +155,24 @@ struct HealthPane: View {
 
     // MARK: - Sources to Retry
 
+    // Observed only to notice the analysis rewriting them; the board reads the values.
     @AppStorage(AppleCalendarSource.issueKey) private var calendarIssue = ""
     @AppStorage(AppleMailHealth.key) private var mailHealth = ""
     @AppStorage(AppleMailHealth.needsRetryKey) private var mailNeedsRetry = false
     @AppStorage(SourceHealth.readStatusKey) private var readStatusData = Data()
 
-    private var sourceIssues: [String] {
-        var issues: [String] = []
-        if AppleCalendarSource.isEnabled, let message = AppleCalendarSource.issueMessage(calendarIssue) {
-            issues.append("Apple Calendar: " + message)
-        }
-        if !AppleMailSelection.accounts.isEmpty, mailNeedsRetry, !mailHealth.isEmpty { issues.append(mailHealth) }
-        let statuses = (try? JSONDecoder().decode([String: String].self, from: readStatusData)) ?? [:]
-        for slug in MCPSource.kbSlugs() {
-            guard let status = statuses[Diagnostics.source(slug)], status != "ok" else { continue }
-            let name = ConnectorRegistry.displayName(slug: slug)
-            issues.append(status == "connector_auth" ? "\(name): reconnect this source in Knowledge Sources."
-                : "\(name): the last analysis did not finish. Run analysis to retry; saved knowledge is retained.")
-        }
-        let defaults = UserDefaults.standard
-        let filesEnabled = !CustomRoots.urls.isEmpty || ["desktop", "documents", "downloads"].contains {
-            defaults.bool(forKey: "dbg.run." + $0)
-        }
-        for (source, name, enabled) in [("file", "Files", filesEnabled),
-            ("whatsapp", "WhatsApp", defaults.bool(forKey: "dbg.run.whatsapp")),
-            ("imessage", "iMessage", defaults.bool(forKey: "dbg.run.imessage")),
-            ("notes", "Notes", defaults.bool(forKey: "dbg.run.notes"))] {
-            guard enabled, let status = statuses[source], status != "ok" else { continue }
-            issues.append(status == "time_cap" ? "\(name): more items remain. Run analysis to continue from saved progress."
-                : "\(name): the last analysis did not finish. Check access and run analysis again.")
-        }
-        return issues
+    private struct SourceHealthStamp: Equatable {
+        let calendarIssue: String, mailHealth: String, mailNeedsRetry: Bool, readStatus: Data
+    }
+
+    private var sourceHealth: SourceHealthStamp {
+        SourceHealthStamp(calendarIssue: calendarIssue, mailHealth: mailHealth,
+                          mailNeedsRetry: mailNeedsRetry, readStatus: readStatusData)
     }
 
     private var retrySection: some View {
         Section("Sources to Retry") {
-            ForEach(sourceIssues, id: \.self) { issue in
+            ForEach(board.sourceIssues, id: \.self) { issue in
                 StatusLabel(issue, tone: .warning)
             }
         }
@@ -226,28 +183,28 @@ struct HealthPane: View {
     private var onDeviceSection: some View {
         Section("On-Device Intelligence") {
             StatusRow("Full Disk Access", tile: .fullDiskAccess, detail: protectedAccessNote,
-                      tone: unreadableProtectedSources.isEmpty ? .ok : .error,
+                      tone: board.unreadableProtectedSources.isEmpty ? .ok : .error,
                       info: PrivacyCopy.fullDiskAccess) {
-                if !unreadableProtectedSources.isEmpty {
+                if !board.unreadableProtectedSources.isEmpty {
                     fixButton("Grant…") {
                         PermissionGuide.shared.guide(.fullDiskAccess, dragging: Bundle.main.bundleURL)
                     }
                 }
             }
-            if !unreadableProtectedSources.isEmpty {
+            if !board.unreadableProtectedSources.isEmpty {
                 LabeledContent {
                     Button("Relaunch Sentient") { Permissions.relaunch() }
                         .buttonStyle(.link)
                         .disabled(!SafeAppRelaunch.shared.canRelaunch)
                 } label: {
-                    Text("Check access for \(unreadableProtectedSources.map(\.title).joined(separator: ", ")). After changing Full Disk Access:")
+                    Text("Check access for \(board.unreadableProtectedSources.map(\.title).joined(separator: ", ")). After changing Full Disk Access:")
                     if let reason = SafeAppRelaunch.shared.statusReason {
                         Text(reason)
                     }
                 }
             }
             if requiresOvernightSetup {
-                OvernightWakeRow(setup: wakeSetup)
+                OvernightWakeRow(setup: board.wakeSetup)
             } else {
                 StatusRow("Overnight Wake", tile: .overnight,
                           detail: "Overnight analysis is off. Wake setup is optional.", tone: .off)
@@ -257,7 +214,7 @@ struct HealthPane: View {
                 if loginTone != .ok {
                     fixButton(LoginItem.needsApproval ? "Approve…" : "Turn On") {
                         LoginItem.enableOrRequestApproval()
-                        loginOn = LoginItem.isEnabled
+                        board.loginOn = LoginItem.isEnabled
                         if LoginItem.needsApproval {
                             PermissionGuide.shared.guide(.loginItems, dragging: nil)
                         }
@@ -267,10 +224,10 @@ struct HealthPane: View {
         }
     }
 
-    private var loginTone: StatusTone { loginOn || !requiresOvernightSetup ? .ok : .warning }
+    private var loginTone: StatusTone { board.loginOn || !requiresOvernightSetup ? .ok : .warning }
 
     private var loginNote: String {
-        if loginOn { return "On" }
+        if board.loginOn { return "On" }
         if !requiresOvernightSetup { return "Off; optional" }
         return LoginItem.needsApproval ? "Approve in System Settings" : "Off"
     }
@@ -556,33 +513,146 @@ struct HealthPane: View {
     // MARK: - Probes
 
     private func refresh() async {
-        computerGate.refresh()
-        selectedProtectedSources = SourceSelection.selectedProtectedSources
-        unreadableProtectedSources = selectedProtectedSources.filter { !$0.isReadable }
-        loginOn = await LoginItem.refreshedIsEnabled()
-        if requiresOvernightSetup { await wakeSetup.refresh() }
+        await board.refresh()
         refreshMicSpeech()
         // Match the effective permission used by capture and the setup gates.
         screenRec = Permissions.hasScreenRecording()
         notifStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
-        ComputerUseSetup.current.refresh()
-        // Only the LIVE engine's rows are probed (the login checks shell out, seconds each).
-        // Custom backends keep the codex CLI probe (codex is their harness) but skip the login
-        // check: no ChatGPT account is needed there.
-        switch backend {
-        case .chatgpt:
-            await codex.refreshInstalled()
-            plan = CodexAuth.currentPlan()   // pure file read (the JWT claim on disk)
-            await codex.refreshLoginStatus()   // last: it shells out to `codex login status`
-        case .claude:
-            await codex.refreshInstalled()
-            await claude.refreshInstalled()
-            await claude.refreshLoginStatus()  // shells out to `claude auth status`
-        case .custom:
-            await codex.refreshInstalled()
-        }
+        if backend == .chatgpt { plan = CodexAuth.currentPlan() }   // pure file read (the JWT claim on disk)
         // First probe done → reveal.
         withAnimation(Motion.gated(Motion.standard, reduceMotion: reduceMotion)) { checked = true }
+    }
+}
+
+// MARK: - The board
+
+/// The checks Permissions & Health counts, and the count, kept once for the app session. The pane
+/// draws those rows from here and the sidebar badge (the Settings gear, the Permissions & Health
+/// row) shows `badgeCount`, so the badge always counts exactly what the pane flags. The pane
+/// refreshes it on appear, foreground and Check Again; Home refreshes it with its own health probe,
+/// so the badge stays live while the pane is closed.
+@MainActor @Observable
+final class HealthBoard {
+    static let shared = HealthBoard()
+
+    private(set) var selectedProtectedSources: [ProtectedLocalSource] = []
+    private(set) var unreadableProtectedSources: [ProtectedLocalSource] = []
+    let wakeSetup = OvernightWakeSetup()
+    /// Also set by the pane's Turn On, which takes effect at once.
+    var loginOn = LoginItem.cachedIsEnabled
+    private(set) var sourceIssues: [String] = []
+    /// The first full check has finished; the badge shows nothing before it.
+    private(set) var checked = false
+    /// When the engine's CLI and login check last began. They shell out (seconds each), so a
+    /// caller may reuse a recent check (`engineMaxAge`).
+    @ObservationIgnored private var engineCheckedAt: Date?
+
+    private init() {}
+
+    private var codex: CodexSetup { .shared }
+    private var claude: ClaudeSetup { .shared }
+
+    /// The live engine's whole stack, healthy: what the pane's engine section collapses on and
+    /// what the count judges. Per engine: ChatGPT = CLI + login; provider limits are enforced
+    /// when a task runs, not by a local plan label.
+    /// Claude = Claude Code + its login + Codex for computer tasks; custom = CLI + a proven endpoint (codex is the
+    /// harness there too). The computer-use driver rides every engine.
+    /// Computer use counts only when something is actually missing, denied or failing; helper
+    /// grants that are merely unverified since launch (proven when a task starts) are not issues.
+    var engineAllGreen: Bool {
+        guard ComputerUseSetup.current.ready, !ComputerUseGate.shared.hasConfirmedProblem else { return false }
+        switch ModelBackend.current {
+        case .chatgpt: return codex.installed && !codex.outdated
+                           && codex.loggedIn
+        case .claude:  return claude.installed && claude.loggedIn && codex.installed && !codex.outdated
+        case .custom:  return codex.installed && !codex.outdated
+                           && CustomProvider.current.isUsable
+        }
+    }
+
+    /// Exactly the terms of the old all-clear, so "All good" shows exactly when it did. Screen
+    /// Recording, Microphone & Speech and Notifications are not counted.
+    var issueCount: Int {
+        let overnight = HealthCaution.overnightRequested()
+        return (unreadableProtectedSources.isEmpty ? 0 : 1)
+            + (overnight && !wakeSetup.ready ? 1 : 0)
+            + (overnight && !loginOn ? 1 : 0)
+            + (engineAllGreen ? 0 : 1)
+            + sourceIssues.count
+    }
+
+    /// The sidebar badge: the count once checked, else nothing.
+    var badgeCount: Int { checked ? issueCount : 0 }
+
+    /// Probe every counted check. `engineMaxAge` > 0 reuses an engine check younger than that
+    /// (Home's frequent triggers pass five minutes, as HealthCaution caches its login verdict);
+    /// the pane always checks afresh.
+    func refresh(engineMaxAge: TimeInterval = 0) async {
+        ComputerUseGate.shared.refresh()
+        selectedProtectedSources = SourceSelection.selectedProtectedSources
+        unreadableProtectedSources = selectedProtectedSources.filter { !$0.isReadable }
+        loginOn = await LoginItem.refreshedIsEnabled()
+        if HealthCaution.overnightRequested() { await wakeSetup.refresh() }
+        ComputerUseSetup.current.refresh()
+        if engineCheckedAt.map({ Date().timeIntervalSince($0) >= engineMaxAge }) ?? true {
+            // Stamped before the shell-outs, so a refresh that starts while this one waits reuses
+            // it instead of running the same CLIs again.
+            engineCheckedAt = Date()
+            // Only the LIVE engine's rows are probed (the login checks shell out, seconds each).
+            // Custom backends keep the codex CLI probe (codex is their harness) but skip the login
+            // check: no ChatGPT account is needed there.
+            switch ModelBackend.current {
+            case .chatgpt:
+                await codex.refreshInstalled()
+                await codex.refreshLoginStatus()   // last: it shells out to `codex login status`
+            case .claude:
+                await codex.refreshInstalled()
+                await claude.refreshInstalled()
+                await claude.refreshLoginStatus()  // shells out to `claude auth status`
+            case .custom:
+                await codex.refreshInstalled()
+            }
+        }
+        recountSources()
+        checked = true
+    }
+
+    /// Re-read Sources to Retry from what the last analysis wrote, publishing only a change.
+    func recountSources() {
+        let issues = Self.currentSourceIssues()
+        if issues != sourceIssues { sourceIssues = issues }
+    }
+
+    private static func currentSourceIssues() -> [String] {
+        let defaults = UserDefaults.standard
+        var issues: [String] = []
+        if AppleCalendarSource.isEnabled,
+           let message = AppleCalendarSource.issueMessage(defaults.string(forKey: AppleCalendarSource.issueKey) ?? "") {
+            issues.append("Apple Calendar: " + message)
+        }
+        let mailHealth = defaults.string(forKey: AppleMailHealth.key) ?? ""
+        if !AppleMailSelection.accounts.isEmpty, defaults.bool(forKey: AppleMailHealth.needsRetryKey), !mailHealth.isEmpty {
+            issues.append(mailHealth)
+        }
+        let statuses = SourceHealth.readStatuses()
+        for slug in MCPSource.kbSlugs() {
+            guard let status = statuses[Diagnostics.source(slug)], status != "ok" else { continue }
+            let name = ConnectorRegistry.displayName(slug: slug)
+            issues.append(status == "connector_auth" ? "\(name): reconnect this source in Knowledge Sources."
+                : "\(name): the last analysis did not finish. Run analysis to retry; saved knowledge is retained.")
+        }
+        let filesEnabled = !CustomRoots.urls.isEmpty || ["desktop", "documents", "downloads"].contains {
+            defaults.bool(forKey: "dbg.run." + $0)
+        }
+        for (source, name, enabled) in [("file", "Files", filesEnabled),
+            ("whatsapp", "WhatsApp", defaults.bool(forKey: "dbg.run.whatsapp")),
+            ("imessage", "iMessage", defaults.bool(forKey: "dbg.run.imessage")),
+            ("notes", "Notes", defaults.bool(forKey: "dbg.run.notes"))] {
+            guard enabled, let status = statuses[source], status != "ok" else { continue }
+            issues.append(status == "time_cap" ? "\(name): more items remain. Run analysis to continue from saved progress."
+                : "\(name): the last analysis did not finish. Check access and run analysis again.")
+        }
+        return issues
     }
 }
 

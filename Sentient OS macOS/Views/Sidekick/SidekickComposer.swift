@@ -207,6 +207,13 @@ private struct RecoveryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
             header.font(.subheadline.weight(.semibold))
+            // A waiting question appears only here (the transcript leaves its row out), so what
+            // went wrong before it, if anything, stays with it, as in the notch.
+            if content.question != nil, let error = content.error {
+                Text(error).font(.callout).foregroundStyle(.secondary)
+                    .lineLimit(4).textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text(content.question?.question ?? content.error ?? "")
                 .font(.headline).lineLimit(4).textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)

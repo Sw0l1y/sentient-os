@@ -123,7 +123,8 @@ struct HomeSidekickInvitation: View {
 }
 
 /// The starters that end Today, like Messages' suggested replies: capsule buttons that fill the
-/// draft and never send.
+/// draft and never send. They wrap like a line of text, packed to the leading edge (ChipFlow),
+/// never stretched into columns.
 struct HomeSidekickSuggestions: View {
     struct Suggestion: Identifiable {
         let id: String
@@ -144,18 +145,9 @@ struct HomeSidekickSuggestions: View {
     let onSelect: (String) -> Void
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: Space.s) {
-                ForEach(Self.suggestions) { suggestion in
-                    chip(suggestion).fixedSize()
-                }
-            }
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: Space.s, alignment: .leading),
-                                GridItem(.flexible(), spacing: Space.s, alignment: .leading)],
-                      alignment: .leading, spacing: Space.s) {
-                ForEach(Self.suggestions) { suggestion in
-                    chip(suggestion)
-                }
+        ChipFlow(spacing: Space.s) {
+            ForEach(Self.suggestions) { suggestion in
+                chip(suggestion)
             }
         }
         .accessibilityElement(children: .contain)

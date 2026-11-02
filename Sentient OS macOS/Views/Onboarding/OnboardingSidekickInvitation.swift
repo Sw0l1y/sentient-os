@@ -1,69 +1,79 @@
-// The film's interactive pause: a coach-mark callout under the notch and a thin accent leader
-// line to the real camera cutout. The leader line is a passive window, never a second click
-// target. (SPEC-D6 S5, S6: a material bubble with an up arrow and the real keycap.)
+// The film's interactive pause: a coach-mark callout and, on a notched Mac, a thin accent leader
+// line from it to the real camera cutout. The leader line is the one arrow, and a passive window,
+// never a second click target. (SPEC-D6 S5, S6: a popover-material bubble with the real keycap.)
 import AppKit
 import SwiftUI
 
 struct OnboardingSidekickInvitation: View {
     let onOpen: () -> Void
     @Environment(\.onboardingCanvasScale) private var canvasScale
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
     @AppStorage(ShortcutPreferences.storageKey) private var shortcut = ShortcutKey.rightCommand.rawValue
     @State private var pointsToNotch = OnboardingNotchPointer.hasPhysicalTarget
+    /// A leader line could reach the notch from here, whichever door the callout names.
+    @State private var headsFilm = OnboardingNotchPointer.hasPhysicalTarget
     @State private var horizontalOffset: CGFloat = 0
     @State private var topInset: CGFloat = 12
     @State var shortcutHint = OnboardingShortcutHint()
 
+    /// The keyboard callout's distance from the bottom edge: where the film's final Continue sits.
+    private static let bottomInset: CGFloat = 44
+
     private var key: ShortcutKey { ShortcutKey(rawValue: shortcut) ?? .rightCommand }
+    private var reduceMotion: Bool { motionOverride ?? systemReduceMotion }
     // A mistaken key press expresses a preference for the keyboard door. Keep
     // that instruction visible afterward, while the highlight itself lasts one second.
     private var showsKeyboard: Bool { !pointsToNotch || shortcutHint.pulseCount > 0 }
 
+    /// Where a leader line can reach the notch, the callout heads the film under it, and keeps its
+    /// place when a wrong-key press switches it to the keyboard cue (only its words change).
+    /// Otherwise the keyboard door has nothing to point at, so its callout sits in the film's free
+    /// band below the Messages window: in a small window the header the film keeps above Messages
+    /// is no taller than the keycap callout, and the callout must never cover the request.
     var body: some View {
-        VStack(spacing: 0) {
-            Button(action: onOpen) {
-                callout
-            }
-            .buttonStyle(.plain)
-            .background(OnboardingNotchPointer(scale: canvasScale, prefersKeyboard: shortcutHint.pulseCount > 0) { target, offset, inset in
-                pointsToNotch = target; horizontalOffset = offset; topInset = inset
-            })
-            .offset(x: horizontalOffset)
-            .accessibilityLabel(showsKeyboard ? "Press \(key.spokenLabel)" : "Click your notch")
-            .accessibilityHint(showsKeyboard ? "Press the \(key.spokenLabel) key once, or click this button."
-                               : "Open Sidekick from the top of your screen.")
-            .accessibilityIdentifier("onboarding.sidekick.instruction")
-            Spacer(minLength: 0)
+        Button(action: onOpen) {
+            callout
         }
-        .padding(.top, topInset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .buttonStyle(.plain)
+        .background(OnboardingNotchPointer(scale: canvasScale, prefersKeyboard: shortcutHint.pulseCount > 0) { target, reachable, offset, inset in
+            pointsToNotch = target; headsFilm = reachable; horizontalOffset = offset; topInset = inset
+        })
+        .offset(x: horizontalOffset)
+        .accessibilityLabel(showsKeyboard ? "Press \(key.spokenLabel)" : "Click your notch")
+        .accessibilityHint(showsKeyboard ? "Press the \(key.spokenLabel) key once, or click this button."
+                           : "Open Sidekick from the top of your screen.")
+        .accessibilityIdentifier("onboarding.sidekick.instruction")
+        .padding(.top, headsFilm ? topInset : 0)
+        .padding(.bottom, headsFilm ? 0 : Self.bottomInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: headsFilm ? .top : .bottom)
         .background(OnboardingWrongCommandMonitor(hint: shortcutHint, enabled: key == .rightCommand))
         .onAppear { shortcutHint.activate() }
         .onChange(of: shortcut) { shortcutHint.clear() }
         .onDisappear { shortcutHint.deactivate() }
     }
 
-    /// The coach mark: an up arrow toward the notch, then the instruction (with the real keycap
-    /// when the keyboard is the door), on popover material.
+    /// The coach mark: the instruction (with the real keycap when the keyboard is the door) on
+    /// the popover's own material, its corners concentric with the keycap's. Not custom glass:
+    /// SPEC-00 1.6 keeps that to the four floating controls. The keycap's accent ring marks only
+    /// the wrong-key correction, together with the highlight on "right".
     private var callout: some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.group, style: .continuous)
-        return VStack(spacing: Space.s) {
-            Image(systemName: "arrow.up")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.secondary)
-            HStack(spacing: 10) {
-                if showsKeyboard {
-                    KeyCap(key: key, highlighted: true)
-                    OnboardingShortcutInstruction(prefix: "Press ", key: key, hint: shortcutHint)
-                } else {
-                    Text("Click your notch")
-                }
+        let radius = Radius.keycap + Space.m
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        return HStack(spacing: 10) {
+            if showsKeyboard {
+                KeyCap(key: key, highlighted: shortcutHint.isActive)
+                    .animation(Motion.gated(Motion.quick, reduceMotion: reduceMotion), value: shortcutHint.isActive)
+                OnboardingShortcutInstruction(prefix: "Press ", key: key, hint: shortcutHint)
+            } else {
+                Text("Click your notch")
             }
-            .font(.title3.weight(.semibold))
-            .foregroundStyle(.primary)
         }
+        .font(.title3.weight(.semibold))
+        .foregroundStyle(.primary)
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.m)
-        .background { PopoverMaterial() }
+        .background { PopoverMaterial(cornerRadius: radius) }
         .overlay(shape.strokeBorder(Color(nsColor: .separatorColor)))
         .contentShape(shape)
     }
@@ -72,13 +82,15 @@ struct OnboardingSidekickInvitation: View {
 /// The popover's own material behind the coach mark. SwiftUI has no `.popover` Material and
 /// `background(_:in:)` takes only a ShapeStyle, so the effect view rounds its own layer.
 private struct PopoverMaterial: NSViewRepresentable {
+    let cornerRadius: CGFloat
+
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = .popover
         view.blendingMode = .withinWindow
         view.state = .active
         view.wantsLayer = true
-        view.layer?.cornerRadius = Radius.group
+        view.layer?.cornerRadius = cornerRadius
         view.layer?.cornerCurve = .continuous
         view.layer?.masksToBounds = true
         return view
@@ -92,7 +104,9 @@ private struct PopoverMaterial: NSViewRepresentable {
 struct OnboardingNotchPointer: NSViewRepresentable {
     var scale: CGFloat = 1
     var prefersKeyboard = false
-    let onLayout: (Bool, CGFloat, CGFloat) -> Void
+    /// Whether the line points at the notch now, whether it could from here (a wrong-key preference
+    /// does not change that), the callout's horizontal offset, and its top inset.
+    let onLayout: (Bool, Bool, CGFloat, CGFloat) -> Void
 
     static var hasPhysicalTarget: Bool {
         NSScreen.screens.count == 1 && NotchWindowController.builtInNotchScreen() != nil
@@ -120,13 +134,13 @@ struct OnboardingNotchPointer: NSViewRepresentable {
     static func dismantleNSView(_ nsView: Probe, coordinator: ()) { nsView.stop() }
 
     final class Probe: NSView {
-        var onLayout: ((Bool, CGFloat, CGFloat) -> Void)?
+        var onLayout: ((Bool, Bool, CGFloat, CGFloat) -> Void)?
         var renderScale: CGFloat = 1
         var prefersKeyboard = false
         override var isFlipped: Bool { true }
         private(set) var pointer: NSPanel?
         private var observers: [NSObjectProtocol] = []
-        private var lastLayout: (target: Bool, offset: CGFloat, inset: CGFloat)?
+        private var lastLayout: (target: Bool, reachable: Bool, offset: CGFloat, inset: CGFloat)?
         private var refreshPending = false
         private var alignmentTask: Task<Void, Never>?
 
@@ -179,14 +193,17 @@ struct OnboardingNotchPointer: NSViewRepresentable {
             let button = window.convertToScreen(convert(bounds, to: nil))
             let offset = (screen?.frame.midX ?? root.midX) - root.midX
             let fits = abs(offset) + button.width / 2 + 24 <= root.width / 2
-            let target = !prefersKeyboard && OnboardingNotchPointer.hasPhysicalTarget && window.screen == screen && fits
+            let reachable = OnboardingNotchPointer.hasPhysicalTarget && window.screen == screen && fits
+            let target = !prefersKeyboard && reachable
+            // Placed by `reachable`, so a wrong-key press hides the line but never moves the callout.
             let tip = (screen?.frame.maxY ?? 0) - (screen?.notchSize?.height ?? 0) - OnboardingNotchPointer.tipGap
-            let inset = target ? max(12, (root.maxY - tip + OnboardingNotchPointer.minimumStem + OnboardingNotchPointer.buttonGap) / renderScale) : 12
-            let proposedOffset = target ? offset / renderScale : 0
-            if lastLayout?.target != target || abs((lastLayout?.offset ?? .infinity) - proposedOffset) > 0.25
+            let inset = reachable ? max(12, (root.maxY - tip + OnboardingNotchPointer.minimumStem + OnboardingNotchPointer.buttonGap) / renderScale) : 12
+            let proposedOffset = reachable ? offset / renderScale : 0
+            if lastLayout?.target != target || lastLayout?.reachable != reachable
+                || abs((lastLayout?.offset ?? .infinity) - proposedOffset) > 0.25
                 || abs((lastLayout?.inset ?? .infinity) - inset) > 0.25 {
-                lastLayout = (target, proposedOffset, inset)
-                onLayout?(target, proposedOffset, inset)
+                lastLayout = (target, reachable, proposedOffset, inset)
+                onLayout?(target, reachable, proposedOffset, inset)
                 // SwiftUI applies the CTA offset after AppKit's move notification.
                 // Read the settled placement once, rather than keeping a polling timer.
                 alignmentTask?.cancel()

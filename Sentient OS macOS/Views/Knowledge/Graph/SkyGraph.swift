@@ -16,7 +16,7 @@
 import Foundation
 
 /// One star: a vault note plus everything the sky needs to draw it.
-struct SkyNode: Identifiable {
+nonisolated struct SkyNode: Identifiable {
     let url: URL
     let title: String            // filename stem — the same name the sidebar shows
     let domain: Int              // index into SkyGraph.domains · -1 = the root README (the sun)
@@ -31,13 +31,13 @@ struct SkyNode: Identifiable {
 }
 
 /// One thread: an undirected, deduplicated wikilink between two stars (node indices).
-struct SkyEdge {
+nonisolated struct SkyEdge {
     let a: Int
     let b: Int
     let sameDomain: Bool
 }
 
-struct SkyGraph {
+nonisolated struct SkyGraph {
     let nodes: [SkyNode]
     let edges: [SkyEdge]
     let adjacency: [[Int]]       // node index → neighbor node indices
@@ -266,7 +266,7 @@ struct SkyGraph {
 
     // MARK: Mock (previews only — seeded, deterministic)
 
-    static func mock() -> SkyGraph {
+    @MainActor static func mock() -> SkyGraph {
         var rng = SplitMix64(seed: 7)
         let spec: [(name: String, size: Int)] = [
             ("Sentient OS", 20), ("Career & Network", 17), ("AI Research", 15), ("Health", 13),

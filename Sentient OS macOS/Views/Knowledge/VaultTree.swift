@@ -15,7 +15,7 @@
 import Foundation
 
 /// One node in the vault tree — a folder (with `children`) or a markdown note (a leaf).
-struct VaultNode: Identifiable, Hashable {
+nonisolated struct VaultNode: Identifiable, Hashable {
     let url: URL
     let name: String        // folder name, or the note's filename without ".md"
     let isFolder: Bool
@@ -32,21 +32,27 @@ struct VaultNode: Identifiable, Hashable {
 /// A loaded snapshot of the vault: the tree (README pulled out and offered as the pinned
 /// "Overview"), a flat note list (search + counts), and a title→URL index for wikilinks.
 /// Rebuilt each time the Knowledge window opens — the vault is small and read on demand.
-struct KnowledgeVault {
+nonisolated struct KnowledgeVault {
     let root: URL
     let nodes: [VaultNode]           // top-level entries (folders first, then notes), README removed
     let allNotes: [VaultNode]        // every note, flattened, alphabetical (includes README)
     let titleIndex: [String: URL]    // lowercased filename stem → note URL
     let readme: URL?                 // the root README, shown pinned as "Overview"
 
+    /// Whether the vault folder exists, which is exactly when `load()` returns a vault. One stat,
+    /// cheap enough to ask before the first scan.
+    @MainActor static var exists: Bool {
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: VaultGenerator.vaultRoot.path, isDirectory: &isDir) && isDir.boolValue
+    }
+
     /// Scan `VaultGenerator.vaultRoot` into a tree. Returns nil if the vault folder doesn't exist
     /// yet (no knowledge base has been built). Cheap — only enumerates directory entries; note
     /// bodies are read lazily on selection via `read(_:)`.
-    static func load() -> KnowledgeVault? {
+    @MainActor static func load() -> KnowledgeVault? {
         let root = VaultGenerator.vaultRoot
         let fm = FileManager.default
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: root.path, isDirectory: &isDir), isDir.boolValue else { return nil }
+        guard exists else { return nil }
 
         var index: [String: URL] = [:]
         var flat: [VaultNode] = []

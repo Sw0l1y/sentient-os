@@ -325,8 +325,8 @@ final class NightSkyModel: ObservableObject {
         return CGRect(x: x, y: y, width: w, height: h)
     }
 
-    /// Where the sun's SpinningLogo overlay belongs this frame (screen center, diameter, opacity).
-    /// The canvas draws only the sun's light bed; the actual brand mark floats above it.
+    /// Where the sun (the root README) sits this frame (screen center, diameter, opacity), for
+    /// anything drawn over it.
     func sunOverlay(size: CGSize) -> (center: CGPoint, diameter: CGFloat, opacity: Double)? {
         guard let graph, let sim, let root = graph.rootIndex, camera.initialized else { return nil }
         let zf = CGFloat(pow(Double(camera.zoom), 0.62))
@@ -353,11 +353,12 @@ final class NightSkyModel: ObservableObject {
 
     // MARK: Preview factory (deterministic — renders the mock galaxy already settled)
 
-    static func preview(graph: SkyGraph = .mock(), hovering: Int? = nil, minimumZoom: CGFloat = 0.35) -> NightSkyModel {
+    /// `graph` nil is the mock galaxy (built here, on the main actor its seeded generator needs).
+    static func preview(graph: SkyGraph? = nil, hovering: Int? = nil, minimumZoom: CGFloat = 0.35) -> NightSkyModel {
         let m = NightSkyModel()
         m.preservesPreviewGraph = true
         m.minimumZoom = minimumZoom
-        let g = graph
+        let g = graph ?? .mock()
         m.graph = g
         m.sim = SkySimulation(graph: g, entrance: false)
         m.glow = [Double](repeating: 0, count: g.nodes.count)
