@@ -54,6 +54,9 @@ import UniformTypeIdentifiers
         let task = work; task?.cancel(); _ = await task?.value
         report = nil; window?.close(); window = nil
         defaults.removeObject(forKey: Self.savedReportKey)
+        // The helper rows' display-only proof is computer-use state too (Factory Reset, Uninstall).
+        NativePermissionProofStore.shared.clear()
+        defaults.removeObject(forKey: NativePermissionProof.defaultsKey)
     }
 
     /// The native broker owns serialization. This check uses its current session and does not
@@ -134,6 +137,7 @@ import UniformTypeIdentifiers
                 if case CodexRuntime.Failure.invalidPackage = error { invalidPackage = true } else { invalidPackage = false }
                 guard source == .settings, invalidHelper || invalidPackage else { throw error }
                 report?.repairAttempted = true; report?.update(.repair, .running)
+                NativePermissionProofStore.shared.clear()   // a reinstalled helper must be proven again
                 try await runtime.prepareForReinstall(configuration: configuration)
                 let setup = ComputerUseSetup.instance(for: .openAI)
                 guard await setup.ensureInstalled(force: true) else {
@@ -187,6 +191,9 @@ import UniformTypeIdentifiers
                     #endif
                     try await ComputerUseCheckProbe.run(target: target, call: call, update: update)
                     await session?.close(); session = nil
+                    // The probe read the test window (Accessibility) and captured it (Screen
+                    // Recording): the same capabilities the helper rows show.
+                    NativePermissionProofStore.shared.record(.doctor)
                     let repaired = report?.repairAttempted == true
                     report?.repairVerified = repaired
                     report?.outcome = repaired ? .repaired : .passed
@@ -213,6 +220,10 @@ import UniformTypeIdentifiers
             await session?.close()
             if error is CancellationError || Task.isCancelled { report?.outcome = .cancelled; return }
             if let failure = error as? NativeComputerUseFailure {
+                let found = NativePermissionReadiness.afterFailure(failure)
+                if found.accessibility == .denied || found.screenRecording == .denied {
+                    NativePermissionProofStore.shared.clear()   // a confirmed denial outranks an old proof
+                }
                 if report?.steps.last?.status == .running { report?.update(stage, .needsAttention, failure: failure) }
                 report?.outcome = ComputerUseCheckReport.outcome(for: failure)
             } else {

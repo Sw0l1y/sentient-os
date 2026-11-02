@@ -1,5 +1,6 @@
 // An explicit, read-only helper check against a temporary Sentient-owned window.
-// No model, customer app, clicks, TCC reads/writes, persistent readiness flag or stored payloads.
+// No model, customer app, clicks, TCC reads/writes or stored payloads. Task admission reads only the
+// in-memory snapshot; a passed check also saves a display-only NativePermissionProof for the rows.
 import AppKit
 import Observation
 
@@ -20,6 +21,7 @@ import Observation
 
     /// Background callers only inspect this evidence. They never create a check window.
     func refresh() {
+        NativePermissionProofStore.shared.prune()
         guard snapshot.isReady else { return }
         guard let helper, !helper.isTerminated, let configuration,
               helper.bundleURL?.standardizedFileURL == configuration.appURL.standardizedFileURL,
@@ -42,6 +44,10 @@ import Observation
     private func clearEvidence(failure: NativeComputerUseFailure? = nil) {
         generation = UUID()
         snapshot = NativePermissionReadiness.afterFailure(failure)
+        // A confirmed denial makes any earlier display-only proof wrong.
+        if snapshot.accessibility == .denied || snapshot.screenRecording == .denied {
+            NativePermissionProofStore.shared.clear()
+        }
         helper = nil; configuration = nil
         let previous = connection; connection = nil
         if let previous {
@@ -122,6 +128,7 @@ import Observation
             guard generation == checkID, !helper.isTerminated else { throw CancellationError() }
             snapshot = result; self.helper = helper; self.configuration = configuration
             connection = session
+            if result.isReady { NativePermissionProofStore.shared.record(.check) }
         } catch {
             await opened?.close()
             if generation == checkID { clearEvidence(failure: error as? NativeComputerUseFailure) }

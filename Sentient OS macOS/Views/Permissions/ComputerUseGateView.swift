@@ -134,31 +134,39 @@ struct SentientPermissionRows: View {
 /// Native helper grants are shared by the first-use gate, upgrade flow and Settings.
 /// One Section ("Computer Use Helper"): three permission rows, the "already allowed" check row,
 /// and the status sentence with its one retry button in the footer.
+/// Accessibility and Screen Recording are proven only by a live check. Between checks a saved,
+/// display-only proof (NativePermissionProof) shows "Verified <date>"; with none, the rows say a
+/// task start checks them, in a neutral tone. Only a real denial or error warns, and only a denial
+/// offers System Settings.
 struct NativeComputerUsePermissionRows: View {
     let gate: ComputerUseGate
+    private var proofs: NativePermissionProofStore { .shared }
 
     var body: some View {
+        let accessibility = helperRow(gate.helperPermissionState.accessibility)
+        let screen = helperRow(gate.helperPermissionState.screenRecording)
         Section {
             GatePermissionRow("Accessibility", tile: .accessibility,
-                              detail: detail(gate.helperPermissionState.accessibility),
-                              tone: gate.helperAccessibility ? .ok : .warning,
+                              detail: helperDetail(accessibility),
+                              tone: helperTone(accessibility),
                               info: "Allows clicking and typing in your apps.",
                               fixTitle: "Open Settings",
-                              fix: !gate.setup.ready || gate.helperAccessibility ? nil : {
+                              fix: !gate.setup.ready || !accessibility.offersSettingsFix ? nil : {
                 PermissionGuide.shared.guide(.accessibility, dragging: OpenAIComputerUse.appURL)
             })
             // The probe and the auto-request live on one row (always shown), so they run once;
             // a modifier on the Section would be applied to every row.
             .task(id: gate.setup.ready) { await gate.prepareNativePermissions() }
             .onChange(of: gate.automation) { _, state in
-                if state == .notAsked, gate.setup.ready { gate.requestAutomation() }
+                // Never auto-ask while another helper copy runs: asking would close it unannounced.
+                if state == .notAsked, gate.setup.ready, !gate.nativeHelperConflict { gate.requestAutomation() }
             }
             GatePermissionRow("Screen Recording", tile: .screenRecording,
-                              detail: detail(gate.helperPermissionState.screenRecording),
-                              tone: screenTone,
+                              detail: helperDetail(screen),
+                              tone: helperTone(screen),
                               info: "Allows computer use to see the app it is working in.",
                               fixTitle: "Open Settings",
-                              fix: !gate.setup.ready || gate.helperScreen ? nil : {
+                              fix: !gate.setup.ready || !screen.offersSettingsFix ? nil : {
                 PermissionGuide.shared.guide(.screenRecording, dragging: OpenAIComputerUse.appURL)
             })
             GatePermissionRow("Automation", tile: .automation,
@@ -166,11 +174,11 @@ struct NativeComputerUsePermissionRows: View {
                               tone: automationTone,
                               info: "Allows Sentient OS to control its computer-use helper. This is separate from Screen Recording and Accessibility.",
                               fixTitle: gate.automation == .denied ? "Open Settings" : (gate.automation == .notAsked ? "Allow…" : "Check Again"),
-                              fix: !gate.setup.ready || gate.automation == .granted || gate.requestingAutomation || gate.checkingAutomation ? nil : {
+                              fix: !automationOffersFix ? nil : {
                 if gate.automation == .denied { Permissions.openAutomationSettings() }
                 else { gate.requestAutomation() }
             })
-            if showsAlreadyAllowed {
+            if showsAlreadyAllowed(accessibility, screen) {
                 LabeledContent {
                     Button("Check Computer Use") { gate.requestAutomation() }
                         .buttonStyle(.bordered)
@@ -200,18 +208,32 @@ struct NativeComputerUsePermissionRows: View {
 
     // MARK: State
 
-    private func detail(_ state: NativePermissionReadiness.State) -> String {
-        switch state {
-        case .verified: "Verified"
-        case .denied: "Not allowed"
-        case .unknown: "Not checked"
+    /// Accessibility or Screen Recording: the live snapshot first, then a saved proof for this
+    /// helper install and Sentient build. A recorded check error outranks an old proof.
+    private func helperRow(_ live: NativePermissionReadiness.State) -> NativePermissionProof.Row {
+        proofs.row(live: live, checkFailed: gate.setup.ready && gate.nativePermissionError != nil)
+    }
+
+    /// A user-started check in progress shows on the rows it is about to prove.
+    private func helperChecking(_ row: NativePermissionProof.Row) -> Bool {
+        gate.requestingAutomation && row != .verified && row != .denied
+    }
+
+    private func helperDetail(_ row: NativePermissionProof.Row) -> String {
+        helperChecking(row) ? "Checking…" : NativePermissionProof.detail(row)
+    }
+
+    private func helperTone(_ row: NativePermissionProof.Row) -> StatusTone {
+        if helperChecking(row) { return .working }
+        switch row {
+        case .verified, .verifiedEarlier: return .ok
+        case .pending: return .off
+        case .failed: return .warning
+        case .denied: return .error
         }
     }
 
-    private var screenTone: StatusTone {
-        if gate.helperScreen { return .ok }
-        return gate.helperPermissionState.screenRecording == .denied ? .error : .warning
-    }
+    private var automationCheckFailed: Bool { gate.setup.ready && gate.nativePermissionError != nil }
 
     private var automationDetail: String {
         if gate.requestingAutomation || gate.checkingAutomation { return "Checking…" }
@@ -219,7 +241,7 @@ struct NativeComputerUsePermissionRows: View {
         case .granted: return "Granted"
         case .denied: return "Not allowed"
         case .notAsked: return "Not requested"
-        case .unavailable: return "Not checked"
+        case .unavailable: return automationCheckFailed ? "Couldn’t check" : "Checked when a task starts"
         }
     }
 
@@ -228,7 +250,18 @@ struct NativeComputerUsePermissionRows: View {
         switch gate.automation {
         case .granted: return .ok
         case .denied: return .error
-        case .notAsked, .unavailable: return .warning
+        case .notAsked: return .warning
+        case .unavailable: return automationCheckFailed ? .warning : .off
+        }
+    }
+
+    /// Open Settings for a denial, Allow… for a first request, Check Again only after an error.
+    private var automationOffersFix: Bool {
+        guard gate.setup.ready, !gate.requestingAutomation, !gate.checkingAutomation else { return false }
+        switch gate.automation {
+        case .granted: return false
+        case .denied, .notAsked: return true
+        case .unavailable: return automationCheckFailed
         }
     }
 
@@ -242,25 +275,38 @@ struct NativeComputerUsePermissionRows: View {
             return "In System Settings → Privacy & Security → Automation, expand Sentient OS and turn on ChatGPT Computer Use (called Codex Computer Use in some versions)."
         } else if gate.setup.ready, let error = gate.nativePermissionError {
             return error
+        } else if gate.setup.ready, gate.nativeHelperConflict {
+            return "ChatGPT’s computer-use helper is running. Sentient takes it over when a task starts. Check Now closes ChatGPT’s helper and checks these permissions."
         } else if gate.setup.ready, gate.checkingAutomation, gate.automation != .granted {
             return "Checking permissions…"
         }
         return nil
     }
 
-    /// The footer's one action, shown only under a helper error (the fourth status case).
+    /// The footer's one action: a retry under a helper error, or Check Now while another helper
+    /// copy runs (it takes that copy over, as the status sentence says, then runs the live check).
     private var retryAction: (title: String, run: () -> Void)? {
         guard !gate.restartingNative, !gate.requestingAutomation, gate.automation != .denied,
-              gate.setup.ready, gate.nativePermissionError != nil else { return nil }
-        if gate.nativeRestartRequired {
-            return ("Restart Computer Use", { gate.restartComputerUse() })
+              gate.setup.ready else { return nil }
+        if gate.nativePermissionError != nil {
+            if gate.nativeRestartRequired {
+                return ("Restart Computer Use", { gate.restartComputerUse() })
+            }
+            return ("Try Again", { gate.requestAutomation() })
         }
-        return ("Try Again", { gate.requestAutomation() })
+        if gate.nativeHelperConflict {
+            return ("Check Now", { gate.requestAutomation() })
+        }
+        return nil
     }
 
-    private var showsAlreadyAllowed: Bool {
+    /// The optional manual check, offered only while nothing has proven the helper yet and no
+    /// other helper copy would be closed without the footer's explanation.
+    private func showsAlreadyAllowed(_ accessibility: NativePermissionProof.Row,
+                                     _ screen: NativePermissionProof.Row) -> Bool {
         gate.setup.ready && gate.automation == .granted && !gate.helperPermissionState.isReady
-            && gate.nativePermissionError == nil && !gate.requestingAutomation
+            && gate.nativePermissionError == nil && !gate.requestingAutomation && !gate.nativeHelperConflict
+            && (accessibility == .pending || screen == .pending)
     }
 }
 

@@ -73,6 +73,14 @@ actor OpenAIComputerUseSession {
 nonisolated enum OpenAIComputerUseProbe {
     static func validateResult(_ result: [String:Any], requiresCapture: Bool) throws {}
 }
+@MainActor final class NativePermissionProofStore {
+    static let shared = NativePermissionProofStore()
+    enum Source { case check, doctor }
+    var records = 0, clears = 0, prunes = 0
+    func record(_ source: Source) { precondition(source == .check); records += 1 }
+    func clear() { clears += 1 }
+    func prune() { prunes += 1 }
+}
 '''
 TESTS=r'''
 import Foundation
@@ -82,16 +90,20 @@ import Foundation
     @MainActor static func main() async throws {
         let cache=NativePermissionCheck.fixture(), config=OpenAIComputerUse.Configuration(revision:1)
         let helper=NSRunningApplication(1)
+        let proof=NativePermissionProofStore.shared
         cache.refresh()
         check(!cache.snapshot.isReady && NativePermissionCheckWindow.shown == 0,"Passive refresh never opens a window")
+        check(proof.prunes == 1 && proof.records == 0,"Passive refresh only prunes a stale display proof")
         try await cache.check(configuration:config,helper:helper)
         check(cache.snapshot.isReady && NativePermissionCheckWindow.shown == 1 && NativePermissionCheckWindow.closed == 1,"Explicit proof closes synthetic window")
+        check(proof.records == 1 && proof.clears == 0,"A passed live check saves one display-only proof")
         let first=OpenAIComputerUseSession.sessions.last!
         check(await first.isUsable(),"Verified helper connection stays alive")
         try await cache.check(configuration:config,helper:helper)
         check(NativePermissionCheckWindow.shown == 1,"Same live process reuses proof")
+        check(proof.records == 1,"Reused live proof is not re-recorded")
         await cache.refresh(configuration:.init(revision:2),helper:helper)
-        check(!cache.snapshot.isReady,"Configuration change invalidates evidence")
+        check(!cache.snapshot.isReady && proof.clears == 0,"Configuration change invalidates evidence but not the saved display proof")
         try await cache.check(configuration:config,helper:helper)
         helper.isTerminated=true;cache.refresh()
         check(!cache.snapshot.isReady,"Helper exit invalidates evidence")
@@ -151,6 +163,14 @@ import Foundation
         let retiredCloses = await retiring.closes
         let retiredUsable = await retiring.isUsable()
         check(retiredCloses == 1 && !retiredUsable,"Teardown joins previously invalidated retained clients")
+        let clearsBeforeDenial=proof.clears
+        try await cache.check(configuration:config,helper:next)
+        var denial=NativeComputerUseFailure(kind:.permission,code:nil,detail:.unspecified,stage:.probe)
+        denial.systemDomain="SCStreamErrorDomain";denial.systemCode = -3801
+        cache.invalidate(failure:denial)
+        check(cache.snapshot.screenRecording == .denied && proof.clears == clearsBeforeDenial+1,"Confirmed capture denial clears the saved display proof")
+        cache.invalidate(failure:.init(kind:.connection,code:nil,detail:.malformedResponse,stage:.transport))
+        check(proof.clears == clearsBeforeDenial+1,"A generic failure never clears the saved display proof")
         print("PASS \(count) native permission lifecycle checks")
     }
 }

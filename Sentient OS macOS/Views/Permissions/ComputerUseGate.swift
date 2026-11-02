@@ -48,8 +48,9 @@ final class ComputerUseGate {
     private(set) var requestingAutomation = false
     private(set) var checkingAutomation = false
     private(set) var nativePermissionError: String?
-    /// A competing helper is a recoverable startup condition, not missing permission.
-    private var nativeHelperConflict = false
+    /// A competing helper is a recoverable startup condition, not missing permission. Set when a
+    /// passive check found another copy of the helper (ChatGPT's) running and left it alone.
+    private(set) var nativeHelperConflict = false
     private(set) var nativeRestartRequired = false
     private(set) var restartingNative = false
     @ObservationIgnored private var automationProbe: Task<Void, Never>?
@@ -78,13 +79,30 @@ final class ComputerUseGate {
         localRequirementsReady && (backend == .cua || (automation == .granted && nativePermissionError == nil && !nativeHelperConflict))
     }
 
+    /// Something is actually missing, denied or failing. Helper capabilities that are only
+    /// unverified this session, or a check waiting on another helper copy, are not problems.
+    /// Settings' issue badges count this; task admission still requires allRequiredGranted.
+    var hasConfirmedProblem: Bool {
+        guard sentientScreen else { return true }
+        switch backend {
+        case .cua:
+            return !sentientAccessibility
+        case .openAI:
+            guard nativeInstallationReady else { return true }
+            if automation == .denied || automation == .notAsked || nativePermissionError != nil { return true }
+            return helperPermissionState.accessibility == .denied || helperPermissionState.screenRecording == .denied
+        }
+    }
+
     /// The visible setup surface owns the native consent request. Already-granted and denied
     /// states never raise another prompt just because the permission rows were displayed.
     func prepareNativePermissions() async {
         refresh()
         guard backend == .openAI, setup.ready else { return }
         await awaitAutomationRefresh()
-        guard !Task.isCancelled, backend == .openAI, setup.ready, automation == .notAsked else { return }
+        // Asking would take over another running helper copy (ChatGPT's); that needs the user's click.
+        guard !Task.isCancelled, backend == .openAI, setup.ready, automation == .notAsked,
+              !nativeHelperConflict else { return }
         requestAutomation()
     }
 
@@ -156,6 +174,7 @@ final class ComputerUseGate {
         OpenAIComputerUseRuntime.shared.invalidate()
         let failure = error as? OpenAIComputerUse.RuntimeError
         if failure == .conflictingHelper && passive {
+            if !nativeHelperConflict { Log("ComputerUseGate: another computer-use helper copy is running; passive check left it alone") }
             nativeHelperConflict = true
             nativePermissionError = nil
             nativeRestartRequired = false
@@ -344,7 +363,15 @@ final class ComputerUseGate {
             do {
                 try await checkNativeAccess(ask: false)
             } catch {
+                // Another copy of the helper (ChatGPT's) is running and a passive check never
+                // takes it over. Automation is granted per target bundle ID, which both copies
+                // share, so it is still answerable while that copy runs.
+                var shared: Permissions.AutomationState?
+                if (error as? OpenAIComputerUse.RuntimeError) == .conflictingHelper {
+                    shared = await Permissions.nativeAutomationState(ask: false)
+                }
                 recordNativeFailure(error, passive: true)
+                if let shared, !Task.isCancelled { automation = shared }
             }
         }
     }

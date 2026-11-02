@@ -61,7 +61,11 @@ nonisolated enum OpenAIComputerUse {
 }
 @MainActor final class OpenAIComputerUseRuntime {
     static let shared=OpenAIComputerUseRuntime()
-    func start(configuration:OpenAIComputerUse.Configuration,stoppingConflictingHelpers:Bool) async throws -> Int {1}
+    var conflict=false
+    func start(configuration:OpenAIComputerUse.Configuration,stoppingConflictingHelpers:Bool) async throws -> Int {
+        if conflict && !stoppingConflictingHelpers { throw OpenAIComputerUse.RuntimeError.conflictingHelper }
+        return 1
+    }
     func restart(configuration:OpenAIComputerUse.Configuration) async throws {}
     func invalidate() {}
 }
@@ -130,6 +134,36 @@ import Foundation
         catch is ComputerUseGate.SetupCancelled {count+=1}
         try await settle(waiter)
         check(!waiter.visible,"Cancellation closes waiting setup and cannot reopen later")
+        proof.snapshot = .init();proof.calls=0
+        let unproven=ComputerUseGate.fixture()
+        unproven.refresh();try await settle(unproven)
+        check(unproven.automation == .granted && !unproven.allRequiredGranted && !unproven.hasConfirmedProblem && proof.calls == 0,
+              "Unverified helper grants are not a confirmed problem and passive refresh never verifies")
+        OpenAIComputerUseRuntime.shared.conflict=true
+        let foreign=ComputerUseGate.fixture()
+        foreign.refresh();try await settle(foreign)
+        check(foreign.automation == .granted && foreign.nativeHelperConflict && foreign.nativePermissionError == nil
+              && !foreign.allRequiredGranted && proof.calls == 0,"Foreign helper copy still resolves Automation without a takeover")
+        check(!foreign.hasConfirmedProblem,"Foreign helper copy alone is not a confirmed problem")
+        Permissions.automation = .denied
+        let foreignDenied=ComputerUseGate.fixture()
+        foreignDenied.refresh();try await settle(foreignDenied)
+        check(foreignDenied.automation == .denied && foreignDenied.hasConfirmedProblem,"Automation denial behind a foreign copy is a confirmed problem")
+        Permissions.automation = .notAsked
+        let foreignAsk=ComputerUseGate.fixture()
+        await foreignAsk.prepareNativePermissions();try await settle(foreignAsk)
+        check(foreignAsk.automation == .notAsked && foreignAsk.nativeHelperConflict && !foreignAsk.requestingAutomation,
+              "Setup never auto-requests Automation while a foreign copy would be closed")
+        Permissions.automation = .granted;OpenAIComputerUseRuntime.shared.conflict=false
+        proof.snapshot = .init(accessibility:.unknown,screenRecording:.denied)
+        let deniedCapture=ComputerUseGate.fixture()
+        deniedCapture.refresh();try await settle(deniedCapture)
+        check(deniedCapture.hasConfirmedProblem,"Confirmed helper capture denial is a confirmed problem")
+        proof.snapshot = .init();Permissions.screen=false
+        let noScreen=ComputerUseGate.fixture()
+        noScreen.refresh();try await settle(noScreen)
+        check(noScreen.hasConfirmedProblem,"Missing Sentient Screen Recording is a confirmed problem")
+        Permissions.screen=true
         print("PASS \(count) typed gate and held-action checks")
     }
 }

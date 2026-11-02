@@ -59,8 +59,10 @@ struct HealthPane: View {
     /// when a task runs, not by a local plan label.
     /// Claude = Claude Code + its login + Codex for computer tasks; custom = CLI + a proven endpoint (codex is the
     /// harness there too). The computer-use driver rides every engine.
+    /// Computer use counts only when something is actually missing, denied or failing; helper
+    /// grants that are merely unverified since launch (proven when a task starts) are not issues.
     private var engineAllGreen: Bool {
-        guard ComputerUseSetup.current.ready, computerGate.allRequiredGranted else { return false }
+        guard ComputerUseSetup.current.ready, !computerGate.hasConfirmedProblem else { return false }
         switch backend {
         case .chatgpt: return codex.installed && !codex.outdated
                            && codex.loggedIn
