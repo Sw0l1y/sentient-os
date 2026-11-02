@@ -71,7 +71,57 @@ struct ConnectorSheetLogo: View {
     }
 }
 
+/// The sheet body between the header and the footer (one grouped Form). Internet Accounts sheets
+/// size to their content, so the body's height is its content's height: no empty band above the
+/// buttons. A body taller than `maxHeight` scrolls inside the sheet instead of growing it. Pair it
+/// with `.connectorSheetSizing()` on the sheet root, which lets the sheet follow that height.
+struct ConnectorSheetBody<Content: View>: View {
+    private let maxHeight: CGFloat
+    private let content: Content
+
+    init(maxHeight: CGFloat = 420, @ViewBuilder content: () -> Content) {
+        self.maxHeight = maxHeight
+        self.content = content()
+    }
+
+    var body: some View {
+        ContentHeightLayout(maxHeight: maxHeight) {
+            VStack(spacing: 0) { content }
+        }
+    }
+}
+
+/// Reports its child's ideal height (capped, and never more than offered) as its own, so a
+/// scrolling Form, which would otherwise take every point it is offered, hugs its rows.
+private struct ContentHeightLayout: Layout {
+    let maxHeight: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        let content = child.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        var height = min(content.height, maxHeight)
+        if let offered = proposal.height { height = min(height, offered) }
+        return CGSize(width: proposal.width ?? content.width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+    }
+}
+
+extension View {
+    /// The connector sheet's size: the form sheet's width, and a height that follows the content
+    /// (header + `ConnectorSheetBody` + footer). The sheet grows and shrinks as rows appear.
+    func connectorSheetSizing() -> some View {
+        frame(minWidth: 460, idealWidth: 480)
+            .presentationSizing(.form.fitted(horizontal: false, vertical: true))
+    }
+}
+
 /// The bottom button bar: leading secondary actions, a Spacer, then the trailing Cancel and primary buttons.
+/// Roles (SPEC-00 sheets): Cancel is `role: .cancel` + `.keyboardShortcut(.cancelAction)`; the one
+/// enabled primary is `.borderedProminent` + `.keyboardShortcut(.defaultAction)` (ConnectorActionButton
+/// `.connect`/`.done`); a repeat of the browser step is `.bordered` (`.again`) and never owns Return.
 struct ConnectorSheetFooter<Leading: View, Trailing: View>: View {
     private let leading: Leading
     private let trailing: Trailing

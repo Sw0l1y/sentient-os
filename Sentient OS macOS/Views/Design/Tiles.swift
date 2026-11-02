@@ -26,6 +26,7 @@ nonisolated struct TileSpec: Hashable, Sendable {
     static let speech = TileSpec("waveform", .red)
     static let notifications = TileSpec("bell.badge.fill", .red)
     static let launchAtLogin = TileSpec("power", .green)
+    static let appearance = TileSpec("circle.lefthalf.filled", .gray)
     static let overnight = TileSpec("moon.fill", .indigo)
     static let computerUse = TileSpec("cursorarrow.rays", .green)
     static let onDeviceModel = TileSpec("cpu", .purple)

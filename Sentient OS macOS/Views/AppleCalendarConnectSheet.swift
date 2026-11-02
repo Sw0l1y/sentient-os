@@ -22,12 +22,14 @@ struct AppleCalendarConnectSheet: View {
             ConnectorSheetHeader("Apple Calendar", message: "Choose the calendars Sentient reads on this Mac.") {
                 ConnectorSheetLogo(asset: "AppleCalendarMark")
             }
-            Form {
-                if authorization == .fullAccess { calendarSections } else { accessSection }
-                noticeSection
+            ConnectorSheetBody(maxHeight: 460) {
+                Form {
+                    if authorization == .fullAccess { calendarSections } else { accessSection }
+                    noticeSection
+                }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
             ConnectorSheetFooter {
                 Text("\(selected.count) selected")
                     .font(.callout).foregroundStyle(.secondary)
@@ -48,8 +50,7 @@ struct AppleCalendarConnectSheet: View {
                     .accessibilityIdentifier("connector.calendar.save")
             }
         }
-        .frame(minWidth: 460, idealWidth: 480, minHeight: 420, idealHeight: 520)
-        .presentationSizing(.form)
+        .connectorSheetSizing()
         .task { await refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await refresh() }

@@ -88,13 +88,8 @@ if CommandLine.arguments.dropFirst().first == ClaudeSubscriptionProcess.argument
     CrashReporting.start(.wakeHelper)   // crash reporting for the root overnight path
     WakeHelper.run(legacy: CommandLine.arguments.contains(WakeHelperConfig.legacyHelperFlag))
 } else {
-    // The app follows the system appearance. QA hook (ADDENDUM 12.6): `defaults write <bundle id>
-    // dbg.appearance light|dark` forces one for screenshots; anything else (or unset) follows the system.
-    switch UserDefaults.standard.string(forKey: "dbg.appearance") {
-    case "light": NSApplication.shared.appearance = NSAppearance(named: .aqua)
-    case "dark": NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
-    default: NSApplication.shared.appearance = nil
-    }
+    // Dark by default; Settings › General › Appearance offers Light and Auto (AppAppearance).
+    AppAppearance.apply()
     CrashReporting.start(.app)          // crash reporting for the GUI app
     Analytics.start()                   // product analytics (TelemetryDeck) — GUI app only
     Analytics.countInstallOnce()        // the one anonymous install ping — fires even when opted out

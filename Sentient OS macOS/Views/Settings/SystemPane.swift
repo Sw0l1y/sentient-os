@@ -26,6 +26,7 @@ struct SystemPane: View {
     @AppStorage("diagnosticsEnabled") private var crashReportsEnabled = true
     @AppStorage("analyticsEnabled") private var analyticsEnabled = true
     @AppStorage(OvernightScheduler.minutesKey) private var wakeMinutes = OvernightScheduler.defaultMinutes
+    @AppStorage(AppAppearance.key) private var appearance = AppAppearance.defaultValue
 
     @State private var launchAtLogin = LoginItem.cachedIsEnabled
     @State private var confirmLoginOff = false
@@ -41,6 +42,7 @@ struct SystemPane: View {
 
     var body: some View {
         PaneForm {
+            appearanceSection
             startupSection
             overnightSection
             updatesSection
@@ -92,6 +94,25 @@ struct SystemPane: View {
         }
         .sheet(isPresented: $showUninstall) {
             UninstallView().environment(\.settingsFormStyle, false)
+        }
+    }
+
+    // MARK: - Appearance
+
+    private var appearanceSection: some View {
+        Section {
+            Picker(selection: $appearance) {
+                ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
+            } label: {
+                TileLabel("Appearance", tile: .appearance)
+            }
+            .pickerStyle(.segmented)
+            .fixedSize()
+            .onChange(of: appearance) { AppAppearance.apply() }
+        } header: {
+            Text("Appearance")
+        } footer: {
+            Text("Auto follows your Mac’s appearance. The notch is always dark.")
         }
     }
 

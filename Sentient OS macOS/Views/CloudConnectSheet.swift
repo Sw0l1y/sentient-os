@@ -59,25 +59,27 @@ struct CloudConnectSheet: View {
             ConnectorSheetHeader(service.title, message: headerLine) {
                 ConnectorSheetLogo(asset: service.logoAsset)
             }
-            Form {
-                let lines = statusFooterLines
-                if lines.isEmpty {
-                    Section {
-                        StatusRow("\(readerName) Connector", detail: statusDetail, tone: statusTone)
-                    }
-                } else {
-                    Section {
-                        StatusRow("\(readerName) Connector", detail: statusDetail, tone: statusTone)
-                    } footer: {
-                        VStack(alignment: .leading, spacing: Space.xs) {
-                            ForEach(lines, id: \.self) { Text($0) }
+            ConnectorSheetBody {
+                Form {
+                    let lines = statusFooterLines
+                    if lines.isEmpty {
+                        Section {
+                            StatusRow("\(readerName) Connector", detail: statusDetail, tone: statusTone)
+                        }
+                    } else {
+                        Section {
+                            StatusRow("\(readerName) Connector", detail: statusDetail, tone: statusTone)
+                        } footer: {
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                ForEach(lines, id: \.self) { Text($0) }
+                            }
                         }
                     }
                 }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .scrollBounceBehavior(.basedOnSize)
             ConnectorSheetFooter {
                 // Reading remains an explicit opt-in.
                 if selected {
@@ -99,8 +101,7 @@ struct CloudConnectSheet: View {
                 }
             }
         }
-        .frame(minWidth: 460, idealWidth: 480, minHeight: 320, idealHeight: 380)
-        .presentationSizing(.form)
+        .connectorSheetSizing()
         .onChange(of: backendRaw) { verification?.cancel(); dismiss() }
         .onDisappear { verification?.cancel() }
     }

@@ -91,24 +91,25 @@ struct ConnectorConnectSheet: View {
             ConnectorSheetHeader(usesDirect ? "Connect \(name)" : name, message: headerLine) {
                 ConnectorSheetLogo(asset: source.isCurated ? source.logoAsset : nil)
             }
-            Form {
-                if usesDirect {
-                    directSections
-                } else {
-                    hostedSections
+            ConnectorSheetBody {
+                Form {
+                    if usesDirect {
+                        directSections
+                    } else {
+                        hostedSections
+                    }
                 }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .scrollBounceBehavior(.basedOnSize)
             ConnectorSheetFooter {
                 footerLeading
             } trailing: {
                 footerTrailing
             }
         }
-        .frame(minWidth: 460, idealWidth: 480, minHeight: 360, idealHeight: 440)
-        .presentationSizing(.form)
+        .connectorSheetSizing()
         .confirmationDialog("Disconnect \(name)?", isPresented: $confirmDisconnect) {
             Button("Disconnect", role: .destructive, action: disconnect)
         } message: {

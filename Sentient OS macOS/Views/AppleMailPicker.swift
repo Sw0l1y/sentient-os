@@ -30,16 +30,18 @@ struct AppleMailPicker: View {
             ConnectorSheetHeader("Apple Mail", message: "Choose the accounts to include.") {
                 ConnectorSheetLogo(asset: "AppleMailMark")
             }
-            Form {
-                Section("Accounts") { accountRows }
-                Section {
-                    Toggle("Read Emails for Proactive Suggestions", isOn: $researchEnabled)
-                } footer: {
-                    Text("Your chosen AI can read actual email text from these accounts to check and prepare suggestions. A cloud AI processes that text with its provider. This access only reads mail.")
+            ConnectorSheetBody(maxHeight: 460) {
+                Form {
+                    Section("Accounts") { accountRows }
+                    Section {
+                        Toggle("Read Emails for Proactive Suggestions", isOn: $researchEnabled)
+                    } footer: {
+                        Text("Your chosen AI can read actual email text from these accounts to check and prepare suggestions. A cloud AI processes that text with its provider. This access only reads mail.")
+                    }
                 }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
             ConnectorSheetFooter {
                 Text("\(selected.count) selected")
                     .font(.callout).foregroundStyle(.secondary)
@@ -60,8 +62,7 @@ struct AppleMailPicker: View {
                     .accessibilityIdentifier("connector.mail.done")
             }
         }
-        .frame(minWidth: 460, idealWidth: 480, minHeight: 420, idealHeight: 520)
-        .presentationSizing(.form)
+        .connectorSheetSizing()
         .task {
             #if DEBUG
             if previewing { return }
