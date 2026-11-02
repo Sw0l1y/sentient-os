@@ -29,18 +29,8 @@ struct SettingsView: View {
             case .health:         return "Permissions & Health"
             }
         }
-        /// The filled symbol of the pane's sidebar tile (equals `TileSpec.pane(self).symbol`).
-        var icon: String {
-            switch self {
-            case .sources:        return "tray.full.fill"
-            case .frontierModel:  return "cpu.fill"
-            case .doubleTap:      return "hand.tap.fill"
-            case .proactive:      return "sparkles"
-            case .shareKnowledge: return "antenna.radiowaves.left.and.right"
-            case .system:         return "gearshape.fill"
-            case .health:         return "checkmark.shield.fill"
-            }
-        }
+        /// The pane's monochrome sidebar symbol (NAV-SPEC 5): one source, `TileSpec.pane(self)`.
+        var icon: String { TileSpec.pane(self).symbol }
     }
 
     @Bindable private var navigation = MainNavigation.shared

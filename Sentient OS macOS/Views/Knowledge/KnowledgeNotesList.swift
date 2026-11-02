@@ -9,12 +9,19 @@
 //  how many there are. Selecting a row goes through KnowledgeView's `requestOpen`, so unsaved
 //  edits still prompt before the switch.
 //
+//  Scoped (NAV-SPEC 4: a sidebar domain row, `MainNavigation.knowledgeScope`): the list shows only
+//  that folder's subtree (its notes and subfolders, without Overview), search searches within it,
+//  and the strip counts its notes. The scope helpers at the bottom (`KnowledgeVault.folder(at:)`,
+//  `notes(in:)`, `landingNote(in:)`) are shared with KnowledgeView.
+//
 
 import SwiftUI
 import AppKit
 
 struct KnowledgeNotesList: View {
     let vault: KnowledgeVault?
+    /// The scoped folder, or nil for the whole vault.
+    let scope: VaultNode?
     let selection: URL?
     let search: String
     @Binding var expanded: Set<URL>
@@ -24,11 +31,13 @@ struct KnowledgeNotesList: View {
     let onTrash: (URL) -> Void
     let onReveal: (URL) -> Void
 
-    init(vault: KnowledgeVault?, selection: URL?, search: String, expanded: Binding<Set<URL>>,
+    init(vault: KnowledgeVault?, scope: VaultNode? = nil, selection: URL?, search: String,
+         expanded: Binding<Set<URL>>,
          mirrorEnabled: Bool, onOpen: @escaping (URL) -> Void,
          onCreate: @escaping (_ folder: Bool, _ parent: URL?) -> Void,
          onTrash: @escaping (URL) -> Void, onReveal: @escaping (URL) -> Void) {
         self.vault = vault
+        self.scope = scope
         self.selection = selection
         self.search = search
         self._expanded = expanded
@@ -44,12 +53,12 @@ struct KnowledgeNotesList: View {
             if let url, url != selection { onOpen(url) }
         })) {
             if search.isEmpty {
-                if let readme = vault?.readme {
+                if scope == nil, let readme = vault?.readme {
                     Label("Overview", systemImage: "text.book.closed")
                         .tag(readme)
                         .contextMenu { noteMenu(readme) }
                 }
-                ForEach(vault?.nodes ?? [], id: \.url) { node in
+                ForEach(scope?.children ?? vault?.nodes ?? [], id: \.url) { node in
                     KnowledgeTreeRow(node: node, expanded: $expanded,
                                      onCreate: onCreate, onTrash: onTrash, onReveal: onReveal)
                 }
@@ -74,11 +83,14 @@ struct KnowledgeNotesList: View {
         .overlay {
             if !search.isEmpty && results.isEmpty {
                 ContentUnavailableView.search(text: search)
+            } else if search.isEmpty, let scope, scope.children.isEmpty {
+                ContentUnavailableView("No Notes", systemImage: "folder",
+                                       description: Text("“\(scope.name)” is empty."))
             }
         }
-        .contextMenu {   // empty list space → create at the vault root
-            Button("New Note…") { onCreate(false, nil) }
-            Button("New Folder…") { onCreate(true, nil) }
+        .contextMenu {   // empty list space → create in the scoped folder, or at the vault root
+            Button("New Note…") { onCreate(false, scope?.url) }
+            Button("New Folder…") { onCreate(true, scope?.url) }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
@@ -124,10 +136,10 @@ struct KnowledgeNotesList: View {
     }
 
     /// Same filter as KnowledgeView.searchResults (which keeps its own copy for Search Return):
-    /// note titles only, never body text.
+    /// note titles only, never body text, within the scope when there is one.
     private var results: [VaultNode] {
         guard let v = vault, !search.isEmpty else { return [] }
-        return v.allNotes.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        return v.notes(in: scope?.url).filter { $0.name.localizedCaseInsensitiveContains(search) }
     }
 
     /// The parent folder's path under the vault root, "/"-joined; "Knowledge Base" at the top level.
@@ -140,7 +152,7 @@ struct KnowledgeNotesList: View {
     }
 
     private var countText: String {
-        let n = vault?.titleIndex.count ?? 0
+        let n = vault?.noteCount(in: scope?.url) ?? 0
         return "\(n) note\(n == 1 ? "" : "s")"
     }
 
@@ -195,5 +207,55 @@ private struct KnowledgeTreeRow: View {
         Button("Reveal in Finder") { onReveal(node.url) }
         Divider()
         Button("Move to Trash", role: .destructive) { onTrash(node.url) }
+    }
+}
+
+// MARK: - Scope helpers (NAV-SPEC 4)
+
+extension KnowledgeVault {
+    /// The folder at `url` anywhere in the tree (compared by standardized path), or nil.
+    func folder(at url: URL) -> VaultNode? {
+        let path = url.standardizedFileURL.path
+        func find(_ nodes: [VaultNode]) -> VaultNode? {
+            for node in nodes where node.isFolder {
+                if node.url.standardizedFileURL.path == path { return node }
+                if let hit = find(node.children) { return hit }
+            }
+            return nil
+        }
+        return find(nodes)
+    }
+
+    /// The notes inside `folder`'s subtree in `allNotes` order; every note when `folder` is nil.
+    func notes(in folder: URL?) -> [VaultNode] {
+        guard let folder else { return allNotes }
+        return allNotes.filter { Self.url($0.url, isInside: folder) }
+    }
+
+    /// "<n> notes": the vault's titled notes unscoped (today's count), the subtree's notes scoped.
+    func noteCount(in folder: URL?) -> Int {
+        folder == nil ? titleIndex.count : notes(in: folder).count
+    }
+
+    /// The note a scoped page opens: a README or index directly in the folder, else the folder's
+    /// first own note, else the first note deeper in it (list order); nil for an empty folder.
+    func landingNote(in folder: VaultNode) -> URL? {
+        let own = folder.children.filter { !$0.isFolder }
+        let index = own.first { ["readme", "index"].contains($0.name.lowercased()) }
+        if let url = (index ?? own.first)?.url { return url }
+        for child in folder.children where child.isFolder {
+            if let url = landingNote(in: child) { return url }
+        }
+        return nil
+    }
+
+    /// True when `url` lies anywhere below `folder`.
+    static func url(_ url: URL, isInside folder: URL) -> Bool {
+        url.standardizedFileURL.path.hasPrefix(folder.standardizedFileURL.path + "/")
+    }
+
+    /// The same folder, however its URL was spelled (a trailing slash, `..`); nil equals nil.
+    static func sameFolder(_ a: URL?, _ b: URL?) -> Bool {
+        a?.standardizedFileURL.path == b?.standardizedFileURL.path
     }
 }

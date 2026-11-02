@@ -4,7 +4,7 @@
 //
 //  The on-device model download as one activity line, the way Mail shows background progress at
 //  the foot of its sidebar: a caption, a mini progress bar and honest numbers. It lives in the
-//  sidebar footer (AppSidebar's SidebarStatusFooter) and, during onboarding, in RootView's
+//  sidebar footer (AppSidebar's AppSidebarFooter) and, during onboarding, in RootView's
 //  bottom-left whispers overlay. It yields while onboarding's full-screen downloading view shows
 //  the same bar (ModelDownload.fullScreenVisible), disappears on .ready, and becomes one orange
 //  "paused" line on .failed (the full-screen view owns the Try Again flow).

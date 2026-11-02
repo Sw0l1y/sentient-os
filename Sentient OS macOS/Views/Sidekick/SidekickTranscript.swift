@@ -15,6 +15,9 @@ struct SidekickTranscript: View {
     @Environment(\.sidekickReduceMotionOverride) private var motionOverride
     private var reduced: Bool { motionOverride ?? systemReduced }
     @State private var columnWidth: CGFloat = PageMetrics.readingColumn
+    /// The reader's place, kept while Home is hidden behind another page (NAV-SPEC 6).
+    @State private var place = SidekickTranscriptPlace()
+    private static let contentSpace = "sidekick.transcript.content"
     private struct RefreshKey: Equatable {
         let generation: UUID?
         let revision: UInt64
@@ -118,6 +121,10 @@ struct SidekickTranscript: View {
                                 presentation: presentation, active: active)
                         }
                         .padding(.top, leaders.contains(row.id) ? Space.l : Space.m)
+                        // Content coordinates change only with layout, not on every scrolled frame.
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.contentSpace)) } action: { [place] frame in
+                            place.rows[row.id] = frame
+                        }
                         .id(row.id)
                         .transition(.opacity)
                     }
@@ -140,11 +147,30 @@ struct SidekickTranscript: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.width - 2 * Space.xl } action: { columnWidth = max(200, $0) }
                 .frame(maxWidth: .infinity)
                 .scrollTargetLayout()
+                .coordinateSpace(.named(Self.contentSpace))
             }
+            // A conversation opens at its latest message, like Messages, before any scroll
+            // request arrives (a newly built transcript no longer flashes its oldest rows).
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
             // A final response can acquire its activity height after the explicit scroll
             // request. Keep followers at the native bottom through those size changes;
             // deliberate history reading/selection keeps its existing viewport instead.
             .defaultScrollAnchor(presentation.canFollowLatest ? .bottom : nil, for: .sizeChanges)
+            .onScrollGeometryChange(for: SidekickTranscriptPlace.Viewport.self) { geo in
+                .init(top: geo.visibleRect.minY, height: geo.containerSize.height,
+                      insetTop: geo.contentInsets.top, insetBottom: geo.contentInsets.bottom,
+                      fromBottom: geo.contentSize.height - geo.visibleRect.maxY)
+            } action: { [place] _, viewport in place.viewport = viewport }
+            // Home stays mounted behind other pages. Leaving notes the reader's place; coming
+            // back puts the transcript exactly there if anything moved it while it was hidden.
+            .onChange(of: active) { _, isActive in
+                if isActive { restorePlace(proxy) }
+                else {
+                    place.remember(order: display.map(\.id), generation: generation,
+                                   scrollRequest: presentation.scrollRequest,
+                                   following: presentation.canFollowLatest)
+                }
+            }
             .onScrollPhaseChange { _, phase, context in
                 // Programmatic smooth scrolling is not a new reading gesture. Use this
                 // phase's actual geometry so a late layout callback cannot re-enable follow.
@@ -183,6 +209,29 @@ struct SidekickTranscript: View {
         // A deleted conversation has a new identity, including its native scroll viewport.
         // Do not retain a months-old content offset over the fresh empty state.
         .id(conversation.generation)
+    }
+
+    /// Puts the transcript back where the reader left it when Home comes back. A destination
+    /// chosen while Home was away (search, View in Chat, a notch reply) wins, and the reader's
+    /// own scrolling ends the restore at once.
+    private func restorePlace(_ proxy: ScrollViewProxy) {
+        guard let saved = place.takeSaved(), saved.generation == presentation.generation,
+              conversation.navigationRequest == nil, !presentation.searchShown,
+              presentation.scrollRequest == saved.scrollRequest || presentation.scrollIsAutomatic else { return }
+        let token = place.restoreToken
+        let intent = presentation.readingIntentRevision
+        place.apply(saved, proxy: proxy, force: saved.atBottom)
+        // Hidden rows can be re-measured as the page returns (width, safe areas, the Ask bar),
+        // so check again once that layout has landed.
+        Task { [place, presentation] in
+            for pause in [40, 160, 420] {
+                do { try await Task.sleep(for: .milliseconds(pause)) } catch { return }
+                guard place.restoreToken == token, !presentation.isScrolling,
+                      presentation.readingIntentRevision == intent,
+                      presentation.scrollRequest == saved.scrollRequest || presentation.scrollIsAutomatic else { return }
+                place.apply(saved, proxy: proxy, force: false)
+            }
+        }
     }
 
     /// The Messages / Mail "jump to latest" glass capsule, floating above the Ask field.
@@ -263,6 +312,80 @@ struct SidekickTranscript: View {
         }
         return leaders
     }
+}
+
+/// Where the reader is in the transcript, measured without invalidating any view: the rows'
+/// frames in content coordinates and the scroll viewport. `remember` notes the place when Home
+/// is left; `apply` puts it back (the latest message, or the same row at the same height).
+@MainActor final class SidekickTranscriptPlace {
+    struct Viewport: Equatable {
+        var top: CGFloat = 0           // visible rect's top, in content coordinates
+        var height: CGFloat = 0        // the scroll view's height, insets included
+        var insetTop: CGFloat = 0
+        var insetBottom: CGFloat = 0
+        var fromBottom: CGFloat = 0    // content below the visible rect (negative inside the bottom inset)
+    }
+    struct Saved {
+        let atBottom: Bool
+        let rowID: String?
+        let rowTop: CGFloat            // that row's top edge relative to the visible rect's top
+        let generation: UUID?
+        let scrollRequest: Int
+    }
+    /// The transcript's own "at the latest message" distance (see `onScrollGeometryChange`).
+    static let latestDistance: CGFloat = 70
+    var rows: [String: CGRect] = [:]
+    var viewport = Viewport()
+    private(set) var saved: Saved?
+    /// Bumped whenever the place is noted again, which ends any restore still checking.
+    private(set) var restoreToken = 0
+
+    /// `following`: the reader follows the latest message (SidekickPresentation.canFollowLatest).
+    /// Only then does "at the bottom" mean "the latest message"; a paused reader (text selected,
+    /// paged history) keeps the same row instead, even if a reply arrives while Home is away.
+    func remember(order: [String], generation: UUID?, scrollRequest: Int, following: Bool) {
+        restoreToken &+= 1
+        lastAnchor = nil
+        let ids = Set(order)
+        rows = rows.filter { ids.contains($0.key) }
+        guard viewport.height > 0 else { saved = nil; return }
+        let visibleTop = viewport.top + viewport.insetTop
+        let rowID = order.first { (rows[$0]?.maxY ?? -.infinity) > visibleTop }
+        saved = Saved(atBottom: following && viewport.fromBottom < Self.latestDistance, rowID: rowID,
+                      rowTop: rowID.flatMap { rows[$0] }.map { $0.minY - viewport.top } ?? 0,
+                      generation: generation, scrollRequest: scrollRequest)
+    }
+
+    func takeSaved() -> Saved? {
+        defer { saved = nil }
+        return saved
+    }
+
+    /// Scrolls back to `saved` without animation. `force` scrolls even when the place looks
+    /// unchanged (the measurements of a hidden page can lag its first visible layout).
+    func apply(_ saved: Saved, proxy: ScrollViewProxy, force: Bool) {
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        if saved.atBottom {
+            guard force || viewport.fromBottom >= Self.latestDistance else { return }
+            withTransaction(instant) { proxy.scrollTo("sidekick-bottom", anchor: .bottom) }
+            return
+        }
+        guard let id = saved.rowID, let frame = rows[id], viewport.height > 0 else { return }
+        let current = frame.minY - viewport.top
+        guard abs(current - saved.rowTop) > 0.75 else { return }
+        // scrollTo aligns the row's unit point with the same unit point of the visible area
+        // (the viewport inside its insets): rowTop = insetTop + y * (visible - rowHeight).
+        // A later pass corrects the previous anchor by what is still off.
+        let span = viewport.height - viewport.insetTop - viewport.insetBottom - frame.height
+        let y: CGFloat
+        if abs(span) <= 1 { y = 0 }
+        else if let last = lastAnchor, last.id == id { y = last.y + (saved.rowTop - current) / span }
+        else { y = (saved.rowTop - viewport.insetTop) / span }
+        lastAnchor = (id, y)
+        withTransaction(instant) { proxy.scrollTo(id, anchor: UnitPoint(x: 0, y: y)) }
+    }
+    private var lastAnchor: (id: String, y: CGFloat)?
 }
 
 private struct SidekickMessageRow: View {

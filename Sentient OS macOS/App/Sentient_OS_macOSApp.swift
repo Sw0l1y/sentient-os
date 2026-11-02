@@ -3,7 +3,8 @@
 //  Sentient OS macOS
 //
 //  @main app shell. One main window hosts onboarding, then a sidebar of pages — Home,
-//  Knowledge, Analysis, Finish Setup and each Settings pane; plus an always-present
+//  Finish Setup and Knowledge (with one row per vault folder), the analysis status and a
+//  Settings gear that swaps the sidebar to the Settings panes; plus an always-present
 //  MenuBarExtra (a standard menu). The app follows the system appearance. The live store is CycleStore (Ingestion/CycleStore.swift),
 //  reached directly by the views — the app shell owns no store.
 //
@@ -78,6 +79,11 @@ struct SentientOSApp: App {
                         .keyboardShortcut("3", modifiers: .command)
                 }
                 .disabled(!appState.hasCompletedOnboarding || ComputerUseUpgrade.shared.isBlockingInterface)
+                // Settings mode's Back (NAV-SPEC 2.1): the sidebar's Back row; Esc does the same.
+                Button("Back") { MainNavigation.shared.leaveSettings() }
+                    .keyboardShortcut("[", modifiers: .command)
+                    .disabled(MainNavigation.shared.page != .settings
+                              || ComputerUseUpgrade.shared.isBlockingInterface)
                 Divider()
             }
             CommandGroup(replacing: .help) {

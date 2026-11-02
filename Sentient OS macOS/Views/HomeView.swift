@@ -210,6 +210,12 @@ struct HomeView: View {
             else { showConversation() }
         }
         .onChange(of: isPresented) { _, visible in
+            // The page swaps in one frame, so its toolbar items must too. Without this, AppKit
+            // fades the removed items' Liquid Glass platter out over ~0.2 s (longer while the
+            // destination page builds), which reads as empty capsules on the next page. This
+            // runs inside the update that adds or removes the items, so turning off implicit
+            // actions for the current Core Animation transaction removes the platter with them.
+            CATransaction.setDisableActions(true)
             updateConversationVisibility()
             if !visible { presentation.clearChatConfirmationShown = false }
             if visible {
@@ -220,6 +226,7 @@ struct HomeView: View {
                 caution = OvernightCaution.latest()
                 probeHealth()
             } else {
+                releaseSearchField()
                 showAnalysis = false
                 showDoubleTap = false
                 showCodexSignIn = false
@@ -617,43 +624,46 @@ struct HomeView: View {
             && !presentation.clearChatConfirmationShown && !appState.commandCoordinator.run.recovery.isPending
     }
 
-    /// Home's window-toolbar items. Empty while another page is showing: Home stays mounted
-    /// behind the other pages, and its items must not leak into their toolbars.
+    /// Home's window-toolbar items. Hidden while another page is showing: Home stays mounted
+    /// behind the other pages, and its items must not leak into their toolbars. They keep one
+    /// identity and are hidden (`.hidden`, applied in the same update as the page switch)
+    /// rather than removed, because SwiftUI can apply a removal a pass later, after work the
+    /// destination page queued; and their glass leaves in that same frame instead of fading
+    /// (`onChange(of: isPresented)`). ⌘F is disabled while hidden, and leaving takes the
+    /// keyboard back from the toolbar search field.
     @ToolbarContentBuilder private var toolbarActions: some ToolbarContent {
-        if isPresented && (inConversation || selectedPersonalFeature != nil) {
-            ToolbarItem(placement: .navigation) {
-                Button(action: goBack) { Label("Today", systemImage: "chevron.left") }
-                    .help("Back to Today")
-            }
+        ToolbarItem(placement: .navigation) {
+            Button(action: goBack) { Label("Today", systemImage: "chevron.left") }
+                .help("Back to Today")
         }
-        if isPresented {
-            ToolbarItemGroup(placement: .primaryAction) {
-                analysisButton
-                if !kbOnly {
-                    HomeDoubleTapButton(active: discoveryActive, presented: $showDoubleTap,
-                                        needsPersonalSetup: needsPersonalSetup,
-                                        onFinishSetup: finishPersonalSetup) {
-                        MainNavigation.shared.show(.analysis)
-                    }
-                    searchItem
+        .hidden(!isPresented || !(inConversation || selectedPersonalFeature != nil))
+        ToolbarItemGroup(placement: .primaryAction) {
+            analysisButton
+            if !kbOnly {
+                HomeDoubleTapButton(active: discoveryActive, presented: $showDoubleTap,
+                                    needsPersonalSetup: needsPersonalSetup,
+                                    onFinishSetup: finishPersonalSetup) {
+                    MainNavigation.shared.show(.analysis)
                 }
-                if inConversation && !needsPersonalSetup {
-                    Button { suggestionsWanted.toggle() } label: {
-                        Label(model.entries.isEmpty ? "Suggestions" : "Suggestions \(model.entries.count)",
-                              systemImage: "sparkles.rectangle.stack")
-                    }
-                    .help("Show or hide suggestions")
-                    .accessibilityIdentifier("sidekick.proactive")
-                }
-                if needsPersonalSetup {
-                    Button { inspectorWanted.toggle() } label: {
-                        Label("Finish Setting Up", systemImage: "checklist")
-                    }
-                    .help("Show or hide Finish Setting Up")
-                }
-                if !kbOnly { moreMenu }
+                searchItem
             }
+            if inConversation && !needsPersonalSetup {
+                Button { suggestionsWanted.toggle() } label: {
+                    Label(model.entries.isEmpty ? "Suggestions" : "Suggestions \(model.entries.count)",
+                          systemImage: "sparkles.rectangle.stack")
+                }
+                .help("Show or hide suggestions")
+                .accessibilityIdentifier("sidekick.proactive")
+            }
+            if needsPersonalSetup {
+                Button { inspectorWanted.toggle() } label: {
+                    Label("Finish Setting Up", systemImage: "checklist")
+                }
+                .help("Show or hide Finish Setting Up")
+            }
+            if !kbOnly { moreMenu }
         }
+        .hidden(!isPresented)
     }
 
     private var analysisButton: some View {
@@ -678,6 +688,18 @@ struct HomeView: View {
                 .accessibilityLabel("Search conversation")
                 .accessibilityIdentifier("sidekick.search")
                 .keyboardShortcut("f", modifiers: .command)
+                .disabled(!isPresented)
+        }
+    }
+
+    /// Ends editing in the toolbar's Search Conversation field if it has the keyboard, so typing
+    /// on another page never goes into Home's hidden field. The search itself is kept.
+    private func releaseSearchField() {
+        for window in NSApp.windows {
+            guard let editor = window.firstResponder as? NSText,
+                  let field = editor.delegate as? NSSearchField,
+                  field.accessibilityIdentifier() == "sidekick.history.search" else { continue }
+            window.makeFirstResponder(nil)
         }
     }
 

@@ -1,11 +1,13 @@
 // Main window navigation: onboarding becomes a sidebar window once the frontier model is
 // connected. Home and Knowledge stay mounted while hidden; the other pages are built on demand.
-// The root sets the window title and subtitle once (pages publish subtitles with .pageSubtitle);
-// background progress lives in the sidebar footer (AppSidebar). No window background is drawn.
+// The root sets the window title and subtitle once (pages publish subtitles with .pageSubtitle;
+// a scoped Knowledge page is titled with its folder's name); the analysis status and background
+// progress live in the sidebar footer (AppSidebar). No window background is drawn.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
 
 import SwiftUI
 import Combine
+import QuartzCore
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
@@ -74,6 +76,8 @@ struct RootView: View {
                     detail
                 }
                 .frame(minWidth: 900, minHeight: 600)
+                // Esc leaves Settings mode (NAV-SPEC 2.1); ⌘[ is the View menu's Back command.
+                .modifier(AppSidebarSettingsEscape())
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -103,6 +107,13 @@ struct RootView: View {
         .overlay { UpdateGateView() }
         .background(MainWindowCloseGuard())
         .onChange(of: navigation.page) { _, page in
+            // Toolbar flash (NAV-SPEC 6): this runs in the update that swaps the pages' toolbar
+            // items. Without it AppKit fades the outgoing Liquid Glass platter, and that fade
+            // stalls while the destination page builds, leaving empty capsules for up to a second.
+            // Only Core Animation's implicit actions for this one transaction are turned off;
+            // SwiftUI animations are unaffected. Covers pages built on demand (Settings, Analysis,
+            // Setup), which have no retained onChange of their own (see NAV-NOTES, Home section).
+            CATransaction.setDisableActions(true)
             if page == .home { refreshHomeSources() }
         }
         .onAppear { refreshHomeSources() }

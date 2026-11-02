@@ -1,6 +1,8 @@
 // In-window navigation, shared by Home, menu commands, notifications, and setup recovery.
 // The route is intentionally session-only: each normal launch starts at Home. Only the last
-// Settings pane is remembered across launches (for Settings… ⌘,).
+// Settings pane is remembered across launches (for Settings… ⌘,). Knowledge can be scoped to one
+// top-level vault folder (a sidebar domain row, NAV-SPEC 3); the Knowledge page reads
+// `knowledgeScope`.
 
 import SwiftUI
 
@@ -17,6 +19,12 @@ final class MainNavigation {
     }
     private(set) var hasOpenedKnowledge = false
 
+    /// The vault folder Knowledge is scoped to (a sidebar domain row), or nil for All Knowledge.
+    /// Set only by a Knowledge route: `showKnowledge(scope:)` sets it, plain `show(.knowledge)`
+    /// (⌘2, All Knowledge) clears it, other pages leave it as it was (the retained Knowledge view
+    /// keeps its scope while hidden), and `reset()` clears it.
+    private(set) var knowledgeScope: URL?
+
     /// Count of problems Permissions & Health would show; drives the sidebar badge. Written by
     /// HomeView after its HealthCaution probe (1 or 0) and by HealthPane with its bad-row count;
     /// the last writer wins.
@@ -29,7 +37,7 @@ final class MainNavigation {
     var title: String {
         switch page {
         case .home: return "Home"
-        case .knowledge: return "Knowledge"
+        case .knowledge: return knowledgeScope?.lastPathComponent ?? "Knowledge"
         case .analysis: return "Analysis"
         case .setup: return "Finish Setup"
         case .settings: return settingsPane.title
@@ -87,16 +95,43 @@ final class MainNavigation {
     @ObservationIgnored var leaveKnowledge: ((@escaping (Bool) -> Void) -> Void)?
     @ObservationIgnored private var resetToken = UUID()
 
+    /// Routes to `page`. A plain `.knowledge` request is All Knowledge: it clears the scope.
     func show(_ page: Page, settingsPane: SettingsView.Pane? = nil) {
+        route(page, settingsPane: settingsPane, scope: nil)
+    }
+
+    /// Opens Knowledge scoped to one vault folder (nil = All Knowledge). Changing the scope while
+    /// Knowledge is showing goes through the same unsaved-edit guard as leaving it, because the
+    /// page then opens another note.
+    func showKnowledge(scope: URL?) {
+        route(.knowledge, settingsPane: nil, scope: scope)
+    }
+
+    /// Leaves Settings mode (the sidebar's Back row, Esc, ⌘[): back to the page Settings was
+    /// opened from, with its Knowledge scope intact, or Home when there is none.
+    func leaveSettings() {
+        guard page == .settings else { return }
+        switch previousPage {
+        case .knowledge?: showKnowledge(scope: knowledgeScope)
+        case let previous? where previous != .settings: show(previous)
+        default: show(.home)
+        }
+    }
+
+    private func route(_ page: Page, settingsPane: SettingsView.Pane?, scope: URL?) {
         let token = resetToken
         let proceed = { [self] in
             guard resetToken == token else { return }
             if let settingsPane { self.settingsPane = settingsPane }
-            if page == .knowledge { hasOpenedKnowledge = true }
+            if page == .knowledge {
+                hasOpenedKnowledge = true
+                if knowledgeScope != scope { knowledgeScope = scope }
+            }
             if self.page != page { previousPage = self.page }
             self.page = page
         }
-        if self.page == .knowledge, page != .knowledge, let leaveKnowledge {
+        let leavesKnowledge = page != .knowledge || scope != knowledgeScope
+        if self.page == .knowledge, leavesKnowledge, let leaveKnowledge {
             leaveKnowledge { approved in if approved { proceed() } }
         } else {
             proceed()
@@ -115,6 +150,7 @@ final class MainNavigation {
         page = .home
         settingsPane = .sources
         hasOpenedKnowledge = false
+        knowledgeScope = nil
     }
 
 }

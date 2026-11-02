@@ -11,6 +11,11 @@
 //  (VaultActivity.markChanged → the list's sync strip). Graph mode swaps the page for the node map
 //  (Graph/NightSkyView.swift); click a node to read it, and Back (or Esc) returns to the graph.
 //
+//  Scope (NAV-SPEC 4): a sidebar domain row sets `MainNavigation.knowledgeScope` to a vault folder.
+//  The list then shows only that folder's subtree, the reader opens the folder's README/index or
+//  first note, search stays inside it and the subtitle counts its notes. nil = the whole vault,
+//  with Overview.
+//
 //  Data: VaultTree.swift · rendering: MarkdownView.swift.
 //  Doc: Views/Knowledge/Documentation - Knowledge Window (Constellation & Reader).md
 //
@@ -28,6 +33,10 @@ struct KnowledgeView: View {
     @State private var expanded: Set<URL> = []
     @State private var search = ""
     @State private var sidebarVisible = true
+    /// The scope the list and reader were last set up for (see `applyScope()`). Changes of
+    /// `MainNavigation.knowledgeScope` are compared with it, so returning to the same folder keeps
+    /// the note you were reading, and a different folder (or All Knowledge) opens its landing note.
+    @State private var appliedScope: URL?
 
     // Navigation history (back / forward), so a wikilink jump can be undone.
     @State private var history: [URL] = []
@@ -93,6 +102,9 @@ struct KnowledgeView: View {
         // Showing or hiding the page's toolbar items is never animated: they go with the page.
         .transaction(value: isPresented) { $0.disablesAnimations = true; $0.animation = nil }
         .pageSubtitle(vault == nil ? "No notes yet" : countText, page: .knowledge)
+        .onChange(of: scope) { _, _ in
+            if isPresented && loaded { applyScope() }
+        }
         .allowsHitTesting(isPresented)
         .disabled(!isPresented)
         .accessibilityHidden(!isPresented)
@@ -142,7 +154,8 @@ struct KnowledgeView: View {
     private var readerSplit: some View {
         HSplitView {
             if sidebarVisible && !(loaded && vault == nil) {
-                KnowledgeNotesList(vault: vault, selection: selection, search: search, expanded: $expanded,
+                KnowledgeNotesList(vault: vault, scope: scopeNode, selection: selection, search: search,
+                                   expanded: $expanded,
                                    mirrorEnabled: mirrorEnabled, onOpen: requestOpen,
                                    onCreate: { folder, parent in promptCreate(folder: folder, in: parent) },
                                    onTrash: deleteItem,
@@ -189,23 +202,74 @@ struct KnowledgeView: View {
         let v = KnowledgeVault.load()
         vault = v
         loaded = true
+        // The scoped folder vanished (trashed in Finder, renamed, replaced by analysis): fall
+        // back to All Knowledge so the title, the sidebar selection and the list agree, instead
+        // of a folder title over the whole vault. Through the shell's route, so the leave guard
+        // still applies; open() resets the trail, so the onChange(of: scope) that follows is
+        // idempotent with the applyScope() below.
+        if isPresented, !editing, let scope, v?.folder(at: scope) == nil {
+            MainNavigation.shared.showKnowledge(scope: nil)
+        }
         let enabled = await MirrorClient.shared.isEnabled
         guard !Task.isCancelled else { return }
         mirrorEnabled = enabled
-        // A nightly refresh may replace files while this page is away. Keep the reading place
-        // when it still exists, refresh its content, and recover to Overview when it vanished.
-        if let selection, v?.allNotes.contains(where: { $0.url == selection }) == true || selection == v?.readme {
+        // A sidebar domain row may have changed the scope while this page was away: set the list
+        // and reader up for it. Otherwise a nightly refresh may have replaced files: keep the
+        // reading place when it still exists, refresh its content, and recover to the scope's
+        // landing note (Overview when unscoped) when it vanished.
+        if !KnowledgeVault.sameFolder(scope, appliedScope) {
+            applyScope()
+        } else if let selection, v?.allNotes.contains(where: { $0.url == selection }) == true || selection == v?.readme {
             if !editing { note = KnowledgeVault.read(selection) }
         } else {
             history = []; historyIndex = -1
             selection = nil; note = nil
-            if let r = v?.readme { open(r) }                          // greet with the portrait
-            else if let first = v?.allNotes.first { open(first.url) }
+            if let landing = landingNote { open(landing) }
         }
         // The reader's linked notes and link counts come from the graph, so build it here too
         // (idempotent; the graph view reloads on entry exactly as before).
         await skyModel.load(vault: v)
         refreshNoteInfo()
+    }
+
+    // MARK: Scope (NAV-SPEC 4)
+
+    /// The vault folder this page is scoped to (a sidebar domain row), or nil for All Knowledge.
+    private var scope: URL? { MainNavigation.shared.knowledgeScope }
+
+    /// The scoped folder in the loaded vault. nil when unscoped, before the vault loads, or when
+    /// the folder no longer exists (the page then shows the whole vault rather than an empty list).
+    private var scopeNode: VaultNode? {
+        guard let scope, let vault else { return nil }
+        return vault.folder(at: scope)
+    }
+
+    /// The note the page lands on: the scoped folder's README/index or first note, or, unscoped,
+    /// Overview (the vault README) or else the first note.
+    private var landingNote: URL? {
+        guard let v = vault else { return nil }
+        if let node = scopeNode { return v.landingNote(in: node) }
+        return v.readme ?? v.allNotes.first?.url
+    }
+
+    /// Sets the list and reader up for the current scope: opens its subfolders one level, starts a
+    /// fresh trail at its landing note (an empty folder shows no note), and in Graph mode lights
+    /// that note. MainNavigation routes a scope change through `requestLeave` first, so unsaved
+    /// edits were already saved or discarded; `requestOpen` still guards a stray one.
+    private func applyScope() {
+        appliedScope = scope
+        guard vault != nil else { return }
+        if let node = scopeNode {
+            expanded.formUnion(node.children.filter(\.isFolder).map(\.url))
+        }
+        if let landing = landingNote {
+            requestOpen(landing)
+            if mode == .sky { skyModel.highlight(landing) }
+        } else if !editing {
+            history = []; historyIndex = -1
+            selection = nil; note = nil
+            refreshNoteInfo()
+        }
     }
 
     /// Rebuild the open note's facts for the metadata line and Note Info.
@@ -427,8 +491,8 @@ struct KnowledgeView: View {
         let lostSelection = selection == url || (selection?.path.hasPrefix(url.path + "/") ?? false)
         reloadVault()
         if lostSelection {
-            if let r = vault?.readme { open(r) }
-            else { selection = nil; note = nil; history = []; historyIndex = -1 }
+            if let landing = landingNote { open(landing) }
+            else { selection = nil; note = nil; history = []; historyIndex = -1; refreshNoteInfo() }
         }
         VaultActivity.shared.markChanged()
     }
@@ -531,36 +595,41 @@ struct KnowledgeView: View {
         return candidate
     }
 
+    /// Search Notes matches note titles within the scope (the whole vault when unscoped).
     private var searchResults: [VaultNode] {
         guard let v = vault, !search.isEmpty else { return [] }
-        return v.allNotes.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        return v.notes(in: scopeNode?.url).filter { $0.name.localizedCaseInsensitiveContains(search) }
     }
 
-    /// "12 notes" — the window subtitle and the notes list's strip.
+    /// "12 notes" — the window subtitle and the notes list's strip (the scoped folder's notes when scoped).
     private var countText: String {
-        let n = vault?.titleIndex.count ?? 0
+        let n = vault?.noteCount(in: scopeNode?.url) ?? 0
         return "\(n) note\(n == 1 ? "" : "s")"
     }
 
-    /// Where New Note… and New Folder… create: the open note's folder, or the vault root.
+    /// Where New Note… and New Folder… create: the open note's folder, else the scoped folder, else
+    /// the vault root.
     private var createParentForSelection: URL? {
-        selection.flatMap { $0 == vault?.readme ? nil : $0.deletingLastPathComponent() }
+        selection.flatMap { $0 == vault?.readme ? nil : $0.deletingLastPathComponent() } ?? scopeNode?.url
     }
 
     // MARK: Toolbar
 
-    /// Knowledge's window-toolbar items. Hidden while another page is showing: the page stays
-    /// mounted behind the others, and its items must not leak into their toolbars. They are hidden
-    /// (`.hidden`, one stable identity per item) rather than removed: removing them made the window
-    /// keep their empty Liquid Glass capsules on the destination page for about a second, because
-    /// each item's content was torn down at once while its glass platter animated out. A hidden
-    /// item takes its content and its platter away together. The ⇧⌘G stand-in is disabled while
-    /// hidden, and `deactivate()` takes the keyboard back from the hidden Search Notes field.
+    /// Knowledge's window-toolbar items (NAV-SPEC 6). The page stays mounted behind the others, so
+    /// its items must never show on another page; they are hidden, not removed. Every item keeps
+    /// one identity while the page is retained and is hidden with `.hidden(_:)`, which sets the
+    /// NSToolbarItem's `isHidden` in the same update as the page switch. Removing items instead
+    /// (`if isPresented { … }`) is deferred by SwiftUI's toolbar bridge until main-queue work queued
+    /// before it has run, so the destination page drew its first frames under Knowledge's empty
+    /// Liquid Glass capsules (measured in a harness: with a slow destination, removed platters
+    /// survived the first commit; hidden ones were gone in it; NAV-NOTES).
+    /// The items that come and go inside the page (Back, Edit, More) use the same mechanism, so
+    /// switching to the Graph (a heavy first build) cannot leave their capsules behind either.
+    /// Each item states its whole condition: an inner `.hidden(false)` overrides an outer
+    /// `.hidden(true)` (measured), so the page gate is repeated on every item, never wrapped.
+    /// The ⇧⌘G stand-in is disabled while hidden, and `deactivate()` takes the keyboard back from
+    /// the hidden Search Notes field.
     @ToolbarContentBuilder private var knowledgeToolbar: some ToolbarContent {
-        knowledgeToolbarItems.hidden(!isPresented)
-    }
-
-    @ToolbarContentBuilder private var knowledgeToolbarItems: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
             Button {
                 withAnimation(Motion.gated(Motion.standard, reduceMotion: reduce)) { sidebarVisible.toggle() }
@@ -570,12 +639,12 @@ struct KnowledgeView: View {
             .help(sidebarVisible ? "Hide Notes List" : "Show Notes List")
             .disabled(mode == .sky)
         }
-        if mode == .reader && (canGoBack || cameFromSky) {
-            ToolbarItem(placement: .navigation) {
-                Button(action: requestBack) { Label("Back", systemImage: "chevron.left") }
-                    .help(canGoBack ? "Previous Note" : "Back to Graph")
-            }
+        .hidden(!isPresented)
+        ToolbarItem(placement: .navigation) {
+            Button(action: requestBack) { Label("Back", systemImage: "chevron.left") }
+                .help(canGoBack ? "Previous Note" : "Back to Graph")
         }
+        .hidden(!isPresented || !(mode == .reader && (canGoBack || cameFromSky)))
         ToolbarItem(placement: .principal) {
             Picker("View", selection: Binding(get: { mode }, set: { requestMode($0) })) {
                 Text("Reader").tag(Mode.reader)
@@ -592,6 +661,7 @@ struct KnowledgeView: View {
                     .hidden()
             }
         }
+        .hidden(!isPresented)
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button("New Note…") { promptCreate(folder: false, in: createParentForSelection) }
@@ -602,28 +672,32 @@ struct KnowledgeView: View {
             .help("New Note or Folder")
             .disabled(vault == nil || editing)
         }
-        if mode == .reader, let sel = selection {
-            ToolbarItem(placement: .primaryAction) {
-                Button(editing ? "Done" : "Edit") { if editing { save() } else { beginEdit() } }
-                    .help(editing ? "Save Changes" : "Edit This Note")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([sel]) }
-                    Divider()
-                    Button("Move to Trash", role: .destructive) { deleteItem(sel) }
-                        .disabled(editing || sel == vault?.readme)
-                } label: {
-                    Label("More", systemImage: "ellipsis.circle")
-                }
-                .help("More")
-            }
+        .hidden(!isPresented)
+        ToolbarItem(placement: .primaryAction) {
+            Button(editing ? "Done" : "Edit") { if editing { save() } else { beginEdit() } }
+                .help(editing ? "Save Changes" : "Edit This Note")
         }
+        .hidden(!isPresented || !showsNoteActions)
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button("Reveal in Finder") {
+                    if let selection { NSWorkspace.shared.activateFileViewerSelecting([selection]) }
+                }
+                Divider()
+                Button("Move to Trash", role: .destructive) { if let selection { deleteItem(selection) } }
+                    .disabled(editing || selection == nil || selection == vault?.readme)
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+            }
+            .help("More")
+        }
+        .hidden(!isPresented || !showsNoteActions)
         ToolbarItem(placement: .primaryAction) {
             ToolbarSearchField(text: $search, prompt: "Search Notes", identifier: "knowledge.search",
                                width: 200, focusRequest: searchFocusTick,
                                onSubmit: { if let first = searchResults.first { requestOpen(first.url) } })
         }
+        .hidden(!isPresented)
         ToolbarItem(placement: .primaryAction) {
             Button { showInfo.toggle() } label: {
                 Label("Note Info", systemImage: "info.circle")
@@ -631,7 +705,11 @@ struct KnowledgeView: View {
             .help(showInfo ? "Hide Note Info" : "Show Note Info")
             .disabled(mode == .sky || selection == nil)
         }
+        .hidden(!isPresented)
     }
+
+    /// Edit and More act on the open note, in the Reader only.
+    private var showsNoteActions: Bool { mode == .reader && selection != nil }
 
     // MARK: Reader
 
@@ -644,6 +722,9 @@ struct KnowledgeView: View {
         } else if loaded && vault == nil {
             ContentUnavailableView("No Knowledge Base Yet", systemImage: "books.vertical",
                                    description: Text("Your knowledge will appear here after analysis. You can use Sidekick while it’s being built."))
+        } else if loaded, let node = scopeNode, vault?.landingNote(in: node) == nil {
+            ContentUnavailableView("No Notes", systemImage: "folder",
+                                   description: Text("“\(node.name)” has no notes yet."))
         } else if loaded {
             ContentUnavailableView("No Note Selected", systemImage: "doc.text",
                                    description: Text("Choose a note from the list."))
