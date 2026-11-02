@@ -33,6 +33,10 @@ struct KnowledgeView: View {
     @State private var expanded: Set<URL> = []
     @State private var search = ""
     @State private var sidebarVisible = true
+    /// The notes list's width, dragged at its trailing edge and kept across launches.
+    @AppStorage("knowledge.notesListWidth") private var listWidth: Double = 260
+    /// The width at the start of a resize drag.
+    @State private var listDragStart: Double?
     /// The scope the list and reader were last set up for (see `applyScope()`). Changes of
     /// `MainNavigation.knowledgeScope` are compared with it, so returning to the same folder keeps
     /// the note you were reading, and a different folder (or All Knowledge) opens its landing note.
@@ -149,23 +153,54 @@ struct KnowledgeView: View {
         }
     }
 
+    /// The hairline between the list and the document; dragging it resizes the list (220–380 pt).
+    private var listDivider: some View {
+        Divider()
+            .overlay {
+                Color.clear
+                    .frame(width: 8)
+                    .contentShape(Rectangle())
+                    .onHover { inside in
+                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { drag in
+                                let start = listDragStart ?? listWidth
+                                listDragStart = start
+                                listWidth = min(380, max(220, start + Double(drag.translation.width)))
+                            }
+                            .onEnded { _ in listDragStart = nil }
+                    )
+            }
+            .accessibilityHidden(true)
+    }
+
     /// Reader mode: the notes list beside the document, with the Note Info inspector.
     /// Without a knowledge base the page is one empty state, with no empty list beside it.
+    /// The list is a plain column, not an HSplitView pane: NSSplitView neither animates a pane
+    /// that comes and goes nor restores its width, so the list popped in and out. Here it slides
+    /// in from the leading edge and keeps the width its divider was dragged to.
     private var readerSplit: some View {
-        HSplitView {
+        HStack(spacing: 0) {
             if sidebarVisible && !(loaded && vault == nil) {
-                KnowledgeNotesList(vault: vault, scope: scopeNode, selection: selection, search: search,
-                                   expanded: $expanded,
-                                   mirrorEnabled: mirrorEnabled, onOpen: requestOpen,
-                                   onCreate: { folder, parent in promptCreate(folder: folder, in: parent) },
-                                   onTrash: deleteItem,
-                                   onReveal: { NSWorkspace.shared.activateFileViewerSelecting([$0]) })
-                    .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
+                HStack(spacing: 0) {
+                    KnowledgeNotesList(vault: vault, scope: scopeNode, selection: selection, search: search,
+                                       expanded: $expanded,
+                                       mirrorEnabled: mirrorEnabled, onOpen: requestOpen,
+                                       onCreate: { folder, parent in promptCreate(folder: folder, in: parent) },
+                                       onTrash: deleteItem,
+                                       onReveal: { NSWorkspace.shared.activateFileViewerSelecting([$0]) })
+                        .frame(width: CGFloat(listWidth))
+                    listDivider
+                }
+                .transition(.move(edge: .leading))
             }
             readerPane
                 .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: .textBackgroundColor))
         }
+        .clipped()
         .inspector(isPresented: Binding(get: { isPresented && showInfo && mode == .reader && selection != nil },
                                         set: { showInfo = $0 })) {
             KnowledgeNoteInspector(info: noteInfo, onOpen: requestFollow,
@@ -634,7 +669,7 @@ struct KnowledgeView: View {
             Button {
                 withAnimation(Motion.gated(Motion.standard, reduceMotion: reduce)) { sidebarVisible.toggle() }
             } label: {
-                Label(sidebarVisible ? "Hide Notes List" : "Show Notes List", systemImage: "sidebar.left")
+                Label(sidebarVisible ? "Hide Notes List" : "Show Notes List", systemImage: "list.bullet.rectangle")
             }
             .help(sidebarVisible ? "Hide Notes List" : "Show Notes List")
             .disabled(mode == .sky)
