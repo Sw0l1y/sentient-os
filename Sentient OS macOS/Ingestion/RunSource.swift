@@ -14,6 +14,7 @@ enum RunSource: Hashable {
     case siyuan                             // every open notebook selected by the user
     case appleMail(accounts: Set<String>)
     case appleCalendar(calendarIDs: Set<String>)
+    case schoolFeed                         // the Schoology calendar feed (link in the Keychain)
 
     var label: String {
         switch self {
@@ -24,6 +25,7 @@ enum RunSource: Hashable {
         case .siyuan:          return "SiYuan"
         case .appleMail:       return "Apple Mail"
         case .appleCalendar:   return "Apple Calendar"
+        case .schoolFeed:      return SchoolFeedSource.name
         }
     }
 
@@ -42,6 +44,7 @@ enum RunSource: Hashable {
             case .siyuan:              connectors.append(SiYuanConnector())
             case .appleMail(let accounts): connectors.append(AppleMailConnector(accounts: accounts))
             case .appleCalendar(let ids): connectors.append(AppleCalendarConnector(calendarIDs: ids))
+            case .schoolFeed:          connectors.append(SchoolFeedConnector())
             case .files:               break   // rolled into FilesConnector(roots:)
             }
         }

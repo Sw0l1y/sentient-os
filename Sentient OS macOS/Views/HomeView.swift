@@ -748,7 +748,8 @@ struct HomeView: View {
                             onPickGmail: { showAnalysis = false; showGmailConnect = true },
                             onPickAppleMail: { showAnalysis = false; showAppleMailPicker = true },
                             onPickCalendar: { showAnalysis = false; showCalendarConnect = true },
-                            customRoots: customRoots)
+                            customRoots: customRoots,
+                            onShowDetails: { showAnalysis = false; MainNavigation.shared.show(.analysis) })
         }
     }
 

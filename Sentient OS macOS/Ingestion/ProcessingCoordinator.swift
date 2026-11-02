@@ -33,6 +33,11 @@ final class ProcessingCoordinator {
     private(set) var isSuspended = false
     private(set) var activeRequest: ProcessingRequest?
     private(set) var knowledgeRevision = 0
+    /// The saved report of the last finished run (`processing.report`): per-source status and every
+    /// item that did not finish. Survives relaunch; the Analysis page, Home and Copy Details read it.
+    private(set) var report: AnalysisRunReport?
+    /// True while Skip These or Retry Now rewrites Apple Mail's checkpoints; no run starts meanwhile.
+    private(set) var isEditingMailQueue = false
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -62,6 +67,7 @@ final class ProcessingCoordinator {
         self.defaults = defaults
         record = ProcessingPlan.recovered(ProcessingPlan.read(defaults))
         initialComplete = ProcessingPlan.initialCompletedAt(defaults) != nil
+        report = AnalysisRunReport.read(defaults)
         ProcessingPlan.save(record, to: defaults)
         switch record.status {
         case .scheduled: state = .scheduled
@@ -75,9 +81,14 @@ final class ProcessingCoordinator {
     var batteryFloor: Int { initialComplete ? PowerState.iterativeBatteryFloor : PowerState.initialBatteryFloor }
     var paused: Bool { record.status == .paused }
     var hasPendingFirstNight: Bool { !initialComplete && record.status == .scheduled }
+    /// Also true for a finished run that left named sources to retry (saved in the record, so a
+    /// relaunch shows the same thing Home, the sidebar and the Analysis page show).
     var needsAttention: Bool {
         switch state {
         case .waiting, .paused, .diskFull, .failed: true
+        // A completed run that saved named sources, or (a record saved before names existed) a
+        // notice: statusLine then reads "… needs attention", so every surface shows the same state.
+        case .completed: record.attention?.isEmpty == false || record.notice?.isEmpty == false
         default: false
         }
     }
@@ -96,7 +107,13 @@ final class ProcessingCoordinator {
         case .preparing: return "Building your knowledge"
         case .stopping: return "Pausing analysis safely"
         case .paused: return "Analysis paused"
-        case .completed: return record.notice == nil ? "Analysis complete" : "Analysis needs attention"
+        case .completed:
+            // Name the source when the run knows which one ("Apple Mail needs attention").
+            let names = record.attention ?? []
+            if names.count == 1 { return "\(names[0]) needs attention" }
+            if names.count == 2 { return "\(names[0]) and \(names[1]) need attention" }
+            if names.count > 2 { return "\(names.count) sources need attention" }
+            return record.notice == nil ? "Analysis complete" : "Analysis needs attention"
         case .diskFull: return "Analysis needs disk space"
         case .failed: return "Analysis needs attention"
         }
@@ -207,6 +224,7 @@ final class ProcessingCoordinator {
     func reset() async {
         await suspend()
         requestOverride = nil; carried = RunProgress(); progress = RunProgress()
+        report = nil; AnalysisRunReport.save(nil, to: defaults)
         defaults.removeObject(forKey: ProcessingPlan.key)
         defaults.removeObject(forKey: ProcessingPlan.initialCompletedKey)
         record = .init(); initialComplete = false; state = .idle
@@ -278,13 +296,14 @@ final class ProcessingCoordinator {
     }
 
     private func begin(_ request: ProcessingRequest) {
-        guard !isBusy, !isSuspended else { return }
+        // A Skip These / Retry Now edit finishes first; the monitor starts the requested run after it.
+        guard !isBusy, !isSuspended, !isEditingMailQueue else { return }
         isBusy = true
         activeRequest = request
         PipelineActivity.shared.acquire()
         stopReason = nil; runID = UUID()
         let id = runID
-        record.status = .running; record.due = nil; record.notice = nil
+        record.status = .running; record.due = nil; record.notice = nil; record.attention = nil
         let trigger = record.trigger
         startedAt = Date(); lastProgressAt = Date(); lastHeartbeatAt = .distantPast
         updatingExistingKnowledge = FileManager.default.fileExists(atPath: VaultGenerator.vaultRoot.path)
@@ -349,6 +368,10 @@ final class ProcessingCoordinator {
         // before any knowledge exists. Existing completed users keep their milestone.
         let knowledgeReady = Self.knowledgeExists(in: VaultGenerator.vaultRoot)
         let complete = result.complete && (initialComplete || !request.fullCycle || knowledgeReady)
+        // Name each source that needs another try ("Apple Mail: 12 emails need attention.") instead
+        // of a generic sentence; the saved report below carries every item and reason.
+        let attention = result.progress.attentionSources
+        record.attention = attention.isEmpty ? nil : attention
         if result.progress.diskFull {
             state = .diskFull; record.status = .failed
             record.notice = "Free up disk space, then retry analysis."
@@ -362,10 +385,9 @@ final class ProcessingCoordinator {
                 ProcessingPlan.completeInitial(defaults)
                 initialComplete = true
             }
-            if complete { record.notice = nil }
-            else if !result.progress.sourceReadFailures.isEmpty {
-                let names = result.progress.sourceReadFailures.keys.sorted().prefix(3).joined(separator: ", ")
-                record.notice = "Review \(names) in Knowledge Sources, then retry or remove unavailable sources. Completed work is saved."
+            if complete { record.notice = nil; record.attention = nil }
+            else if let named = result.progress.attentionNotice {
+                record.notice = named
             } else if result.complete && !knowledgeReady {
                 record.notice = "These sources did not provide enough context to build your knowledge yet. Choose sources with useful content, then retry. Sidekick is ready to use."
             } else {
@@ -379,6 +401,7 @@ final class ProcessingCoordinator {
                                "device_items": result.progress.total, "device_failed": result.progress.failed])
             if complete { Analytics.signal("Scheduler.overnightCompleted", tier: .core) }
         }
+        saveReport(result.progress, request: request, complete: result.complete)
         if scheduled && !initialComplete {
             // A partial first night remains pending even for knowledge-base-only users.
             record.status = .scheduled
@@ -386,6 +409,78 @@ final class ProcessingCoordinator {
         }
         // Release stale preview payloads only when the next run begins; reopening progress shows
         // the actual result. Reading or hiding a window never changes task lifetime.
+    }
+
+    // MARK: The saved report and Apple Mail's queue actions
+
+    private func saveReport(_ progress: RunProgress, request: ProcessingRequest, complete: Bool) {
+        let built = AnalysisRunReport.build(progress: progress, sources: Self.sourceNames(request),
+                                            complete: complete, previous: report)
+        report = built
+        AnalysisRunReport.save(built, to: defaults)
+    }
+
+    /// Every source a request covers, by the names its issues use: each file folder by its label
+    /// ("Downloads"), other on-device sources by IterativeRun's name, then the hosted ones.
+    static func sourceNames(_ request: ProcessingRequest) -> [String] {
+        var names: [String] = []
+        for connector in request.connectors {
+            if let files = connector as? FilesConnector { names += files.roots.map(\.label) }
+            else { names.append(IterativeRun.sourceName(connector.kind)) }
+        }
+        if request.runGmail { names.append("Gmail") }
+        if request.runCalendar { names.append("Calendar") }
+        names += request.mcpSlugs.map { ConnectorRegistry.displayName(slug: $0) }
+        names += request.unavailableSources.keys.sorted()
+        var seen = Set<String>()
+        return names.filter { seen.insert($0).inserted }
+    }
+
+    /// Skip These: Apple Mail's emails that are still being retried leave the queue now, keeping
+    /// their reasons (emails waiting on a Mail download stay queued). Retry Now brings them back.
+    func skipMailRetries() async {
+        let model = AppleMailCheckpoint.modelIdentity(path: ModelLocator.resolve())
+        await editMailQueue { _ = $0.skipQueued(model: model) }
+    }
+
+    /// Retry Now: skipped emails return to the queue, every queued email is due at once, and a new
+    /// analysis starts.
+    func retryMailNow() async {
+        await editMailQueue { _ = $0.retryNow() }
+        requestNow()
+    }
+
+    private func editMailQueue(_ change: (inout AppleMailCheckpoint) -> Void) async {
+        guard !isBusy, !isSuspended, !isEditingMailQueue else { return }
+        isEditingMailQueue = true
+        defer { isEditingMailQueue = false }
+        var issues: [RunIssue] = []
+        var retrying = 0, waiting = 0, skipped = 0
+        for account in AppleMailSelection.accounts.sorted() {
+            let bucket = "appleMail:" + account
+            guard var checkpoint = try? await CycleStore.shared.mailCheckpoint(bucket) else { continue }
+            change(&checkpoint)
+            guard await CycleStore.shared.commitMail(bucketKey: bucket, state: checkpoint) == .saved else { continue }
+            issues += checkpoint.reportIssues(account: account)
+            let counts = checkpoint.queueCounts
+            retrying += counts.retrying; waiting += counts.waitingOnMail; skipped += counts.skipped
+        }
+        AppleMailHealth.save(deferred: retrying, waitingOnMail: waiting, skipped: skipped, incomplete: false, failed: false)
+        let base = report ?? AnalysisRunReport(finishedAt: Date(), complete: false, sources: [], issues: [])
+        // Keep the run's whole-source Mail issue (unread history, a stopped model); replace the items.
+        let wholeSource = base.issues.filter { $0.source == AnalysisRunReport.appleMail && $0.unit == nil }
+        let updated = base.replacingIssues(wholeSource + issues, for: AnalysisRunReport.appleMail)
+        report = updated
+        AnalysisRunReport.save(updated, to: defaults)
+        // A finished run's attention follows its report: once nothing is left to retry, it is done.
+        guard state == .completed, record.status == .completed else { return }
+        let remaining = RunIssue.attentionSources(updated.issues)
+        record.attention = remaining.isEmpty ? nil : remaining
+        if remaining.isEmpty { record.notice = nil }
+        else {
+            var named = RunProgress(); named.issues = updated.issues
+            record.notice = named.attentionNotice ?? record.notice
+        }
     }
 
     private static func knowledgeExists(in root: URL) -> Bool {
@@ -499,6 +594,12 @@ final class ProcessingCoordinator {
         c.failed += base.failed; c.parseFailures += base.parseFailures; c.extractionFailed += base.extractionFailed
         c.totalSeconds += base.totalSeconds; c.quietReads += base.quietReads
         c.mergeSourceResults(from: base)
+        // Item issues from before the pause stay; Apple Mail's list is replaced when the resumed
+        // segment rebuilt it from its checkpoints.
+        let replaced = Set(c.issues.map(\.id))
+        c.issues = base.issues.filter { !replaced.contains($0.id) && !(p.mailChecked && $0.source == AnalysisRunReport.appleMail) } + c.issues
+        c.mailChecked = c.mailChecked || base.mailChecked
+        c.mailSkippedNow += base.mailSkippedNow
         return c
     }
 }

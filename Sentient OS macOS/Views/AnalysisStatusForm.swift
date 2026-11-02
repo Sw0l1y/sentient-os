@@ -1,6 +1,8 @@
 // AnalysisStatusForm.swift
 // The words the Analysis page and its window subtitle show for each analysis state: the
 // short subtitle, the status-header headline, and the per-cause failure title, body and symbol.
+// A finished run's wording follows its saved AnalysisRunReport, so it names the source that
+// needs attention and still does after a relaunch.
 // Pure presentation helpers, no state. ProcessingView and ProcessingWindowView both read them,
 // so the subtitle and the page can never disagree.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
@@ -31,7 +33,8 @@ enum AnalysisStatusText {
 
     /// The status header's headline, one per state (SPEC-D3 A2–A5).
     static func headline(state: ProcessingCoordinator.State, progress: RunProgress, needsAnotherPass: Bool,
-                         prepStatus: String, onDevice: Bool, cloudLabel: String) -> String {
+                         prepStatus: String, onDevice: Bool, cloudLabel: String,
+                         report: AnalysisRunReport? = nil) -> String {
         switch state {
         case .idle: return "Ready to Analyze"
         case .scheduled: return "Analysis Scheduled"
@@ -42,6 +45,9 @@ enum AnalysisStatusText {
         case .processing: return progress.sourceRead.map { "Analyzing \($0.name)" } ?? "Analyzing Your Sources"
         case .preparing: return prepStatus
         case .completed:
+            let named = needsAnotherPass ? attentionNames(report) : []
+            if named.count == 1 { return "\(named[0]) needs attention" }
+            if named.count > 1 { return "\(named.count) sources need attention" }
             return !progress.sourceReadFailures.isEmpty ? "Some sources need another try"
                 : needsAnotherPass ? "Analysis saved" : "Analysis complete"
         case .failed(let failure): return failureTitle(failure.kind)
@@ -49,11 +55,23 @@ enum AnalysisStatusText {
         }
     }
 
-    /// Another pass is needed when the run left a notice, a source read failed, or Apple Mail
-    /// did not finish or deferred messages.
-    static func needsAnotherPass(notice: String?, progress: RunProgress) -> Bool {
-        notice != nil || !progress.sourceReadFailures.isEmpty
-            || progress.mailIncomplete || progress.mailDeferred > 0
+    /// Another pass is needed when the run left a notice, a source read failed, or something in
+    /// the saved report still needs another try. Without a report (a run that has not finished
+    /// since this was added) Apple Mail's live counts decide. Emails waiting on a Mail download or
+    /// skipped after repeated failures do not need another pass.
+    @MainActor static func needsAnotherPass(notice: String?, progress: RunProgress) -> Bool {
+        needsAnotherPass(notice: notice, progress: progress, report: ProcessingCoordinator.shared.report)
+    }
+
+    static func needsAnotherPass(notice: String?, progress: RunProgress, report: AnalysisRunReport?) -> Bool {
+        if notice != nil || !progress.sourceReadFailures.isEmpty { return true }
+        if let report { return report.issues.contains { $0.attention } }
+        return progress.mailIncomplete || progress.mailDeferred > 0
+    }
+
+    /// The sources a finished run's report says need something, in its display order.
+    static func attentionNames(_ report: AnalysisRunReport?) -> [String] {
+        report?.warningSummaries.map(\.name) ?? []
     }
 
     static func failureTitle(_ kind: OvernightCaution.Kind?) -> String {

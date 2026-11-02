@@ -73,7 +73,7 @@ struct IterativeRun {
 
     enum Mode { case initial, iterative, auto }
 
-    private static func sourceName(_ kind: SourceKind) -> String {
+    static func sourceName(_ kind: SourceKind) -> String {
         switch kind {
         case .file: "Files"
         case .whatsapp: "WhatsApp"
@@ -85,6 +85,7 @@ struct IterativeRun {
         case .gmail: "Gmail"
         case .calendar: "Google Calendar"
         case .mcp: "Connected apps"
+        case .schoolFeed: SchoolFeedSource.name
         }
     }
 
@@ -135,7 +136,29 @@ struct IterativeRun {
             Permissions.reportProbe()
         }
 
-        let engine = Engine(modelPath: modelPath, maxNumTokens: connectors.map(\.maxTokens).max() ?? 4096)
+        // The School feed needs no model: read it before the engine loads, so a model problem
+        // never blocks it and a School-only selection never wakes the engine.
+        for school in connectors.compactMap({ $0 as? SchoolFeedConnector }) {
+            if Task.isCancelled { break }
+            let base = p
+            let combined: @Sendable (RunProgress) -> RunProgress = { update in
+                var total = base
+                total.quietReads += update.quietReads
+                total.diskFull = total.diskFull || update.diskFull
+                total.sourceReadFailures.merge(update.sourceReadFailures) { _, new in new }
+                total.mergeIssues(update.issues)
+                total.successfulSources.formUnion(update.successfulSources)
+                for source in update.successfulSources { total.sourceReadFailures.removeValue(forKey: source) }
+                total.updateLastItem(from: update)
+                return total
+            }
+            p = combined(await runSchool(school) { onProgress(combined($0)) })
+            if p.diskFull { return p }
+        }
+        let modelConnectors = connectors.filter { !($0 is SchoolFeedConnector) }
+        guard !modelConnectors.isEmpty else { return p }
+
+        let engine = Engine(modelPath: modelPath, maxNumTokens: modelConnectors.map(\.maxTokens).max() ?? 4096)
         do { try await engine.load() } catch {
             // §7.1/F1 + §7.12: a load failure here silently yields a 0-item run (the whole overnight
             // batch does nothing). Escalate to an event — error TYPE only, plus whether the model
@@ -146,11 +169,11 @@ struct IterativeRun {
                 tags: ["error": String(describing: type(of: error))],
                 extra: ["model_present": String(ModelLocator.resolve() != nil)],
                 fingerprint: ["engine", "load_failed"])
-            if connectors.contains(where: { $0.kind == .appleCalendar }) {
+            if modelConnectors.contains(where: { $0.kind == .appleCalendar }) {
                 AppleCalendarSource.recordIssue(.model)
                 p.failSourceRead(name: "Apple Calendar", message: "Apple Calendar is waiting for the on-device model. Try analysis again.")
             }
-            if connectors.contains(where: { $0.kind == .appleMail }) {
+            if modelConnectors.contains(where: { $0.kind == .appleMail }) {
                 p.failed = 1; p.mailIncomplete = true
                 UserDefaults.standard.set("Apple Mail is waiting for the on-device model. Try analysis again.", forKey: AppleMailHealth.key)
             }
@@ -178,7 +201,10 @@ struct IterativeRun {
         // them apart: an extraction failure means the FILE is bad, not the engine, so it must NOT
         // trigger an engine reload (the old single catch wasted reloads on corrupt PDFs), and it feeds
         // the Files extraction-rate sensor. A survivor's NoteDraft is committed atomically WITH the mark.
+        // Why the last attempt failed, for the run's issue list (a stage and a type/case code only).
+        var lastFailure: (stage: RunIssue.FileStage, code: String)?
         func attempt(_ cand: Candidate, connector: any Connector) async -> AttemptResult {
+            lastFailure = nil
             let artifact: Artifact
             do {
                 artifact = try await withExtractionTimeout(Self.extractionTimeoutSeconds) {
@@ -187,6 +213,7 @@ struct IterativeRun {
             } catch {
                 Diagnostics.report(.ingestionSkipped, phase: .extract, error: error, source: connector.kind.rawValue)
                 p.lastSummary = "(extraction skipped: \(error))"
+                lastFailure = (error is ExtractionTimeout ? .timeout : .extract, AnalysisFailureCode.code(for: error))
                 return .extractionFailed
             }
             do {
@@ -208,7 +235,10 @@ struct IterativeRun {
                 case .sensitive: p.sensitive += 1
                 }
                 SourceHealth.recordTriage(source: connector.kind.rawValue, failed: outcome.reason == .parseFailed)
-                if outcome.reason == .parseFailed { p.parseFailures += 1 }   // §7.13
+                if outcome.reason == .parseFailed {   // §7.13
+                    p.parseFailures += 1
+                    p.mergeIssues([Self.itemIssue(cand, kind: connector.kind, stage: .reply, code: "Triage.parseFailed")])
+                }
                 p.lastTitle = outcome.title
                 p.lastSummary = outcome.summary.isEmpty ? nil : outcome.summary
                 p.lastVerdict = outcome.verdict
@@ -221,6 +251,7 @@ struct IterativeRun {
             } catch {
                 Diagnostics.report(.ingestionSkipped, phase: .generate, error: error, source: connector.kind.rawValue)
                 p.lastSummary = "(generate skipped: \(error))"
+                lastFailure = (.generate, AnalysisFailureCode.code(for: error))
                 return .generateFailed
             }
         }
@@ -230,7 +261,7 @@ struct IterativeRun {
         // the FULL set — the descent needs items below the top); the run still filters authoritatively.
         let marks = mode == .initial ? [:] : await store.connectorMarks()
 
-        runLoop: for connector in connectors {
+        runLoop: for connector in modelConnectors {
             if Task.isCancelled { break }
             if let mail = connector as? AppleMailConnector {
                 let base = p
@@ -242,6 +273,8 @@ struct IterativeRun {
                     combined.extractionFailed += update.extractionFailed
                     combined.totalSeconds += update.totalSeconds
                     combined.mailDeferred = update.mailDeferred; combined.mailIncomplete = update.mailIncomplete
+                    combined.mailWaitingOnMail = update.mailWaitingOnMail; combined.mailSkipped = update.mailSkipped
+                    combined.mailSkippedNow = update.mailSkippedNow
                     combined.updateLastItem(from: update)
                     onProgress(combined)
                 }
@@ -249,8 +282,12 @@ struct IterativeRun {
                 p.junk += result.junk; p.sensitive += result.sensitive; p.failed += result.failed
                 p.parseFailures += result.parseFailures; p.extractionFailed += result.extractionFailed
                 p.mailDeferred += result.mailDeferred
+                p.mailWaitingOnMail += result.mailWaitingOnMail; p.mailSkipped += result.mailSkipped
+                p.mailSkippedNow += result.mailSkippedNow
                 p.totalSeconds += result.totalSeconds
                 p.mailIncomplete = result.mailIncomplete; p.diskFull = result.diskFull
+                if result.mailChecked { p.setIssues(result.issues.filter { $0.source == AnalysisRunReport.appleMail }, for: AnalysisRunReport.appleMail) }
+                p.mailChecked = p.mailChecked || result.mailChecked
                 p.updateLastItem(from: result)
                 if result.diskFull { break runLoop }
                 continue
@@ -265,6 +302,7 @@ struct IterativeRun {
                     total.quietReads += update.quietReads; total.totalSeconds += update.totalSeconds
                     total.diskFull = update.diskFull
                     total.sourceReadFailures.merge(update.sourceReadFailures) { _, new in new }
+                    total.mergeIssues(update.issues)
                     total.successfulSources.formUnion(update.successfulSources)
                     for source in update.successfulSources { total.sourceReadFailures.removeValue(forKey: source) }
                     total.updateLastItem(from: update)
@@ -369,6 +407,7 @@ struct IterativeRun {
                         SourceHealth.recordReadOutcome(source: connector.kind.rawValue, outcome: "time_cap")
                         let name = Self.sourceName(connector.kind)
                         p.sourceReadFailures[name] = "More items remain. Completed items are saved; the next analysis continues from the checkpoint."
+                        p.mergeIssues([.timeLimit(name, minutes: Int(Self.sourceTimeCapSeconds / 60))])
                         onProgress(p)
                         break bucketLoop
                     }
@@ -413,6 +452,14 @@ struct IterativeRun {
                     case .ok(let d):        consecutiveFailures = 0; reloadsWithoutProgress = 0; draft = d
                     case .extractionFailed: p.failed += 1; p.extractionFailed += 1; draft = nil   // no reload
                     case .generateFailed:   p.failed += 1; draft = nil
+                    }
+                    switch result {
+                    case .ok: break
+                    case .extractionFailed, .generateFailed:
+                        // The checkpoint moves past a failed item, so it is reported as skipped.
+                        let stage = lastFailure?.stage ?? (result.isExtraction ? .extract : .generate)
+                        p.mergeIssues([Self.itemIssue(w.item, kind: connector.kind, stage: stage,
+                                                      code: lastFailure?.code ?? "unknown")])
                     }
 
                     // ONE atomic store write per item: optional survivor note + marker advance — no gap
@@ -480,4 +527,26 @@ struct IterativeRun {
         ])
         return p
     }
+}
+
+extension IterativeRun {
+    /// A skipped item for the run's issue list. Files are listed under their folder ("Downloads");
+    /// every other source under its own name. The label never carries a name or path.
+    static func itemIssue(_ item: Candidate, kind: SourceKind, stage: RunIssue.FileStage, code: String) -> RunIssue {
+        if kind == .file {
+            return .skippedFile(source: item.metadata["folder"].flatMap { $0.isEmpty ? nil : $0 } ?? sourceName(kind),
+                                path: item.metadata["path"], stage: stage, code: code)
+        }
+        var issue = RunIssue.skippedFile(source: sourceName(kind), path: nil, stage: stage, code: code)
+        let unit = kind == .imessage || kind == .whatsapp ? "conversation" : kind == .notes || kind == .siyuan ? "note" : "item"
+        issue = RunIssue(id: "item:" + kind.rawValue + ":" + RunIssue.opaqueID(item.id), source: issue.source, unit: unit,
+                         item: unit.prefix(1).uppercased() + unit.dropFirst(), problem: issue.problem, next: .skipped,
+                         nextNote: "Not tried again", remedy: "Nothing to do. New content is analyzed as usual.",
+                         code: code, attention: true)
+        return issue
+    }
+}
+
+private extension AttemptResult {
+    var isExtraction: Bool { if case .extractionFailed = self { return true }; return false }
 }

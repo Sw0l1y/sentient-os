@@ -55,6 +55,7 @@ final class UserDefaults {
 @MainActor enum LoginItem {
     static var checks = 0
     static var isEnabled: Bool { checks += 1; return false }
+    static func refreshedIsEnabled() async -> Bool { checks += 1; return false }
 }
 enum Permissions { enum AutomationState { case granted, notAsked, denied, unavailable } }
 enum NativePermissionReadiness {

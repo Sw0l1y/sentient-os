@@ -23,10 +23,12 @@ enum Triage {
     /// same path, and so do SiYuan notes — a note IS a document the user wrote); chat sources judge a CONVERSATION
     /// WINDOW — with a dedicated, far stricter prompt for GROUP chats (attribution is the hard
     /// part). All emit the SAME JSON contract, so parse()/decide() are shared & unchanged.
+    /// School feed items never reach the model (IterativeRun+School writes them directly); if one
+    /// ever did, it is a document, never a conversation.
     static func prompt(for artifact: Artifact, currentDate: Date) -> String {
         if artifact.kind == .appleMail { return mailPrompt(for: artifact, currentDate: currentDate) }
         if artifact.kind == .appleCalendar { return calendarPrompt(for: artifact, currentDate: currentDate) }
-        if artifact.kind == .file || artifact.kind == .notes || artifact.kind == .siyuan {
+        if artifact.kind == .file || artifact.kind == .notes || artifact.kind == .siyuan || artifact.kind == .schoolFeed {
             return filePrompt(for: artifact, currentDate: currentDate)
         }
         return artifact.metadata["isGroup"] == "1"
@@ -72,8 +74,12 @@ enum Triage {
         if flags.sensitive { return .success(Outcome(verdict: .sensitive, title: nil, summary: "", reason: .sensitive)) }
         guard let reply = try? JSONDecoder().decode(Preview.self, from: data) else { return .failure(.invalidFields) }
         let summary = reply.summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = reply.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !summary.isEmpty else { return .failure(.emptySummary) }
+        // A complete, flagged answer that only left the title empty used to be rejected, and the
+        // same email failed the same way on every run. The title is the summary's opening words:
+        // nothing the summary does not already say, and both pass the PII check below.
+        let given = reply.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = given.isEmpty ? derivedTitle(from: summary) : given
         guard !title.isEmpty else { return .failure(.emptyTitle) }
         if PIIScan.containsHighRiskPII(summary) || PIIScan.containsHighRiskPII(title) {
             return .success(Outcome(verdict: .sensitive, title: nil, summary: "", reason: .sensitive))
@@ -83,6 +89,13 @@ enum Triage {
     }
 
     static func decideMail(_ text: String) -> Outcome? { try? mailReply(text).get() }
+
+    /// The summary's first sentence cut to six words, without trailing punctuation.
+    static func derivedTitle(from summary: String) -> String {
+        let sentence = summary.split(whereSeparator: { ".!?\n".contains($0) }).first.map(String.init) ?? summary
+        let words = sentence.split(whereSeparator: \.isWhitespace).prefix(6).joined(separator: " ")
+        return words.trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.whitespaces))
+    }
 
     /// A fresh attempt over the same source, without feeding a malformed answer back to the model.
     static let mailRetryInstruction = "\nYour previous attempt did not satisfy the output format. Return exactly one JSON object, no Markdown or commentary. Include junk and sensitive as explicit booleans. For every non-sensitive message, including junk, include a nonempty factual summary and short title. Only sensitive messages have empty text. Never omit either privacy flag."
@@ -97,6 +110,9 @@ enum Triage {
         Routine sign-in alerts, account-security notices, payment-contact-change notifications,
         generic product onboarding and delivery-status updates are junk, not durable life knowledge.
         A useful personal booking, appointment, receipt or real correspondence may be retained.
+        School notifications about assignments, due dates, grades and course updates (for example
+        from Schoology, ALEKS, McGraw Hill, Savvas or Google Classroom) are worth keeping: they are
+        not bulk announcements, so use junk=false unless the message is only marketing.
         Sensitive messages (credentials, verification codes, IDs, account numbers, medical records,
         financial statements) MUST be sensitive=true with empty summary and title.
         For EVERY non-sensitive message, write a brief sanitized summary of what it actually says

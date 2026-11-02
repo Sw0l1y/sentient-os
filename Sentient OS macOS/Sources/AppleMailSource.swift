@@ -23,10 +23,16 @@ nonisolated struct AppleMailRow: Sendable {
     let sent: Bool
     /// Junk may be read for an ephemeral preview; deleted messages and drafts may not.
     let previewJunk: Bool
+    /// Excluded only by list, bulk or Promotions metadata (Apple's promotions category, an
+    /// unsubscribe type, a list ID, a Promotions mailbox), never by a spam signal. A school
+    /// notification sender lifts exactly these (`AppleMailSource.forcedJunk`).
+    let bulkOnly: Bool
 
-    init(id: Int64, account: String, messageID: String, date: Date, excluded: Bool, sent: Bool, previewJunk: Bool = false) {
+    init(id: Int64, account: String, messageID: String, date: Date, excluded: Bool, sent: Bool,
+         previewJunk: Bool = false, bulkOnly: Bool = false) {
         self.id = id; self.account = account; self.messageID = messageID; self.date = date
         self.excluded = excluded; self.sent = sent; self.previewJunk = previewJunk
+        self.bulkOnly = bulkOnly && excluded && previewJunk
     }
 }
 
@@ -50,6 +56,7 @@ nonisolated final class AppleMailSnapshot: @unchecked Sendable {
             guard !generation.isEmpty else { throw AppleMailError.unsupportedSchema }
             let boxes = try Self.query(db, "SELECT ROWID,url FROM mailboxes")
             var mailboxAccounts: [Int64: String] = [:], deniedBoxes = Set<Int64>(), hiddenBoxes = Set<Int64>(), sentBoxes = Set<Int64>()
+            var promotionBoxes = Set<Int64>()
             var found = Set<String>()
             for box in boxes {
                 guard let id = Int64(box[0]), let url = URL(string: box[1]), let host = url.host,
@@ -57,7 +64,8 @@ nonisolated final class AppleMailSnapshot: @unchecked Sendable {
                 let account = host.uppercased()
                 mailboxAccounts[id] = account; found.insert(account)
                 let segments = url.pathComponents.map { $0.removingPercentEncoding?.lowercased() ?? $0.lowercased() }
-                if segments.contains(where: Self.excludedMailbox) { deniedBoxes.insert(id) }
+                if segments.contains(where: { Self.excludedMailbox($0) && !Self.promotionsMailbox($0) }) { deniedBoxes.insert(id) }
+                else if segments.contains(where: Self.promotionsMailbox) { promotionBoxes.insert(id) }
                 if segments.contains(where: Self.hiddenMailbox) { hiddenBoxes.insert(id) }
                 if segments.contains(where: { ["sent", "sent mail", "sent messages"].contains($0) }) { sentBoxes.insert(id) }
             }
@@ -85,22 +93,29 @@ nonisolated final class AppleMailSnapshot: @unchecked Sendable {
                       selected == nil || selected!.contains(account) else { return }
                 let labels = memberships[id, default: []].union([box])
                 let hidden = r[4] != "0" || r[6] != "0" || !labels.isDisjoint(with: hiddenBoxes)
-                let junk = r[5] == "3" || r[7] != "0" || r[8] != "0" || r[9] != "0" || !labels.isDisjoint(with: deniedBoxes)
+                // Spam signals (Mail's junk level, Junk/Spam mailboxes) versus list/bulk/promotions
+                // metadata, which a school notification sender may lift (SchoolSenders).
+                let spam = r[9] != "0" || !labels.isDisjoint(with: deniedBoxes)
+                let bulk = r[5] == "3" || r[7] != "0" || r[8] != "0" || !labels.isDisjoint(with: promotionBoxes)
+                let junk = spam || bulk
                 indexed.append(AppleMailRow(id: id, account: account, messageID: r[2],
                     date: Date(timeIntervalSince1970: Double(r[3]) ?? 0),
                     excluded: hidden || junk, sent: !labels.isDisjoint(with: sentBoxes),
-                    previewJunk: junk && !hidden))
+                    previewJunk: junk && !hidden, bulkOnly: !spam && !hidden))
             }
             // Duplicate physical copies are not independent privacy decisions. If a copy is in
             // Junk/Promotions, exclude all copies of that Message-ID in the same account.
             let deniedIDs = Set(indexed.filter { $0.excluded && !$0.messageID.isEmpty }.map { $0.account + "\u{0}" + $0.messageID })
             let hiddenIDs = Set(indexed.filter { $0.excluded && !$0.previewJunk && !$0.messageID.isEmpty }.map { $0.account + "\u{0}" + $0.messageID })
+            // A copy flagged by a spam signal makes every copy spam, not merely bulk.
+            let hardIDs = Set(indexed.filter { $0.excluded && !$0.bulkOnly && !$0.messageID.isEmpty }.map { $0.account + "\u{0}" + $0.messageID })
             rows = indexed.map { r in
                 let key = r.account + "\u{0}" + r.messageID
                 let excluded = r.excluded || deniedIDs.contains(key)
                 let hidden = (r.excluded && !r.previewJunk) || hiddenIDs.contains(key)
+                let hard = (r.excluded && !r.bulkOnly) || hardIDs.contains(key)
                 return AppleMailRow(id: r.id, account: r.account, messageID: r.messageID, date: r.date,
-                    excluded: excluded, sent: r.sent, previewJunk: excluded && !hidden)
+                    excluded: excluded, sent: r.sent, previewJunk: excluded && !hidden, bulkOnly: !hard)
             }
             sqlite3_close(db); db = nil
         } catch { sqlite3_close(db); db = nil; throw error }
@@ -136,6 +151,11 @@ nonisolated final class AppleMailSnapshot: @unchecked Sendable {
          "brouillons", "papierkorb", "entwürfe", "papelera", "borradores", "cestino", "bozze",
          "lixo", "rascunhos", "prullenmand", "concepten", "ゴミ箱", "下書き", "草稿", "废纸篓",
          "휴지통", "임시보관함"].contains(component)
+    }
+
+    /// Promotions-style folders (Gmail categories, "advertising"): bulk metadata, not a spam verdict.
+    private static func promotionsMailbox(_ component: String) -> Bool {
+        ["promotions", "category_promotions", "bulk mail", "werbung", "reclame"].contains(component)
     }
 
     private static func excludedMailbox(_ component: String) -> Bool {
@@ -285,12 +305,20 @@ nonisolated enum AppleMailSource {
     static func artifact(row: AppleMailRow, identity: String, message: AppleMailMIME.Message) -> Artifact {
         let candidate = Candidate(id: identity, kind: .appleMail, itemDate: row.date,
                                   metadata: ["folder": "Apple Mail", "sent": row.sent ? "1" : "0",
-                                             "junkPreview": row.excluded || AppleMailMIME.excluded(message.headers) ? "1" : "0"])
+                                             "junkPreview": forcedJunk(row: row, headers: message.headers) ? "1" : "0"])
         let header = ["from", "to", "subject", "date"].map {
             "\($0): \(AppleMailMIME.prefixUTF8(AppleMailMIME.decodedHeader(message.headers[$0, default: ""]), limit: 1000))"
         }.joined(separator: "\n")
         let text = AppleMailMIME.prefixUTF8(header + "\n\n" + message.text, limit: AppleMailConnector.maximumInputBytes)
         return Artifact(candidate: candidate, text: text)
+    }
+
+    /// Metadata policy for one message: junk the model may not overturn. List, bulk and Promotions
+    /// markers are lifted only for a school notification sender (SchoolSenders); Mail's junk level,
+    /// Junk/Spam mailboxes and X-Spam headers always force junk.
+    static func forcedJunk(row: AppleMailRow, headers: [String: String]) -> Bool {
+        let rowJunk = row.excluded && !(row.bulkOnly && SchoolSenders.contains(from: headers["from"]))
+        return rowJunk || AppleMailMIME.excluded(headers)
     }
 
     static func digest(_ value: String) -> String {

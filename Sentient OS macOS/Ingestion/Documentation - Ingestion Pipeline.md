@@ -5,6 +5,8 @@ The one on-device reading pipeline: **Connector → IterativeRun → CycleStore*
 and the overnight scheduler submit work to the same owner; `ProcessingView` observes its progress.
 Timeline sources commit each survivor and progress marker together. Apple Mail has a dedicated checkpoint path; Apple Calendar commits
 an entire validated snapshot with its coverage checkpoint because events can change or disappear.
+The School feed (`SchoolFeedConnector`, `IterativeRun+School.swift`) needs no model: it is read before the engine loads and
+replaces its `school-feed` notes with `CycleStore.commitSchoolSnapshot` (see the Sources doc).
 
 ## Files
 

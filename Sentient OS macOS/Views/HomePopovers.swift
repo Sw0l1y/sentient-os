@@ -38,6 +38,8 @@ struct HomeAnalysisSummary: View {
     let schedulerEnabled: Bool
     let schedulerNeedsSetup: Bool
     let customRoots: [URL]
+    /// Opens the Analysis page from a source line's Details link (the popover closes itself first).
+    var onShowDetails: () -> Void = { MainNavigation.shared.show(.analysis) }
 
     @State private var processing = ProcessingCoordinator.shared
     @State private var vault: (notes: Int, domains: Int)?
@@ -71,13 +73,35 @@ struct HomeAnalysisSummary: View {
                 StatusLabel(processing.waitingDetail, tone: .warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if let notice = processing.record.notice, !notice.isEmpty {
+            if !sourceLines.isEmpty {
+                // One short line per source that needs something, named, instead of one generic
+                // sentence; Details opens the Analysis page with the full list.
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    ForEach(sourceLines, id: \.self) { line in
+                        StatusLabel(line, tone: .warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Button("Details", action: onShowDetails)
+                        .buttonStyle(.link)
+                        .font(.callout)
+                        .accessibilityHint("Opens Analysis")
+                }
+            } else if let notice = processing.record.notice, !notice.isEmpty {
                 StatusLabel(notice, tone: .warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .task { vault = HomeStats.countVault() }
+    }
+
+    /// "Apple Mail: 12 emails need another try" per source in the last run's saved report, while
+    /// that run needs attention (at most three lines).
+    private var sourceLines: [String] {
+        guard !processing.isBusy, processing.record.notice != nil || processing.needsAttention,
+              let report = processing.report else { return [] }
+        let lines = report.attentionLines
+        return lines.count > 3 ? Array(lines.prefix(2)) + ["\(lines.count - 2) more sources need attention"] : lines
     }
 
     private var understoodLine: String {
@@ -119,6 +143,7 @@ struct AnalysisPopover: View {
     var onPickAppleMail: () -> Void = {}
     var onPickCalendar: () -> Void = {}
     var customRoots: [URL] = []            // session folders added in Dev Tools — shown so this mirrors the picker exactly
+    var onShowDetails: () -> Void = { MainNavigation.shared.show(.analysis) }   // a source line's Details link
 
     // Live source selection — the SAME keys SourceSelection / DevTools use. @AppStorage so a click toggles
     // the real selection AND the row updates instantly. FDA is still enforced at run time (Analyze Now).
@@ -127,6 +152,7 @@ struct AnalysisPopover: View {
     @AppStorage("dbg.run.documents")      private var runDocuments = false
     @AppStorage("dbg.run.notes")          private var runNotes = false
     @AppStorage(SiYuanSource.enabledKey)  private var runSiYuan = false
+    @AppStorage(SchoolFeedSource.connectedKey) private var schoolConnected = false
     @AppStorage(AppleMailSelection.key)    private var appleMailAccounts = ""
     @AppStorage("dbg.whatsapp.chats")     private var whatsappCSV = ""
     @AppStorage("dbg.imessage.chats")     private var imessageCSV = ""
@@ -141,7 +167,7 @@ struct AnalysisPopover: View {
 
     private var anyArmed: Bool {
         runDownloads || runDesktop || runDocuments || runNotes || (runSiYuan && SiYuanSource.isInstalled)
-            || !customRoots.isEmpty
+            || schoolConnected || !customRoots.isEmpty
             || !whatsappCSV.isEmpty || !imessageCSV.isEmpty
             || !appleMailAccounts.isEmpty || runGmail || runCalendar || !MCPSource.kbSlugs().isEmpty
     }
@@ -156,7 +182,8 @@ struct AnalysisPopover: View {
             VStack(alignment: .leading, spacing: Space.s) {
                 HomeAnalysisSummary(thingsUnderstood: thingsUnderstood, sources: sources, lastRun: lastRun,
                                     nextWakeAt: nextWakeAt, schedulerEnabled: schedulerEnabled,
-                                    schedulerNeedsSetup: schedulerNeedsSetup, customRoots: customRoots)
+                                    schedulerNeedsSetup: schedulerNeedsSetup, customRoots: customRoots,
+                                    onShowDetails: onShowDetails)
                 Text(processing.statusLine)
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -222,6 +249,11 @@ struct AnalysisPopover: View {
         SourceChip("Apple Mail", on: !appleMailAccounts.isEmpty, action: onPickAppleMail)
         if SiYuanSource.isInstalled {
             SourceChip("SiYuan", on: runSiYuan) { runSiYuan.toggle() }
+        }
+        // Connected and managed in Knowledge Sources (its link lives in the Keychain), so the
+        // popover only shows it, like the session folders above.
+        if schoolConnected {
+            SourceChip(SchoolFeedSource.name, on: true)
         }
         SourceChip("Gmail", on: runGmail, locked: CodexAuth.connectorsLocked, action: onPickGmail)
         SourceChip("Calendar", on: runCalendar, locked: CodexAuth.connectorsLocked, action: onPickCalendar)

@@ -1,6 +1,6 @@
 # Sources: the local readers (Sources/)
 
-The local readers cover **Files**, **WhatsApp**, **iMessage**, **Apple Notes**, **SiYuan**, **Apple Mail**, and **Apple Calendar**.
+The local readers cover **Files**, **WhatsApp**, **iMessage**, **Apple Notes**, **SiYuan**, **Apple Mail**, **Apple Calendar**, and the **School** feed (Schoology).
 Shared pieces provide source selection, value types, WAL-safe SQLite copies, chat windowing, and
 contact-name resolution. Hosted sources have their own doc in this folder.
 
@@ -215,6 +215,47 @@ permission loss, conflicting occurrence identities, or more than 2,000 events fa
 none is treated as an empty calendar. The fixed window is reread before commit and must match.
 Structure-only health codes under `appleCalendar.readIssue` explain retry, scope, and permission
 problems in the picker. See the ingestion doc for the atomic coverage checkpoint and stale-note gate.
+
+## School: Schoology (`SchoolFeedSource`, `ICSParser`, `SchoolAssignments`, `SchoolFeedFetch`, `SchoolFeedVault`)
+
+Knowledge Sources › **School** › **Schoology** (`Views/SchoolFeedSheet.swift`). The student pastes the
+iCal link from Schoology (Settings › Account Settings › Share Your Schoology Calendar › Enable). Connect
+reads the feed once and shows “Found N assignments” before anything is saved. Sentient never signs in
+to Schoology, ALEKS, McGraw Hill or Savvas and stores no school password: work from those reaches the
+feed when a teacher posts it in Schoology with a due date.
+
+- **The link is a bearer secret.** It lives only in the Keychain (service `ai.sentient-os.app.school-feed.v1`,
+  this device only, never synced, read without UI). `schoolFeed.schoology.*` preferences hold only
+  connected, count, last refresh and the last issue code. Errors carry HTTP or URLError codes only;
+  item links keep https pages without query or fragment, and anything carrying the feed path or its
+  token is dropped or redacted.
+- **Reading.** `SchoolFeedFetch`: ephemeral URLSession, no cookies or cache, 30 s timeout, https only
+  (a redirect elsewhere is refused), 8 MB cap. 401/403/404/410 or a page that is not a calendar mean
+  the school stopped sharing; 429/5xx and URLErrors are passing problems. No ETag/Last-Modified reuse:
+  the window moves daily, so each run reads the whole feed.
+- **Parsing.** `ICSParser` (Foundation only): VEVENT and VTODO; unfolding; TEXT escapes; all-day,
+  TZID (including `/mozilla.org/` prefixes), UTC and floating times (X-WR-TIMEZONE); VALARM and VTIMEZONE
+  never leak into an item; a missing UID gets a stable hash; a duplicate UID keeps the newest
+  LAST-MODIFIED (else DTSTAMP). RRULE is not expanded.
+- **Snapshot.** `SchoolSnapshot.build`: cancelled and finished items dropped, due from the start of the
+  day 7 days ago to the end of the 60th day ahead. Course: a non-generic CATEGORIES value, a
+  `Course:`/`Class:` line in DESCRIPTION, a trailing `[Course]` in SUMMARY, or the `/course/<id>/` in a
+  Schoology link (named from another item of that course, else “Course <id>”); otherwise “Unsorted”.
+  Saved under Application Support `SentientOS/School Feed/` (no link inside) and replaced on every
+  successful read.
+- **Outputs (replace, never append).** The cycle store's `school-feed` bucket gets a coverage note plus
+  one note per item due from a week ago through the next 14 days (“due tomorrow”, “past due: was due 2
+  days ago”), which the knowledge base and the proactive cycle read like calendar summaries. The vault
+  gets a `School` folder: one note per class (Upcoming, Recently due) and a `School` overview (due in the
+  next 7 days). Sentient owns only the notes listed in `School/.sentient-school-feed.json`; a School
+  note the architect or the user wrote is never replaced (its class note takes “ (Schoology)”).
+  `VaultGenerator.swapStagingIntoVault` rewrites Sentient's notes into every staged vault, and
+  `vaultFingerprint` ignores them, so a refresh never cancels a knowledge base update.
+- **Failures** never stop the rest of analysis. Each is a whole-source issue in the run report
+  (“Schoology: needs a new link”, “couldn’t be reached”). A passing network or server problem keeps the
+  previous snapshot (and, while it is under a week old, recommits its notes). Disconnect forgets the
+  link, the snapshot, the School notes in the cycle store and Sentient's School notes in the vault.
+  Factory Reset and Uninstall forget them through `CycleStore.wipeEverything`.
 
 ## Rules
 

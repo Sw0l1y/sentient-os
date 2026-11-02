@@ -20,6 +20,7 @@ import Foundation
 /// sources — fetched + summarized through the user's Codex connectors (no on-device read), see
 /// GmailConnect / CalendarConnect. `mcp` is any OTHER hosted connector with the "Use for knowledge
 /// base" toggle on (the generic nightly reads — MCPSource; the note's `folder` names the service).
+/// `schoolFeed` is the School source's replaceable assignment snapshot (SchoolFeedSource).
 enum SourceKind: String, Codable, Sendable, CaseIterable {
     case file
     case whatsapp
@@ -31,6 +32,7 @@ enum SourceKind: String, Codable, Sendable, CaseIterable {
     case calendar
     case appleCalendar
     case mcp
+    case schoolFeed     // the student's Schoology calendar feed (SchoolFeedSource), read without the model
 }
 
 /// A cheap, content-free unit of work, produced by a source's `eligible…()` listing — enough to

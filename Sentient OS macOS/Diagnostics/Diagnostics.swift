@@ -96,6 +96,8 @@ nonisolated enum Diagnostics {
             backend = doubleTapProvider?.rawValue ?? ModelBackend.current.rawValue
         }
         var hasFailure: Bool { failures.withLock { !$0.isEmpty } }
+        /// The event keys that marked this operation failed (structure only), for the saved analysis report.
+        var failureKeys: [String] { failures.withLock { $0.sorted() } }
         func claim(_ key: String, marksFailure: Bool = true) -> Bool {
             if marksFailure {
                 parent?.noteChildFailure()
@@ -261,10 +263,12 @@ nonisolated enum Diagnostics {
     }
 
     /// terminal prevents outer wrappers from reporting the same already-diagnosed operation again.
+    /// `affectsOperation` nil = every event marks the current operation failed except a background
+    /// warning (`isBackgroundWarning`); pass false for rolling health sensors.
     static func report(_ event: Event, phase: Phase, reason: StaticString = "unexpected",
                        error: Error? = nil, source: String? = nil,
                        counts: [Count: Int] = [:], flags: [Flag: Bool] = [:],
-                       terminal: Bool = false, cooldown: TimeInterval = 900) {
+                       terminal: Bool = false, cooldown: TimeInterval = 900, affectsOperation: Bool? = nil) {
         if let error, isCancellation(error) { return }
         if terminal {
             if let error, current?.wasReported(error) == true { return }
@@ -274,7 +278,14 @@ nonisolated enum Diagnostics {
         let value = payload(event, phase: phase, reason: reason, error: error, source: source, counts: counts, flags: flags)
         DiagnosticHistory.recordError(value)
         CrashReporting.captureEvent(value.event, tags: value.tags, extra: value.extra,
-                                    fingerprint: value.fingerprint, cooldown: cooldown)
+                                    fingerprint: value.fingerprint, cooldown: cooldown,
+                                    affectsOperation: affectsOperation ?? !isBackgroundWarning(event, reason: reason))
+    }
+
+    /// Entries a folder walk could not stat (`resource_read`) describe the disk, not the run: the
+    /// walk skips them and goes on. Reported, but they never make an analysis incomplete.
+    static func isBackgroundWarning(_ event: Event, reason: StaticString) -> Bool {
+        event == .sourceReadDegraded && reason.description == "resource_read"
     }
 
     static func removeForCleanup(_ url: URL, phase: Phase, reason: StaticString) {
@@ -357,3 +368,6 @@ nonisolated enum Diagnostics {
         deinit { finish() }
     }
 }
+
+/// The saved analysis report copies the keys that marked a run failed (RunProgress.warningKeys).
+nonisolated extension Diagnostics.Operation: RunWarningSource {}

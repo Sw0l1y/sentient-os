@@ -11,6 +11,10 @@
 //  hiding every group) shows up as a listing collapse the very next run — see checkListingCollapse.
 //  Its OWN key (never LifetimeStats') so a stats reset can't wipe it.
 //
+//  The rolling checks below describe the last 7 days of the Mac, not the run that happens to
+//  trigger them, so they report with `affectsOperation: false`: they never make an analysis
+//  "incomplete" on their own (the run's own failures do that, with a named source).
+//
 
 import Foundation
 import Synchronization
@@ -63,7 +67,8 @@ nonisolated enum SourceHealth {
         if let previous, previous >= minPrevious, count == 0 {
             CrashReporting.captureEvent("\(Diagnostics.source(source)).listing_collapsed", level: .error,
                 tags: ["source": Diagnostics.source(source)], extra: ["previous": String(previous), "now": "0"],
-                fingerprint: [Diagnostics.source(source), "listing_collapsed"], cooldown: 86400)
+                fingerprint: [Diagnostics.source(source), "listing_collapsed"], cooldown: 86400,
+                affectsOperation: false)
         }
     }
 
@@ -124,7 +129,8 @@ nonisolated enum SourceHealth {
                 CrashReporting.captureEvent("files.extraction_degraded", level: .warning,
                     tags: ["source": "file", "format": format ?? "all"],
                     extra: ["attempts": String(totals.attempts), "success_pct": String(pct), "window_hours": String(extractionWindowHours)],
-                    fingerprint: ["files", "extraction_degraded", format ?? "all"], cooldown: 86400)
+                    fingerprint: ["files", "extraction_degraded", format ?? "all"], cooldown: 86400,
+                    affectsOperation: false)
             }
         }
     }
@@ -152,7 +158,8 @@ nonisolated enum SourceHealth {
         }
         if totals.0 >= 5, totals.1 >= 3, totals.1 * 100 / totals.0 >= 20 {
             Diagnostics.report(.modelOutputInvalid, phase: .parse, reason: "rolling_triage_degradation", source: family,
-                               counts: [.attempted: totals.0, .failed: totals.1], cooldown: 86400)
+                               counts: [.attempted: totals.0, .failed: totals.1], cooldown: 86400,
+                               affectsOperation: false)
         }
     }
 

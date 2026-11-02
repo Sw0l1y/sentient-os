@@ -24,6 +24,10 @@ enum ProcessingPlan {
         var trigger: Trigger = .manual
         var due: Date?
         var notice: String?
+        /// Sources the last finished run left needing attention, in display order ("Apple Mail").
+        /// Saved with the notice so status lines can name the source after a relaunch. Nil = none
+        /// or unknown (records saved before this field existed decode as nil).
+        var attention: [String]? = nil
     }
 
     static func read(_ defaults: UserDefaults = .standard) -> Record {

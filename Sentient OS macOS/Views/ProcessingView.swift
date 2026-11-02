@@ -3,6 +3,9 @@
 // Developer callers can submit a selected request through the same coordinator.
 // Laid out like System Settings › Software Update: a status header (tile, headline, status
 // line, the one inline action), grouped sections below it, and the fine print as footers.
+// Between runs a Sources section (AnalysisSourcesSection) lists every source of the last
+// analysis from its saved report: up to date, or what went wrong, what happens next and what
+// to do, with Copy Details.
 // Doc: Documentation - Views - Home, Processing & Shared UI.md
 
 import SwiftUI
@@ -150,8 +153,31 @@ struct ProcessingView: View {
             default:
                 EmptyView()   // loading: the header carries it
             }
-            if !progress.sourceReadFailures.isEmpty { retrySection }
+            sourcesOrRetrySection
             if showPrompt { devSections }
+        }
+    }
+
+    /// Between runs, the saved report's per-source list; during a run, the live Sources to Retry
+    /// table (hosted sources fail mid-run before any report exists).
+    @ViewBuilder private var sourcesOrRetrySection: some View {
+        if let report = session.report, !runActive {
+            AnalysisSourcesSection(report: report,
+                                   busy: session.isBusy || session.isEditingMailQueue || session.isSuspended,
+                                   onRetryNow: { session.retry() },
+                                   onSkipMail: { Task { await session.skipMailRetries() } },
+                                   onRetryMail: { Task { await session.retryMailNow() } })
+        } else if !progress.sourceReadFailures.isEmpty {
+            retrySection
+        }
+    }
+
+    /// A run is loading, reading, building knowledge or stopping: the saved report is the last
+    /// run's, so it waits until this one finishes.
+    private var runActive: Bool {
+        switch state {
+        case .loadingModel, .processing, .preparing, .stopping: true
+        default: session.isBusy
         }
     }
 
@@ -233,7 +259,8 @@ struct ProcessingView: View {
 
     private var headline: String {
         AnalysisStatusText.headline(state: state, progress: progress, needsAnotherPass: needsAnotherPass,
-                                    prepStatus: prepStatus, onDevice: !connectors.isEmpty, cloudLabel: cloudLabel)
+                                    prepStatus: prepStatus, onDevice: !connectors.isEmpty, cloudLabel: cloudLabel,
+                                    report: session.report)
     }
 
     private var footerCopy: String {
@@ -255,7 +282,7 @@ struct ProcessingView: View {
     }
 
     private var needsAnotherPass: Bool {
-        AnalysisStatusText.needsAnotherPass(notice: session.record.notice, progress: progress)
+        AnalysisStatusText.needsAnotherPass(notice: session.record.notice, progress: progress, report: session.report)
     }
 
     private var percent: Int {
@@ -309,6 +336,10 @@ struct ProcessingView: View {
             }
             if progress.failed > 0 {
                 LabeledContent("Failed") { Text(progress.failed, format: .number).monospacedDigit() }
+            }
+            if progress.mailSkippedNow > 0 {
+                LabeledContent("Skipped") { Text(progress.mailSkippedNow, format: .number).monospacedDigit() }
+                    .help("Emails that failed the same way \(AppleMailCheckpoint.skipAfter) times. Analysis moves on without them.")
             }
             if shown, let last = progress.lastSeconds {
                 LabeledContent("Time per Item") { Text(String(format: "%.1f s", last)).monospacedDigit() }
@@ -491,7 +522,13 @@ struct ProcessingView: View {
     // MARK: Completed
 
     @ViewBuilder private var completedSections: some View {
-        if progress.mailIncomplete || progress.mailDeferred > 0 || session.record.notice != nil {
+        if let report = session.report {
+            // The Sources section names each source; the notice only adds what it cannot show
+            // (not enough context for knowledge yet, or a run with no named source).
+            if let notice = session.record.notice, report.warningSummaries.isEmpty {
+                Section("Needs Attention") { StatusLabel(notice, tone: .warning) }
+            }
+        } else if progress.mailIncomplete || progress.mailDeferred > 0 || session.record.notice != nil {
             Section("Needs Attention") {
                 if progress.mailIncomplete || progress.mailDeferred > 0 {
                     StatusLabel(UserDefaults.standard.string(forKey: AppleMailHealth.key)
@@ -537,7 +574,7 @@ struct ProcessingView: View {
                         .multilineTextAlignment(.center)
                 }
             }
-            if !progress.sourceReadFailures.isEmpty { retrySection }
+            sourcesOrRetrySection
             if showPrompt { devSections }
         }
         // The browser-login auto-notice, same as Settings → Health and onboarding: while our

@@ -472,6 +472,25 @@ actor CycleStore {
         return result
     }
 
+    /// The School feed's snapshot replaces every School note at once, including with none, so a
+    /// finished or expired assignment never survives a newer read. Nothing is kept for an item
+    /// that left the feed. A Disconnect that lands first wins: the notes are not written.
+    func commitSchoolSnapshot(_ notes: [NoteDraft], capturedAt: Date) -> CommitOutcome {
+        // Checked inside the actor, so it is ordered against Disconnect's clearBucket.
+        guard !Task.isCancelled, SchoolFeedSource.isConnected else { return .failed }
+        let key = SchoolFeedSource.bucketKey
+        let mark = ItemKey(order: capturedAt.timeIntervalSince1970, tiebreak: "")
+        return commit(bucketKey: key, note: nil, prepare: {
+            let previous = try self.modelContext.fetch(FetchDescriptor<CycleNote>(
+                predicate: #Predicate { $0.bucketKey == key }))
+            for note in previous { self.modelContext.delete(note) }
+            for note in notes { self.insertNote(bucketKey: key, note: note) }
+        }, apply: { r in
+            r.order = mark.order; r.tiebreak = mark.tiebreak
+            r.floorOrder = nil; r.floorTiebreak = nil; r.mcpReadOrigin = nil; r.updatedAt = Date()
+        }, make: { BucketPointer(bucketKey: key, mark: mark) })
+    }
+
     /// FIRST RUN (initial descent) — record an optional survivor note AND sink the floor to `floor`
     /// (top stays fixed), in one save. Creates the row with `top` on the first step. A crash leaves an
     /// honest floor → the next run resumes strictly below it.
@@ -509,7 +528,12 @@ actor CycleStore {
         let calendarMark = pointer(AppleCalendarSource.bucketKey)
         let calendarAllowed = calendarSnapshotReady && AppleCalendarSource.isEnabled
             && calendarMark.flatMap { AppleCalendarSource.Coverage.decode($0.tiebreak) }?.matchesSelection == true
-        return rows.filter { $0.kind != SourceKind.appleCalendar.rawValue || calendarAllowed }.map(item(from:))
+        // School notes belong to a connected feed only (Disconnect also clears them).
+        let schoolAllowed = SchoolFeedSource.isConnected
+        return rows.filter {
+            ($0.kind != SourceKind.appleCalendar.rawValue || calendarAllowed)
+                && ($0.kind != SourceKind.schoolFeed.rawValue || schoolAllowed)
+        }.map(item(from:))
     }
 
     /// End-of-cycle wipe (fired by the proactive button) — pointers persist, notes do not.
@@ -536,6 +560,9 @@ actor CycleStore {
     /// Factory reset — delete EVERY pointer and EVERY note (the dev "Reset everything" button pairs
     /// this with wiping the vault). After this, the next run is a fresh first run for every bucket.
     func wipeEverything() {
+        // Factory Reset and Uninstall both end here: the School link (Keychain), its saved
+        // snapshot and status go with the rest of the analysis state.
+        SchoolFeedSource.forget()
         do {
             try modelContext.delete(model: AppleMailReceipt.self)
             try modelContext.delete(model: CycleNote.self)

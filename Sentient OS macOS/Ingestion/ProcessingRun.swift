@@ -41,7 +41,13 @@ final class ProcessingRun {
     struct Result {
         var progress: RunProgress
         var failure: CycleFailure?
+        /// A required step reported a failure. Background checks (the rolling 7-day health sensors,
+        /// a folder entry that could not be stat'ed) and per-item failures the counters below
+        /// already carry report with `affectsOperation: false`, so they no longer set this; when
+        /// it is set with nothing else to show, the run's issues say so (RunProgress.explainWarnings).
         var hadDiagnostics = false
+        /// Apple Mail emails waiting on a Mail download, or skipped after repeated identical
+        /// failures, are listed in the report but leave nothing to retry, so they do not count.
         var complete: Bool {
             failure == nil && !progress.diskFull && progress.sourceReadFailures.isEmpty
                 && progress.failed == 0 && progress.extractionFailed == 0 && progress.parseFailures == 0
@@ -89,6 +95,8 @@ final class ProcessingRun {
                 failure = await ProactiveCycle.shared.run(scheduled: scheduled,
                     unavailableConnectors: unavailableConnectors, progress: phase, onLine: onLine)
             }
+            p.warnings = RunProgress.warningKeys(Diagnostics.current)
+            if Diagnostics.current?.hasFailure == true { p.explainWarnings() }
             return Result(progress: p, failure: failure, hadDiagnostics: Diagnostics.current?.hasFailure == true)
         }
     }

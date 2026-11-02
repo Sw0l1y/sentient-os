@@ -31,7 +31,8 @@ struct FileRoot {
     var label: String { name }
     var url: URL? { name.hasPrefix("/") ? URL(fileURLWithPath: name) : fixtureRoot.appendingPathComponent(name) }
 }
-enum RunSource { case files(FileRoot), whatsapp(chatJIDs: Set<String>), imessage(chatGUIDs: Set<String>), notes, siyuan, appleMail(accounts: Set<String>), appleCalendar(calendarIDs: Set<String>) }
+enum RunSource { case files(FileRoot), whatsapp(chatJIDs: Set<String>), imessage(chatGUIDs: Set<String>), notes, siyuan, appleMail(accounts: Set<String>), appleCalendar(calendarIDs: Set<String>), schoolFeed }
+enum SchoolFeedSource { static var isConnected = false }
 enum SiYuanSource {
     static let enabledKey = "siyuan.enabled"
     static var isInstalled = true

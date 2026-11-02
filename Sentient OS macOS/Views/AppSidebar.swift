@@ -255,7 +255,8 @@ private struct AnalysisStatusButton: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                         .accessibilityHidden(true)
-                    line("Analysis needs attention")
+                    // Names the source when the saved record knows it ("Apple Mail needs attention").
+                    line(appState.processing.statusLine)
                 } else {
                     Image(systemName: "checkmark.circle")
                         .accessibilityHidden(true)

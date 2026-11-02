@@ -253,6 +253,9 @@ enum SourceSelection {
            UserDefaults.standard.string(forKey: AppleCalendarSource.issueKey) != "missing" {
             sources.append(.appleCalendar(calendarIDs: AppleCalendarSource.selectedIDs))
         }
+        // A connected School feed is always attempted: its link lives in the Keychain, and a
+        // feed the school stopped sharing is reported by the run itself (IterativeRun+School).
+        if SchoolFeedSource.isConnected { sources.append(.schoolFeed) }
         return sources
     }
 

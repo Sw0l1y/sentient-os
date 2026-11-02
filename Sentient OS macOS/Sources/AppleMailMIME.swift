@@ -84,9 +84,14 @@ nonisolated enum AppleMailMIME {
     }
 
     static func excluded(_ h: [String: String]) -> Bool {
-        if h["list-unsubscribe"] != nil || h["list-id"] != nil { return true }
-        let precedence = h["precedence", default: ""].lowercased()
-        if ["bulk", "list", "junk"].contains(where: { precedence.contains($0) }) { return true }
+        // School notification senders (SchoolSenders) are exempt from the mailing-list and bulk
+        // rules only; the spam flags below still exclude them.
+        if !SchoolSenders.contains(from: h["from"]) {
+            if h["list-unsubscribe"] != nil || h["list-id"] != nil { return true }
+            let precedence = h["precedence", default: ""].lowercased()
+            if ["bulk", "list"].contains(where: { precedence.contains($0) }) { return true }
+        }
+        if h["precedence", default: ""].lowercased().contains("junk") { return true }
         for key in ["x-spam-flag", "x-spam-status", "x-junk", "x-spam"] {
             let value = h[key, default: ""].trimmingCharacters(in: .whitespaces).lowercased()
             if value.hasPrefix("yes") || value == "true" || value == "1" { return true }

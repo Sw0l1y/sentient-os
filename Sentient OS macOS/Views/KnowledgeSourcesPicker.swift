@@ -57,6 +57,10 @@ struct KnowledgeSourcesPicker: View {
     @AppStorage("dbg.run.calendar")       private var runCalendar = false
     @AppStorage(CustomRoots.key) private var customRootsRaw = ""
     @AppStorage(AppleCalendarSource.issueKey) private var calendarReadIssue = ""
+    // The School feed's non-secret state (the link itself is only in the Keychain).
+    @AppStorage(SchoolFeedSource.connectedKey) private var schoolConnected = false
+    @AppStorage(SchoolFeedSource.countKey) private var schoolCount = 0
+    @AppStorage(SchoolFeedSource.issueKey) private var schoolIssue = ""
     // Re-renders the connector catalog and availability when the engine changes,
     // and keys the census reload below.
     @AppStorage(ModelBackend.key) private var backendRaw = ""
@@ -72,6 +76,7 @@ struct KnowledgeSourcesPicker: View {
     @State private var showAppleMailPicker = false
     @AppStorage(AppleMailSelection.key) private var appleMailAccounts = ""
     @State private var showAppleCalendarConnect = false
+    @State private var showSchoolFeed = false
 
     private var customRoots: [URL] { CustomRoots.decode(customRootsRaw) }
     private var whatsappChats: Set<String> { Set(whatsappCSV.split(separator: ",").map(String.init)) }
@@ -147,6 +152,10 @@ struct KnowledgeSourcesPicker: View {
                 }
                 // Connect More Apps is hidden for this release until discovery can
                 // reliably notice new hosted connections. Curated setup remains available.
+            }
+
+            SwiftUI.Section("School") {
+                schoologyRow
             }
 
             SwiftUI.Section("Folders on This Mac") {
@@ -234,6 +243,9 @@ struct KnowledgeSourcesPicker: View {
         }
         .sheet(isPresented: $showAppleCalendarConnect) {
             AppleCalendarConnectSheet().environment(\.settingsFormStyle, false)
+        }
+        .sheet(isPresented: $showSchoolFeed) {
+            SchoolFeedSheet().environment(\.settingsFormStyle, false)
         }
         .sheet(item: $selectedConnector) { source in
             ConnectorConnectSheet(source: source, connectors: $connectors, context: context)
@@ -341,6 +353,35 @@ struct KnowledgeSourcesPicker: View {
         if count > 0 && !AppleCalendarSource.hasAccess { return "Calendar access needed" }
         if count > 0 && !calendarReadIssue.isEmpty && !PipelineActivity.shared.isRunning { return "Analysis needs attention" }
         return count > 0 ? "\(count) calendars selected · On this Mac" : nil
+    }
+
+    // MARK: - School
+
+    /// Schoology's calendar feed: Off, "N assignments", or needs attention (a new link).
+    private var schoologyRow: some View {
+        KnowledgeSourcePill(label: SchoolFeedSource.name, detail: schoologyDetail, systemImage: "graduationcap",
+                            selected: schoolConnected, action: { showSchoolFeed = true },
+                            needsAttention: schoologyIssue?.needsAttention == true)
+            .accessibilityIdentifier("sources.schoology")
+    }
+
+    /// The last read's problem, hidden while a run may be fixing it.
+    private var schoologyIssue: SchoolFeedSource.Issue? {
+        guard schoolConnected, !PipelineActivity.shared.isRunning else { return nil }
+        return SchoolFeedSource.Issue(rawValue: schoolIssue)
+    }
+
+    private var schoologyDetail: String? {
+        guard schoolConnected else { return nil }
+        let assignments = RunIssue.count(schoolCount, "assignment")
+        switch schoologyIssue {
+        case .revoked: return "Stopped sharing · paste a new link"
+        case .missingLink: return "Link missing · paste it again"
+        case .unreachable, .server: return assignments + " · couldn’t refresh"
+        case .tooLarge: return "Calendar too large to read"
+        case .storage: return "Assignments couldn’t be saved"
+        case nil: return assignments
+        }
     }
 
     // MARK: - Conversations
