@@ -196,10 +196,15 @@ struct HomeNotchHint: View {
 
     var body: some View {
         HStack(spacing: Space.xs) {
+            // Secondary on the words only: on the whole line it also greys out Try It, and a link
+            // in the caption's grey does not read as one.
             if showsHint {
-                Image(systemName: "rectangle.topthird.inset.filled")
-                    .accessibilityHidden(true)
-                Text("Press \(key.label) to ask from anywhere.")
+                Group {
+                    Image(systemName: "rectangle.topthird.inset.filled")
+                        .accessibilityHidden(true)
+                    Text("Press \(key.label) to ask from anywhere.")
+                }
+                .foregroundStyle(.secondary)
                 Button("Try It") { coordinator.openNotchFromHome() }
                     .buttonStyle(.link)
                     .accessibilityIdentifier("sidekick.notchHint")
@@ -208,10 +213,10 @@ struct HomeNotchHint: View {
                           : "Press \(key.label) to open Sidekick from any app.")
             } else {
                 Label("Private by design.", systemImage: "lock.fill")
+                    .foregroundStyle(.secondary)
             }
         }
         .font(.caption)
-        .foregroundStyle(.secondary)
     }
 }
 
@@ -221,14 +226,17 @@ struct HomeNotchHint: View {
         ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
             VStack(spacing: Space.m) {
                 HStack(spacing: Space.xs) {
-                    Image(systemName: "rectangle.topthird.inset.filled")
-                    Text("Press Right ⌘ to ask from anywhere.")
+                    Group {
+                        Image(systemName: "rectangle.topthird.inset.filled")
+                        Text("Press Right ⌘ to ask from anywhere.")
+                    }
+                    .foregroundStyle(.secondary)
                     Button("Try It") {}.buttonStyle(.link)
                 }
                 Label("Private by design.", systemImage: "lock.fill")
+                    .foregroundStyle(.secondary)
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
             .padding(Space.xl)
             .frame(maxWidth: .infinity)
             .background(Color(nsColor: .textBackgroundColor))

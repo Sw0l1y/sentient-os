@@ -181,6 +181,13 @@ nonisolated enum SidekickTranscriptLayout {
         return format(date, template: calendar.component(.year, from: date) == calendar.component(.year, from: now) ? "MMMdjm" : "MMMd y jm", calendar: calendar)
     }
 
+    /// The time in a message's hover footer, or nil where the time separator right above the
+    /// message (`timeBreak`) already reads the same, as it does for a message sent today.
+    static func hoverTime(_ date: Date, below timeBreak: Date?, now: Date = Date(), calendar: Calendar = .current) -> String? {
+        let time = hoverDate(date, now: now, calendar: calendar)
+        return timeBreak.map { timeBreakLabel($0, now: now, calendar: calendar) } == time ? nil : time
+    }
+
     private static func format(_ date: Date, template: String, calendar: Calendar) -> String {
         let formatter = DateFormatter()
         formatter.locale = calendar.locale ?? .autoupdatingCurrent

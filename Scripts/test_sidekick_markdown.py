@@ -75,7 +75,7 @@ import Foundation
         let codeDocument = SidekickMarkdownDocument(markdown: codeSource)
         guard case .code(let code, let language, _) = codeDocument.blocks[0] else { fatalError("code missing") }
         check(language == "swift", "code language")
-        check(code.text == "let greeting = \"hello\"\nprint(greeting)\n", "code copy body excludes fences")
+        check(code.text == "let greeting = \"hello\"\nprint(greeting)", "code copy body excludes fences and the line break before the closing one")
         check(quote(code, "greeting", source: codeSource) == "greeting", "code selection maps inside fences")
         check(quote(code, "print(greeting)", source: codeSource) == "print(greeting)", "code later line exact")
         let tilde = SidekickMarkdownDocument(markdown: "~~~python\nprint(1)\n~~~")

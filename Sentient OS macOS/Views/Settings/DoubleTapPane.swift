@@ -2,7 +2,8 @@
 // Settings › Double Tap, laid out like System Settings › Keyboard: the shortcut first, then the
 // drafting model and its credentials, the autosaved custom instructions with a live byte count,
 // the writing examples, and what is shared. DoubleTapCredentials keeps unsaved keys in view state
-// and persists them only to Keychain on Save.
+// and persists them only to Keychain on Save. Like a System Settings pane it publishes no window
+// subtitle: the shortcut and its on/off state are the first controls on the page.
 // Doc: Documentation - Settings.md
 
 import SwiftUI
@@ -12,8 +13,6 @@ import AppKit
 struct DoubleTapPane: View {
     @AppStorage(CustomInstructions.doubleTapKey) private var instructions = ""
     @AppStorage(DoubleTapProvider.key) private var providerRaw = DoubleTapProvider.sentient.rawValue
-    @AppStorage(DoubleTap.enabledKey) private var doubleTapEnabled = true
-    @AppStorage(ShortcutPreferences.storageKey) private var keyRaw = "rightCommand"
     @State private var activity = PipelineActivity.shared
     @State private var hasWritingExamples = WritingStyle.exists()
     @State private var hasWritingSources = WritingStyle.hasSources
@@ -21,7 +20,6 @@ struct DoubleTapPane: View {
     @State private var writingStatus: String?
 
     private var provider: DoubleTapProvider { DoubleTapProvider(rawValue: providerRaw) ?? .sentient }
-    private var key: ShortcutKey { ShortcutKey(rawValue: keyRaw) ?? .rightCommand }
 
     /// Today's rule: the trimmed instructions' UTF-8 size against the Double Tap limit.
     private var bytes: Int { instructions.trimmingCharacters(in: .whitespacesAndNewlines).utf8.count }
@@ -142,7 +140,6 @@ struct DoubleTapPane: View {
                 }
             }
         }
-        .pageSubtitle(doubleTapEnabled ? "\(key.label) · On" : "Off", page: .settings, pane: .doubleTap)
         .onAppear(perform: refreshWritingState)
         .onChange(of: activity.isRunning) { _, _ in refreshWritingState() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refreshWritingState() }

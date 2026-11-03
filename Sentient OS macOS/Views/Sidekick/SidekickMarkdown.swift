@@ -144,7 +144,7 @@ struct SidekickMarkdown: View {
             if decoration.listDepth > 0 {
                 Text(decoration.marker ?? " ")
                     .font(.system(size: Self.bodySize(compact), weight: .medium))
-                    .foregroundStyle(.secondary).frame(width: 22, alignment: .trailing).padding(.top, 1)
+                    .foregroundStyle(.secondary).frame(width: 22, alignment: .trailing)
                     .padding(.leading, CGFloat(min(decoration.listDepth - 1, 12)) * 18)
                     .accessibilityHidden(decoration.marker == nil)
             }
@@ -739,7 +739,9 @@ nonisolated enum SidekickSelectionReplyPlacement {
         // The outermost scroller is the conversation's; the nearest one inside it is a code block's or a table's.
         let box = scrollers.count >= 2 ? scrollers.first : nil
         let boxFrame = box.map { $0.convert($0.bounds, to: nil) }
-        var text = view.convert(view.visibleRect, to: nil)
+        // A text view inside a scroll view reports that scroll view's whole visible area as its
+        // visibleRect, so only the part of it within its own bounds is the text's room.
+        var text = view.convert(view.visibleRect.intersection(view.bounds), to: nil)
         // `12` is the bubble's Space.m padding; this file compiles standalone and cannot name Views/Design.
         if view.chromeIsBubble == true { text = text.insetBy(dx: -12, dy: 0) }
         if view.style?.code == true, let boxFrame { text = text.union(boxFrame) }

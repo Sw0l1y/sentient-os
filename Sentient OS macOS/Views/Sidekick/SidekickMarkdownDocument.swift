@@ -37,6 +37,22 @@ nonisolated struct SidekickMarkdownDocument: Sendable {
             return quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : quote
         }
 
+        /// The fragment without its final line break. A fenced code block's body keeps the break
+        /// before its closing fence, which would otherwise draw, and copy, as an empty last line.
+        func droppingFinalLineBreak() -> Self {
+            guard attributed.characters.last?.isNewline == true else { return self }
+            var trimmed = attributed
+            trimmed.characters.removeLast()
+            let length = String(trimmed.characters).utf16.count
+            let kept = mappings.compactMap { mapping -> Mapping? in
+                let displayed = NSIntersectionRange(mapping.displayed, NSRange(location: 0, length: length))
+                guard displayed.length > 0 else { return nil }
+                let source = mapping.exact ? NSRange(location: mapping.source.location, length: displayed.length) : mapping.source
+                return Mapping(displayed: displayed, source: source, exact: mapping.exact)
+            }
+            return Self(attributed: trimmed, mappings: kept)
+        }
+
         static func plain(_ text: String, sourceOffset: Int = 0) -> Self {
             Self(attributed: AttributedString(text), mappings: [Mapping(displayed: NSRange(location: 0, length: text.utf16.count),
                 source: NSRange(location: sourceOffset, length: text.utf16.count), exact: true)])
@@ -118,7 +134,8 @@ nonisolated struct SidekickMarkdownDocument: Sendable {
                 result.append(.table(table, decoration)); continue
             }
             switch leaf.components.first?.kind {
-            case .codeBlock(let language): result.append(.code(leaf.fragment, language: language, decoration))
+            case .codeBlock(let language):
+                result.append(.code(leaf.fragment.droppingFinalLineBreak(), language: language, decoration))
             case .thematicBreak: result.append(.rule)
             default: result.append(.text(leaf.fragment, decoration))
             }

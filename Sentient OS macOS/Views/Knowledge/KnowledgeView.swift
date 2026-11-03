@@ -3,10 +3,10 @@
 //  Sentient OS macOS
 //
 //  The Knowledge page, shaped like Notes: a notes list (KnowledgeNotesList: the pinned "Overview" =
-//  the root README, disclosure folders, a sync/count strip) beside a document reader on the text
+//  the root README, disclosure folders, a sync strip) beside a document reader on the text
 //  background, with a Note Info inspector (KnowledgeNoteInfo.swift). The toolbar carries the list
-//  toggle, Back, the Reader | Graph switch (⇧⌘G), New Note…/New Folder…, Edit/Done, More (Reveal
-//  in Finder, Move to Trash), Search Notes and Note Info. [[Wikilinks]] jump between notes (Back
+//  toggle, Back, the Reader | Graph switch (⇧⌘G), Note Info, New Note…/New Folder…, Edit/Done,
+//  More (Reveal in Finder, Move to Trash) and Search Notes. [[Wikilinks]] jump between notes (Back
 //  walks the trail). Every edit/create/delete commits locally and DEBOUNCE-syncs to the cloud MCP
 //  (VaultActivity.markChanged → the list's sync strip). Graph mode swaps the page for the node map
 //  (Graph/NightSkyView.swift); click a node to read it, and Back (or Esc) returns to the graph.
@@ -86,8 +86,8 @@ struct KnowledgeView: View {
 
     // The graph — the toolbar's Reader / Graph switch leads to it; the page opens on the Reader.
     // The model outlives toggles, so the graph keeps its camera and node positions across reader
-    // trips; `cameFromSky` makes Back return to the graph after a node click. The reader also reads
-    // the model's graph for each note's linked notes.
+    // trips; `cameFromSky` makes Back return to the graph after a node click. Note Info and the
+    // reader's link count also read the model's graph for each note's linked notes.
     @State private var mode: Mode = .reader
     @StateObject private var skyModel = NightSkyModel()
     @State private var cameFromSky = false
@@ -110,7 +110,7 @@ struct KnowledgeView: View {
         .toolbar { knowledgeToolbar }
         // Showing or hiding the page's toolbar items is never animated: they go with the page.
         .transaction(value: isPresented) { $0.disablesAnimations = true; $0.animation = nil }
-        .pageSubtitle(vault == nil ? "No notes yet" : countText, page: .knowledge)
+        .pageSubtitle(countText, page: .knowledge)
         .onChange(of: scope) { _, _ in
             if isPresented && loaded { applyScope() }
         }
@@ -285,8 +285,8 @@ struct KnowledgeView: View {
             selection = nil; note = nil
             if let landing = landingNote { open(landing) }
         }
-        // The reader's linked notes and link counts come from the graph, so build it here too
-        // (idempotent; the graph view reloads on entry exactly as before).
+        // Note Info's linked notes and the reader's link count come from the graph, so build it
+        // here too (idempotent; the graph view reloads on entry exactly as before).
         await skyModel.load(vault: v)
         refreshNoteInfo()
     }
@@ -660,9 +660,11 @@ struct KnowledgeView: View {
         return v.notes(in: scopeNode?.url).filter { $0.name.localizedCaseInsensitiveContains(search) }
     }
 
-    /// "12 notes" — the window subtitle and the notes list's strip (the scoped folder's notes when scoped).
-    private var countText: String {
-        let n = vault?.noteCount(in: scopeNode?.url) ?? 0
+    /// "12 notes", the window subtitle (the scoped folder's notes when scoped) and the one place the
+    /// count is shown, as in Mail. None without a knowledge base: the empty state says so.
+    private var countText: String? {
+        guard let vault else { return nil }
+        let n = vault.noteCount(in: scopeNode?.url)
         return "\(n) note\(n == 1 ? "" : "s")"
     }
 
@@ -722,6 +724,18 @@ struct KnowledgeView: View {
             }
         }
         .hidden(!showsPageItems)
+        // Note Info leads the page's actions, as Info does in Preview, and Search Notes ends them, as
+        // search does in Mail and Notes. Next to an icon-only button the search field shares one
+        // glass capsule with it, and the field's focus ring, drawn around the field alone, then cuts
+        // across that capsule.
+        ToolbarItem(placement: .primaryAction) {
+            Button { showInfo.toggle() } label: {
+                Label("Note Info", systemImage: "info.circle")
+            }
+            .help(showInfo ? "Hide Note Info" : "Show Note Info")
+            .disabled(mode == .sky || selection == nil)
+        }
+        .hidden(!showsPageItems)
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button("New Note…") { promptCreate(folder: false, in: createParentForSelection) }
@@ -756,14 +770,6 @@ struct KnowledgeView: View {
             ToolbarSearchField(text: $search, prompt: "Search Notes", identifier: "knowledge.search",
                                width: 200, focusRequest: searchFocusTick,
                                onSubmit: { if let first = searchResults.first { requestOpen(first.url) } })
-        }
-        .hidden(!showsPageItems)
-        ToolbarItem(placement: .primaryAction) {
-            Button { showInfo.toggle() } label: {
-                Label("Note Info", systemImage: "info.circle")
-            }
-            .help(showInfo ? "Hide Note Info" : "Show Note Info")
-            .disabled(mode == .sky || selection == nil)
         }
         .hidden(!showsPageItems)
     }
@@ -804,8 +810,8 @@ struct KnowledgeView: View {
         }
     }
 
-    /// The open note as a document: title, a metadata line, the Markdown body, then the notes it
-    /// links with.
+    /// The open note as a document: title, a metadata line and the Markdown body. The notes it links
+    /// with are listed in Note Info, not under the body, where they would repeat the body's links.
     private func readerDocument(_ url: URL, _ note: (title: String, markdown: String)) -> some View {
         let info = noteInfo?.url == url ? noteInfo : nil      // cached; never built in body
         return ScrollViewReader { proxy in
@@ -827,18 +833,6 @@ struct KnowledgeView: View {
                                  exists: { vault?.resolve($0) != nil },
                                  onNavigate: { title in if let u = vault?.resolve(title) { requestFollow(u) } },
                                  onExternal: { NSWorkspace.shared.open($0) })
-                    if let links = info?.linked, !links.isEmpty {
-                        Divider().padding(.vertical, Space.l)
-                        Text("Linked Notes")
-                            .font(.headline)
-                            .accessibilityAddTraits(.isHeader)
-                        VStack(alignment: .leading, spacing: Space.xs) {
-                            ForEach(links) { link in
-                                Button(link.title) { requestFollow(link.url) }
-                                    .buttonStyle(.link)
-                            }
-                        }
-                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Space.xxl)

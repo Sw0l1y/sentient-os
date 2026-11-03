@@ -28,10 +28,14 @@ struct InviteTicketFace: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack(spacing: Space.s) {
-                // 20 pt keeps the compact face inside onboarding's 28 pt badge slot at 0.35 scale.
+                // On Apple's icon grid the tile is the middle 824 of the icon's 1024, so a 20 pt
+                // icon is a 16 pt tile in a transparent margin. The slot is the tile, so the tile
+                // lines up with the hairline and text below it and the margin spills into the
+                // padding. 16 pt also keeps the compact face inside onboarding's 28 pt badge slot.
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 20, height: 20)
+                    .frame(width: 16, height: 16)
                     .accessibilityHidden(true)
                 Text(headerTitle).font(.headline)
                 Spacer(minLength: Space.s)

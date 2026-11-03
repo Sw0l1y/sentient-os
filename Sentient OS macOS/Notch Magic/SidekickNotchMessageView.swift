@@ -2,7 +2,8 @@
 // expanded Live Activity with an inline reply (Messages): header, body, capsule compose field.
 // The coordinator owns presentation/timing; opening or replying targets the original message.
 //
-// This file also declares the notch's palette and its one control style. They live here because
+// This file also declares the notch's palette, its one control style, its capsule compose field
+// and its scroll-edge fade, all shared with the recovery panel. They live here because
 // test_sidekick_notch_reply.py compiles this file standalone: it may name only SwiftUI, AppKit,
 // SidekickConversationStore, SidekickMarkdown, SidekickNotchMessageLayout, the reduce-motion
 // override entry, and what it declares itself.
@@ -19,7 +20,7 @@ enum NotchTone {
     static let primary = Color.white.opacity(0.85)     // status lines, captions, quiet control glyphs
     static let errorText = Color.white.opacity(0.75)   // recovery error body
     static let label = Color.white.opacity(0.70)       // recovery label row
-    static let secondary = Color.white.opacity(0.60)   // transcribing, stopped glyph, Hide ✕
+    static let secondary = Color.white.opacity(0.60)   // transcribing, stopped glyph
     static let quiet = Color.white.opacity(0.50)       // time, vault path, "You can draft a reply"
     static let tertiary = Color.white.opacity(0.45)    // placeholders
     static let controlFill = Color.white.opacity(0.14)
@@ -106,6 +107,80 @@ private struct NotchControlBody: View {
     }
 }
 
+/// The accent send circle at the end of a compose capsule. Its caller sets enablement, help and
+/// accessibility, which apply to the button itself.
+struct NotchComposeSend: View {
+    static let diameter: CGFloat = 24
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: Self.diameter, height: Self.diameter)
+        }
+        .buttonStyle(NotchControlStyle(kind: .primary, shape: .circle))
+    }
+}
+
+/// The notch's one capsule compose field (Messages), shared by the message reply and the recovery
+/// guidance so the two cannot drift apart. The text starts 12 pt in, and the trailing inset keeps
+/// the send circle concentric with the capsule's end cap. Focus shows as the caret plus a fill
+/// step (12% → 14%); there is no stroked ring.
+struct NotchComposeCapsule: ViewModifier {
+    /// Where the text starts inside the capsule, clear of its round end. The recovery panel's answer
+    /// tiles inset their labels by the same amount, so tile labels and the placeholder share an edge.
+    static let textInset: CGFloat = 12
+    let height: CGFloat
+    let focused: Bool
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
+    private var stillness: Bool {
+        (motionOverride ?? systemReduceMotion) || ProcessInfo.processInfo.isLowPowerModeEnabled
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.leading, Self.textInset)
+            .padding(.trailing, (height - NotchComposeSend.diameter) / 2)
+            .frame(height: height)
+            .background(focused ? NotchTone.controlFill : NotchTone.fieldFill, in: Capsule())
+            .animation(stillness ? nil : .easeOut(duration: 0.18), value: focused)
+    }
+}
+
+/// A notch scroll view's soft edges: a short alpha fade at an edge only while content lies past
+/// it, so partly scrolled lines recede instead of being sliced, and text that fits is never dimmed.
+struct NotchScrollFade: ViewModifier {
+    let length: CGFloat
+    @State private var overflow = Overflow()
+
+    private struct Overflow: Equatable {
+        var top = false
+        var bottom = false
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: Overflow.self) { geometry in
+                Overflow(top: geometry.visibleRect.minY > 0.5,
+                         bottom: geometry.contentSize.height - geometry.visibleRect.maxY > 0.5)
+            } action: { _, value in
+                overflow = value
+            }
+            .mask {
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [overflow.top ? .clear : .black, .black], startPoint: .top, endPoint: .bottom)
+                        .frame(height: length)
+                    Rectangle().fill(.black)
+                    LinearGradient(colors: [.black, overflow.bottom ? .clear : .black], startPoint: .top, endPoint: .bottom)
+                        .frame(height: length)
+                }
+                .allowsHitTesting(false)
+            }
+    }
+}
+
 // MARK: - Message preview
 
 struct SidekickNotchMessageView: View {
@@ -121,11 +196,6 @@ struct SidekickNotchMessageView: View {
     var onReplyFocusChanged: (Bool) -> Void = { _ in }
     var onSend: (String) -> Bool = { _ in false }
     @FocusState private var fieldFocused: Bool
-    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
-    private var reduceMotion: Bool {
-        (motionOverride ?? systemReduceMotion) || ProcessInfo.processInfo.isLowPowerModeEnabled
-    }
 
     private var canSend: Bool {
         !isTaskRunning && !draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -165,7 +235,7 @@ struct SidekickNotchMessageView: View {
         .frame(height: SidekickNotchMessageLayout.labelHeight)
     }
 
-    /// The answer itself, in the native Markdown renderer; long answers scroll under a short fade mask.
+    /// The answer itself, in the native Markdown renderer; long answers scroll under a short fade.
     private var bodyScroll: some View {
         ScrollView(.vertical) {
             SidekickMarkdown(markdown: message.event.text, compact: true, onReply: {
@@ -177,20 +247,12 @@ struct SidekickNotchMessageView: View {
         }
         .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .mask {
-            VStack(spacing: 0) {
-                Rectangle().fill(.black)
-                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 9)
-            }
-            .allowsHitTesting(false)
-        }
+        .modifier(NotchScrollFade(length: 9))
     }
 
-    /// Messages-style inline reply: a capsule field and an accent send circle. Focus shows as the
-    /// caret plus a fill step (12% → 14%); there is no stroked ring.
+    /// Messages-style inline reply, in the notch's shared capsule compose field.
     private var replyRow: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             TextField(replyingToSelection ? "Reply to selected text…" : "Reply to Sidekick…", text: draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
@@ -200,28 +262,20 @@ struct SidekickNotchMessageView: View {
                 .onSubmit(send)
                 .accessibilityLabel("Reply to Sidekick")
                 .accessibilityIdentifier("sidekick.notch.reply")
-            Button(action: send) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 26, height: 26)
-            }
-            .buttonStyle(NotchControlStyle(kind: .primary, shape: .circle))
-            .disabled(!canSend)
-            .help(isTaskRunning ? "Send when Sidekick finishes" : "Send reply")
-            .accessibilityLabel("Send reply")
-            .accessibilityIdentifier("sidekick.notch.sendReply")
+            NotchComposeSend(action: send)
+                .disabled(!canSend)
+                .help(isTaskRunning ? "Send when Sidekick finishes" : "Send reply")
+                .accessibilityLabel("Send reply")
+                .accessibilityIdentifier("sidekick.notch.sendReply")
         }
-        .padding(.horizontal, 11)
-        .frame(height: SidekickNotchMessageLayout.replyHeight)
-        .background(fieldFocused ? NotchTone.controlFill : NotchTone.fieldFill, in: Capsule())
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: fieldFocused)
+        .modifier(NotchComposeCapsule(height: SidekickNotchMessageLayout.replyHeight, focused: fieldFocused))
     }
 
     /// One secondary action (open the full conversation), the selection chip or the running hint, and STOP.
     private var footer: some View {
         HStack(spacing: 8) {
             Button(action: onOpen) {
-                Label("Open in Sentient", systemImage: "arrow.up.forward.app")
+                Label("Open in Sentient", systemImage: "arrow.up.left.and.arrow.down.right")
                     .font(.system(size: 12, weight: .medium))
                     .padding(.horizontal, 12)
                     .frame(height: SidekickNotchMessageLayout.footerHeight)

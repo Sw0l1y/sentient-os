@@ -331,7 +331,8 @@ struct StatusLine: View {
 }
 
 /// A multiline text editor that autosaves through its binding, with a placeholder while empty.
-/// Inside a Form the row draws the field's background; outside it gets a hairline box.
+/// Inside a Form the row draws the field's background; outside it gets a hairline box. Its text
+/// starts on the row's leading edge, like every label around it, or Space.s inside the hairline.
 struct SettingsTextBox: View {
     @Environment(\.settingsFormStyle) private var inForm
     let placeholder: String
@@ -348,6 +349,11 @@ struct SettingsTextBox: View {
         }
     }
 
+    /// NSTextView insets every line by its text container's 5 pt line fragment padding, and
+    /// TextEditor offers no way to turn it off. The editor reaches out by that much on both sides,
+    /// so its text (and the placeholder, which carries the same 5 pt) lands on the edge it is given.
+    private static let lineFragmentPadding: CGFloat = 5
+
     private var editor: some View {
         TextEditor(text: $text)
             .font(.body)
@@ -359,11 +365,12 @@ struct SettingsTextBox: View {
                     Text(placeholder)
                         .font(.body)
                         .foregroundStyle(.tertiary)
-                        .padding(.leading, 5)
+                        .padding(.horizontal, Self.lineFragmentPadding)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
             }
+            .padding(.horizontal, -Self.lineFragmentPadding)
     }
 }
 

@@ -41,46 +41,82 @@ struct HomeToday: View {
     /// edge effect reached from the top inset all the way down to the content's top edge and drew
     /// its dividing line across the page there (FIX1-NOTES, Home).
     @State private var viewportHeight: CGFloat = 0
+    /// The end was pinned at the last viewport change and no change has come since, so the page
+    /// still counts as at its end if another resize arrives before the pin lands.
+    @State private var endPending = false
+    /// A scroll gesture or its momentum is under way, so an offset change is the reader's.
+    @State private var scrolling = false
 
     private var showsRows: Bool { !needsPersonalSetup && !entries.isEmpty }
+    private static let end = "today-end"
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Space.l) {
-                if !kbOnly, let last = conversation.previewMessage {
-                    earlierConversation(last)
-                }
-                Text("Today")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityAddTraits(.isHeader)
-                // The assistant's turn stands unadorned on the column's edge, as in Messages: the
-                // user's bubbles already tell the speakers apart.
-                VStack(alignment: .leading, spacing: Space.xs) {
-                    Text(greeting)
-                        .font(.title3.weight(.semibold))
-                        .accessibilityAddTraits(.isHeader)
-                    bodyLine
-                }
-                if let analysisBlock { analysisBlock }
-                if showsRows { suggestionRows }
-                if let kbOnlyBlock { kbOnlyBlock }
-                if !kbOnly { HomeSidekickSuggestions(onSelect: onStarter) }
+        ScrollViewReader { proxy in
+            ScrollView {
+                column
+                    .id(Self.end)
             }
-            .padding(.horizontal, Space.xl)
-            .padding(.vertical, Space.xl)
-            .centeredColumn(maxWidth: PageMetrics.readingColumn)
-            .frame(minHeight: viewportHeight, alignment: .bottom)
-            .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: entries.map(\.id))
+            // Today opens at its end, and content that grows or shrinks keeps that end in view.
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .defaultScrollAnchor(.bottom, for: .sizeChanges)
+            // A new viewport size or inset (the window shrinking, a notice docking above) keeps the
+            // content's offset whatever the anchor says, which slides the starters under the Ask bar.
+            // A page that was at its end is put back there, as the transcript does.
+            .onScrollGeometryChange(for: SidekickTranscriptLayout.Viewport.self) { geo in
+                .init(top: geo.visibleRect.minY, height: geo.containerSize.height,
+                      insetTop: geo.contentInsets.top, insetBottom: geo.contentInsets.bottom,
+                      fromBottom: geo.contentSize.height - geo.visibleRect.maxY,
+                      width: geo.containerSize.width, contentHeight: geo.contentSize.height)
+            } action: { old, viewport in
+                // The scroll view can undo a pin itself: a pass after a resize it puts back the
+                // offset it had, leaving the page short of its end by the size change (a notice
+                // docking, measured at 90 pt). A pending pin that leaves the end with no gesture
+                // under way is put back once; only once, so the two can never trade the offset.
+                let undone = endPending && !scrolling && old.atEnd && !viewport.atEnd
+                let keep = undone || SidekickTranscriptLayout.Viewport.keepsEnd(from: old, to: viewport, pinPending: endPending)
+                let pending = keep && !undone
+                if endPending != pending { endPending = pending }
+                if keep {
+                    var instant = Transaction()
+                    instant.disablesAnimations = true
+                    withTransaction(instant) { proxy.scrollTo(Self.end, anchor: .bottom) }
+                }
+            }
+            .onScrollPhaseChange { _, phase in
+                if scrolling != phase.isScrolling { scrolling = phase.isScrolling }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
         }
-        // Today opens at its end and, like the transcript, keeps that end in view through size
-        // changes (the window shrinking, a notice docking above, rows arriving after the first
-        // layout), so the starters never slip under the Ask bar. The plain anchor kept the top
-        // offset through them.
-        .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .defaultScrollAnchor(.bottom, for: .sizeChanges)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+    }
+
+    private var column: some View {
+        VStack(alignment: .leading, spacing: Space.l) {
+            if !kbOnly, let last = conversation.previewMessage {
+                earlierConversation(last)
+            }
+            Text("Today")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .accessibilityAddTraits(.isHeader)
+            // The assistant's turn stands unadorned on the column's edge, as in Messages: the
+            // user's bubbles already tell the speakers apart.
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text(greeting)
+                    .font(.title3.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                bodyLine
+            }
+            if let analysisBlock { analysisBlock }
+            if showsRows { suggestionRows }
+            if let kbOnlyBlock { kbOnlyBlock }
+            if !kbOnly { HomeSidekickSuggestions(onSelect: onStarter) }
+        }
+        .padding(.horizontal, Space.xl)
+        .padding(.vertical, Space.xl)
+        .centeredColumn(maxWidth: PageMetrics.readingColumn)
+        .frame(minHeight: viewportHeight, alignment: .bottom)
+        .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: entries.map(\.id))
     }
 
     /// One line under the greeting, by state (first match wins).

@@ -17,12 +17,15 @@ struct SidekickRecoveryLayout {
     static let sectionSpacing: CGFloat = 10
     static let answerSpacing: CGFloat = 8
     static let answerPadding: CGFloat = 8
+    /// A tile label's side inset: the compose capsule's, so the labels and the placeholder line up.
+    static let answerHPad = NotchComposeCapsule.textInset
     static let scrollVPad: CGFloat = 4
     static let errorVPad: CGFloat = 4
     static let fieldSpacing: CGFloat = 8
     static let fieldHeight: CGFloat = 40
     static let topPad: CGFloat = 4
-    static let bottomPad: CGFloat = 8
+    // With the shell's own 4 pt, the bottom margin equals the 10 pt the shell leaves at each side.
+    static let bottomPad: CGFloat = 6
 
     let size: CGSize
     let scrollHeight: CGFloat
@@ -38,7 +41,7 @@ struct SidekickRecoveryLayout {
         answerWidth = buttonWidth
         let questionHeight = content.question.map { Self.height($0.question, font: Self.questionFont, width: textWidth) } ?? 0
         let answersHeight = (content.question?.answers ?? []).map {
-            max(18, Self.height($0, font: Self.answerFont, width: buttonWidth - 2 * Self.answerPadding))
+            max(18, Self.height($0, font: Self.answerFont, width: buttonWidth - 2 * Self.answerHPad))
                 + 2 * Self.answerPadding
         }.max() ?? 0
         let chromeHeight = metrics.topRowHeight + metrics.topPad + metrics.bottomPad
@@ -83,11 +86,14 @@ struct SidekickRecoveryView: View {
     let content: SidekickRecoveryContent
     let layout: SidekickRecoveryLayout
     @FocusState private var fieldFocused: Bool
-    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
-    private var reduceMotion: Bool { motionOverride ?? systemReduceMotion }
 
-    private var canSend: Bool { !recovery.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var draftIsEmpty: Bool { recovery.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// A question needs words. A final error tries again from an empty field, except beside a plan
+    /// offer: that panel has its own Try again button, and Upgrade to Plus is its prominent default.
+    private var retriesWithoutDetail: Bool {
+        content.question == nil && content.upgradeOffer == nil && draftIsEmpty
+    }
+    private var canSend: Bool { !draftIsEmpty || retriesWithoutDetail }
 
     var body: some View {
         VStack(alignment: .leading, spacing: SidekickRecoveryLayout.fieldSpacing) {
@@ -109,7 +115,7 @@ struct SidekickRecoveryView: View {
                             }
                             .scrollIndicators(.hidden)
                             .frame(height: layout.errorHeight)
-                            .mask { scrollEdges }
+                            .modifier(NotchScrollFade(length: 6))
                             .accessibilityLabel("Complete error")
                         }
                         if content.upgradeOffer != nil {
@@ -129,7 +135,8 @@ struct SidekickRecoveryView: View {
                                             .font(Font(SidekickRecoveryLayout.answerFont))
                                             .fixedSize(horizontal: false, vertical: true)
                                             .frame(maxWidth: .infinity, minHeight: 18, alignment: .leading)
-                                            .padding(SidekickRecoveryLayout.answerPadding)
+                                            .padding(.vertical, SidekickRecoveryLayout.answerPadding)
+                                            .padding(.horizontal, SidekickRecoveryLayout.answerHPad)
                                             .frame(width: layout.answerWidth, alignment: .leading)
                                     }
                                     .buttonStyle(NotchControlStyle(kind: .quiet, shape: .tile))
@@ -143,7 +150,7 @@ struct SidekickRecoveryView: View {
             }
             .scrollIndicators(.hidden)
             .frame(height: layout.scrollHeight)
-            .mask { scrollEdges }
+            .modifier(NotchScrollFade(length: 6))
             guidanceRow
         }
         .padding(.top, SidekickRecoveryLayout.topPad)
@@ -170,7 +177,8 @@ struct SidekickRecoveryView: View {
         .frame(height: SidekickRecoveryLayout.labelHeight, alignment: .leading)
     }
 
-    /// The same capsule compose field as the message preview: caret plus a fill step for focus, no ring.
+    /// The same capsule compose field as the message preview. After an error, sending with the
+    /// field empty tries again, as the placeholder offers. Beside a plan offer, Try again does that.
     private var guidanceRow: some View {
         HStack(spacing: 12) {
             TextField(content.question == nil ? "Add a detail, or try again" : "Or type your answer", text: $recovery.draft)
@@ -181,40 +189,20 @@ struct SidekickRecoveryView: View {
                 .focused($fieldFocused)
                 .onSubmit(send)
                 .accessibilityLabel(content.question == nil ? "Guidance for retrying" : "Your answer to Sidekick")
-            Button(action: send) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(NotchControlStyle(kind: .primary, shape: .circle))
-            .disabled(!canSend)
-            .accessibilityLabel("Send guidance")
-            .accessibilityHint("Send your reply and continue this task")
-            .help("Send guidance")
+            NotchComposeSend(action: send)
+                .disabled(!canSend)
+                .accessibilityLabel(retriesWithoutDetail ? "Try again" : "Send guidance")
+                .accessibilityHint(retriesWithoutDetail ? "Try this task again without a new detail"
+                                                        : "Send your reply and continue this task")
+                .help(retriesWithoutDetail ? "Try again" : "Send guidance")
         }
-        .padding(8)
-        .frame(height: SidekickRecoveryLayout.fieldHeight)
-        .background(fieldFocused ? NotchTone.controlFill : NotchTone.fieldFill, in: Capsule())
-        .animation(Motion.gated(.easeOut(duration: 0.18), reduceMotion: reduceMotion), value: fieldFocused)
-    }
-
-    // A soft boundary makes partially scrolled lines recede instead of being sliced against
-    // the heading or input. It is an alpha mask, not a visible gradient. Content padding keeps
-    // complete lines outside the fade at either end.
-    private var scrollEdges: some View {
-        VStack(spacing: 0) {
-            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                .frame(height: 6)
-            Rectangle().fill(.black)
-            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                .frame(height: 6)
-        }
-        .allowsHitTesting(false)
+        .modifier(NotchComposeCapsule(height: SidekickRecoveryLayout.fieldHeight, focused: fieldFocused))
     }
 
     private func send() {
         guard canSend else { return }
-        recovery.answer(id: content.id)
+        if content.question == nil { recovery.retry(id: content.id) }
+        else { recovery.answer(id: content.id) }
     }
 }
 
@@ -250,12 +238,8 @@ struct SidekickUpgradeActions: View {
                         HomeWindowOpening.open(.settings, settingsPane: .frontierModel)
                     }
                     .accessibilityIdentifier("sidekick.recovery.changeAI")
-                    Button("Try again") {
-                        guard recovery.content?.id == content.id else { return }
-                        let guidance = recovery.draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                        recovery.answer(id: content.id, text: guidance.isEmpty ? "Try this task again." : guidance)
-                    }
-                    .accessibilityIdentifier("sidekick.recovery.retry")
+                    Button("Try again") { recovery.retry(id: content.id) }
+                        .accessibilityIdentifier("sidekick.recovery.retry")
                     Button("Stop") { recovery.cancel(id: content.id) }
                         .accessibilityIdentifier("sidekick.recovery.stop")
                 }

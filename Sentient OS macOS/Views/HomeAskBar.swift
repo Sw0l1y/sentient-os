@@ -10,7 +10,10 @@
 //  The caption is not part of the floating bar: HomeView stacks it on the page below the scroll
 //  view. Text in the bar that is not on glass makes the system draw the bar's scroll edge hard (an
 //  opaque band that slices rows), whatever style the page asks for; with only glass in the bar the
-//  rows fade softly under the field.
+//  rows fade softly under the field. The bar is the field alone: it ends at the field's bottom
+//  edge, where the scroll view ends, so no row shows below the field. (A margin above the field,
+//  for the fade to happen in, was tried and measured: the system's soft edge was no stronger, and
+//  the latest message sat a whole turn gap above the field.)
 //
 
 import SwiftUI
@@ -42,8 +45,8 @@ struct HomeAskBar: View {
         }
         .frame(maxWidth: PageMetrics.readingColumn)
         .padding(.horizontal, Space.xl)
-        // The gap to the caption, which starts where the scroll view ends.
-        .padding(.bottom, Space.s)
+        // No margin under the field: rows scrolled into one would be cut off where the scroll view
+        // ends, so the gap to the caption is the caption's own.
         .frame(maxWidth: .infinity)
     }
 }
@@ -58,6 +61,8 @@ struct HomeAskCaption: View {
         HomeNotchHint(coordinator: coordinator, allowsHint: !inConversation && !kbOnly)
             .frame(maxWidth: PageMetrics.readingColumn)
             .padding(.horizontal, Space.xl)
+            // The gap under the field is on the page, outside the scroll view (see HomeAskBar).
+            .padding(.top, Space.s)
             .padding(.bottom, Space.m)
             .frame(maxWidth: .infinity)
     }

@@ -406,19 +406,24 @@ struct NotchContent: View {
                 Spacer(minLength: metrics.centerGap)
                 HStack(spacing: 12) {
                     if showsHistoryControl {
+                        // Expand, as the message panel's Open in Sentient says too: the notch opening
+                        // out into the window. It has no frame of its own to nest in the circle (the
+                        // .app arrow does), and no single arrow to read as the send button beside it.
                         Button(action: onOpenConversation) {
-                            Image(systemName: "arrow.up.forward.app")
-                                .font(.system(size: 13, weight: .medium))
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 10, weight: .semibold))
                                 .frame(width: metrics.controlSlot, height: metrics.controlSlot)
                         }
                         .buttonStyle(NotchControlStyle(kind: .quiet, shape: .circle))
                         .help("Open conversation in Sentient")
                         .accessibilityLabel("Open Sidekick conversation in Sentient")
                     }
-                    rightControl
-                        .frame(width: metrics.controlSlot, height: metrics.controlSlot)
-                        .id(controlKey)
-                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.85)))
+                    if hasTrailingControl {
+                        rightControl
+                            .frame(width: metrics.controlSlot, height: metrics.controlSlot)
+                            .id(controlKey)
+                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.85)))
+                    }
                 }
             }
             .frame(height: metrics.topRowHeight)
@@ -475,8 +480,7 @@ struct NotchContent: View {
                 if phase == .listening { onFinishListening() } else { submitDraft() }
             }
         case .running:
-            // The onboarding demo is theater — nothing real to stop, so no STOP.
-            if showStop { NotchStopButton(action: onStop) } else { Color.clear.frame(width: 1, height: 18) }
+            NotchStopButton(action: onStop)
         case .finishing(let outcome):
             // A filled status badge; the container label already reads the status line.
             Image(systemName: Self.outcomeSymbol(outcome))
@@ -485,22 +489,11 @@ struct NotchContent: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         case .recovery:
-            // Beside the camera like the Island's own chrome: a plain glyph, not an action tile.
-            Button { recovery?.dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(NotchTone.secondary)
-                    .contentShape(Rectangle().inset(by: -6))
-            }
-            .buttonStyle(.plain).help("Hide for now").accessibilityLabel("Hide for now")
+            NotchHideButton(help: "Hide for now", label: "Hide for now") { recovery?.dismiss() }
         case .message:
-            Button(action: onDismissMessage) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(width: metrics.controlSlot, height: metrics.controlSlot)
-            }
-            .buttonStyle(NotchControlStyle(kind: .quiet, shape: .circle))
-            .help("Hide response")
-            .accessibilityLabel("Hide response. It stays in your conversation history.")
+            NotchHideButton(help: "Hide response",
+                            label: "Hide response. It stays in your conversation history.",
+                            action: onDismissMessage)
         case .hidden, .opening, .notice:
             Color.clear.frame(width: 1, height: 18)
         }
@@ -555,12 +548,18 @@ struct NotchContent: View {
     }
 
     private var contentReveal: AnyTransition { reduceMotion ? .opacity : .blurDissolve }
+    /// The message panel opens its conversation from the labelled Open in Sentient button in its
+    /// footer, so its band carries only the ✕.
     private var showsHistoryControl: Bool {
         switch phase {
-        case .typing, .running, .message, .recovery: true
+        case .typing, .running, .recovery: true
         default: false
         }
     }
+    /// The onboarding demo is theater with nothing real to stop, so its running band keeps no empty
+    /// STOP slot. The open button takes the corner at the same inset as the leading spinner, and the
+    /// outcome badge later appears in its place.
+    private var hasTrailingControl: Bool { phase != .running || showStop }
 
     /// The field row while the mic is open, and while the transcript finalizes: the same row, its
     /// content swapped in place. Listening shows a live accent waveform and "Listening…", with the red
@@ -694,7 +693,7 @@ struct NotchContent: View {
 
     /// The result in the system face. Failures get a second line so the reason remains readable.
     private func finishingLine(_ outcome: CommandRunModel.Outcome) -> some View {
-        Text(statusLine)
+        Text(Self.resultText(statusLine))
             .font(.system(size: 12))
             .foregroundStyle(NotchTone.primary)
             .lineLimit(outcome == .failed ? 2 : 1).truncationMode(.tail)
@@ -770,11 +769,21 @@ struct NotchContent: View {
         case .listening: return "Sentient is listening. Click stop, or press Return, when you're done"
         case .transcribing: return "Sentient is transcribing"
         case .running: return "Sentient is working. \(progressCaption)"
-        case .finishing: return statusLine
+        case .finishing: return Self.resultText(statusLine)
         case .notice(let m): return m
         case .recovery: return "Sidekick needs your help"
         case .message: return "A response from Sidekick. Open it in Sentient or reply."
         }
+    }
+
+    /// The run model's result lines lead with ✓, ✗ or ■, which other surfaces read. In the notch the
+    /// outcome badge already says it, so the line drops the glyph and starts as a sentence.
+    private static func resultText(_ line: String) -> String {
+        guard let glyph = line.first, "✓✗■".contains(glyph) else { return line }
+        let rest = line.dropFirst().drop(while: \.isWhitespace)
+        // Only a plain first word is capitalised, so a name like iCloud or macOS keeps its own case.
+        guard rest.prefix(while: { !$0.isWhitespace }).allSatisfy({ !$0.isUppercase }) else { return String(rest) }
+        return rest.prefix(1).uppercased() + rest.dropFirst()
     }
 
     private static func outcomeSymbol(_ o: CommandRunModel.Outcome) -> String {
@@ -868,6 +877,24 @@ private struct NotchSendButton: View {
         .allowsHitTesting(enabled)
         .help(help)
         .accessibilityLabel(help)
+    }
+}
+
+/// Hide: the quiet ✕ circle the recovery and message panels share, so the band's trailing controls
+/// are all one style. Hiding discards nothing.
+private struct NotchHideButton: View {
+    let help: String
+    let label: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 17, height: 17)   // = NotchMetrics.controlSlot
+        }
+        .buttonStyle(NotchControlStyle(kind: .quiet, shape: .circle))
+        .help(help)
+        .accessibilityLabel(label)
     }
 }
 

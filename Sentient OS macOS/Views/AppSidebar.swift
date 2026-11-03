@@ -10,24 +10,22 @@ import AppKit
 
 struct AppSidebar: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var systemReduced
-    @Environment(\.sidekickReduceMotionOverride) private var motionOverride
     private let navigation = MainNavigation.shared
     private let knowledge = AppSidebarKnowledge.shared
 
     private var settingsMode: Bool { navigation.page == .settings }
 
     var body: some View {
-        ZStack {
+        // The two lists swap without a fade, as the detail column beside them does. A List drawn
+        // at partial opacity loses its rows' icons while their titles fade, so a crossfade would
+        // show rows of bare titles for its whole length.
+        Group {
             if settingsMode {
                 SettingsModeList()
-                    .transition(.opacity)
             } else {
                 MainModeList()
-                    .transition(.opacity)
             }
         }
-        .animation(Motion.gated(Motion.quick, reduceMotion: motionOverride ?? systemReduced), value: settingsMode)
         .navigationSplitViewColumnWidth(min: PageMetrics.sidebarMin, ideal: PageMetrics.sidebarIdeal,
                                         max: PageMetrics.sidebarMax)
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -166,11 +164,13 @@ private struct SettingsModeList: View {
 
 /// One `.caption` row, always visible: the analysis status button and, in main mode, the Settings
 /// gear (with the health issue count) and the DEBUG hammer. The on-device model download and the
-/// computer-use setup lines sit above the row while they run.
+/// computer-use setup lines sit above the row while they run. The footer shares the rows' content
+/// inset, and its glyph-and-text lines sit on the rows' icon and title columns.
 private struct AppSidebarFooter: View {
     let settingsMode: Bool
     @Environment(\.accessibilityReduceMotion) private var systemReduced
     @Environment(\.sidekickReduceMotionOverride) private var motionOverride
+    @Environment(\.sidebarRowSize) private var rowSize
     @AppStorage(ModelBackend.key) private var backendRaw = ModelBackend.chatgpt.rawValue
     @State private var download = ModelDownload.shared
     private let navigation = MainNavigation.shared
@@ -197,8 +197,9 @@ private struct AppSidebarFooter: View {
                     .transition(.opacity)
             }
             if showsComputerSetup {
-                HStack(spacing: 6) {
+                HStack(spacing: rowSize.titleStart - rowSize.iconColumn) {
                     ProgressView().controlSize(.mini)
+                        .frame(width: rowSize.iconColumn)
                     Text("Setting up computer use…")
                         .lineLimit(1)
                 }
@@ -211,34 +212,64 @@ private struct AppSidebarFooter: View {
                     // button inside carries NAV-SPEC's sidebar.analysisStatus.
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("navigation.analysis")
-                if !settingsMode {
-                    #if DEBUG
-                    Button {
-                        navigation.showDevTools = true
-                    } label: {
-                        Image(systemName: "hammer")
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.body)
-                    .help("Developer Tools")
-                    .accessibilityLabel("Developer Tools")
-                    #endif
-                    SettingsGearButton()
+                // Settings mode has no gear or hammer but keeps their room: they are taller than
+                // the caption line, so without them the row would shrink and the status line drop.
+                if settingsMode {
+                    trailingButtons.hidden()
+                } else {
+                    trailingButtons
                 }
             }
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Space.l)
         .padding(.vertical, 10)
         .animation(Motion.gated(Motion.standard, reduceMotion: motionOverride ?? systemReduced),
                    value: [showsDownload, showsComputerSetup])
+    }
+
+    @ViewBuilder private var trailingButtons: some View {
+        #if DEBUG
+        Button {
+            navigation.showDevTools = true
+        } label: {
+            Image(systemName: "hammer")
+        }
+        .buttonStyle(.borderless)
+        .font(.body)
+        .help("Developer Tools")
+        .accessibilityLabel("Developer Tools")
+        #endif
+        SettingsGearButton()
+    }
+}
+
+/// Where the sidebar's rows put their icon and title at each Sidebar icon size (System Settings ›
+/// Appearance), measured from the rows' content inset, which is 16 pt (`Space.l`) at every size.
+/// The footer's lines center their glyph in the same icon column and start their text on the titles.
+private extension SidebarRowSize {
+    var iconColumn: CGFloat {
+        switch self {
+        case .small: return 21
+        case .large: return 27
+        default: return 25
+        }
+    }
+
+    var titleStart: CGFloat {
+        switch self {
+        case .small: return 26
+        case .large: return 32.5
+        default: return 30
+        }
     }
 }
 
 /// The analysis state in one line: busy (spinner + status line), needs attention, or the last run.
 private struct AnalysisStatusButton: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.sidebarRowSize) private var rowSize
     private let navigation = MainNavigation.shared
 
     private var selected: Bool { navigation.page == .analysis }
@@ -247,18 +278,21 @@ private struct AnalysisStatusButton: View {
         Button {
             navigation.show(.analysis)
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: rowSize.titleStart - rowSize.iconColumn) {
                 if appState.processing.isBusy {
                     ProgressView().controlSize(.mini)
+                        .frame(width: rowSize.iconColumn)
                     line(appState.processing.statusLine)
                 } else if appState.processing.needsAttention {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
+                        .frame(width: rowSize.iconColumn)
                         .accessibilityHidden(true)
                     // Names the source when the saved record knows it ("Apple Mail needs attention").
                     line(appState.processing.statusLine)
                 } else {
                     Image(systemName: "checkmark.circle")
+                        .frame(width: rowSize.iconColumn)
                         .accessibilityHidden(true)
                     TimelineView(.everyMinute) { _ in
                         line(lastRunLine)

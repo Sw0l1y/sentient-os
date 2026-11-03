@@ -33,6 +33,8 @@ struct SidekickWorkDisclosure: View {
     /// The latest page shows only its newest steps, nearest the answer; the rest wait behind
     /// Earlier Steps above them, so a long run never pushes its answer off screen.
     private static let recentSteps = 4
+    /// The header's chevron (10 pt) and its spacing, hung in the column's leading margin.
+    private static let chevronSlot: CGFloat = 10 + Space.s
     /// The reader opened the steps hidden above the newest ones.
     @State private var showsHiddenSteps = false
     private var shownSteps: ArraySlice<SidekickActivityPresentation.Step> {
@@ -158,17 +160,22 @@ struct SidekickWorkDisclosure: View {
     /// (the transcript follows its geometry).
     @ViewBuilder private func header(at date: Date) -> some View {
         let title = SidekickTranscriptLayout.workLabel(state: state, running: running, waiting: waiting, now: date)
+        // The glyph sits on the column's edge with the text around it, and the chevron's slot hangs
+        // in the margin to its left, so every work row's glyph and title share one column whether
+        // the row can expand or not. The slot is part of the click target.
         let row = HStack(spacing: Space.s) {
-            if canExpand {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(expanded ? 90 : 0))
-                    .frame(width: 10)
-            }
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .rotationEffect(.degrees(expanded ? 90 : 0))
+                .frame(width: Self.chevronSlot - Space.s)
+                .opacity(canExpand ? 1 : 0)
+                .accessibilityHidden(!canExpand)
             headerGlyph.frame(width: 16, height: 16)
             Text(title).font(.callout).foregroundStyle(.secondary)
             Spacer(minLength: 0)
-        }.contentShape(Rectangle())
+        }
+        .contentShape(Rectangle())
+        .padding(.leading, -Self.chevronSlot)
         if canExpand {
             Button {
                 withAnimation(Motion.gated(.spring(response: 0.35, dampingFraction: 0.92), reduceMotion: reduced)) {
@@ -284,8 +291,9 @@ struct SidekickWorkDisclosure: View {
                 }
             }
         }
-        // Step glyphs line up under the header's state glyph (past the chevron and its spacing).
-        .padding(.leading, 22)
+        // One level in: each step's disclosure triangle under the header's glyph, its state glyph
+        // under the header's title.
+        .padding(.leading, 22 - Self.chevronSlot)
         .accessibilityIdentifier("sidekick.activity.\(taskID.uuidString)")
         .id(SidekickPresentation.workTailID(taskID))
     }

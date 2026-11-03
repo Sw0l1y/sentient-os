@@ -1,6 +1,7 @@
 // The verified invitation's gift sheet: a 72 pt gift tile with one bounce, a bold title, one
-// sentence, a flat pass once claimed, and Close / Continue. It follows the system appearance and
-// sizes itself as a form sheet, so every caller presents it with `.sheet` and no frame of its own.
+// sentence, a flat pass once claimed, and Close beside the claim button, which is the only button
+// once claimed. It follows the system appearance and sizes itself as a form sheet, so every
+// caller presents it with `.sheet` and no frame of its own.
 // Any other host (a window, a popover) gets the content's own bounded size.
 // Presentation only: claiming or dismissing never changes the server-confirmed entitlement.
 // Doc: ../Views/Onboarding/Documentation - Onboarding.md
@@ -81,10 +82,14 @@ struct InviteCelebration: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: Space.m) {
-                Button("Close", action: onClose)
-                    .buttonStyle(.bordered)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityLabel(closeLabel)
+                // Once claimed, the primary button only closes the sheet, so Close would be a
+                // second button with the same outcome. Esc is left to onExitCommand.
+                // Close is read by its title alone, since the text above says the gift is kept.
+                if !claimed {
+                    Button("Close", action: onClose)
+                        .buttonStyle(.bordered)
+                        .keyboardShortcut(.cancelAction)
+                }
                 Button(primaryTitle) {
                     if claimed { onClose() } else { claim() }
                 }
@@ -130,6 +135,8 @@ struct InviteCelebration: View {
     private func claim() {
         guard ready, !claimed else { return }
         withAnimation(Motion.gated(Motion.standard, reduceMotion: reduceMotion)) { claimed = true }
+        // Close leaves with the claim, so focus that was on it moves to the one button left.
+        claimFocused = true
     }
 
     // MARK: - Copy
@@ -166,11 +173,6 @@ struct InviteCelebration: View {
         if claimed { return "Your lifetime pass is saved. Make yourself at home." }
         return upgrade ? "We’ve upgraded your earlier gift to free lifetime access."
                        : "Sentient OS, free for life. A gift from us to you."
-    }
-
-    private var closeLabel: String {
-        lateGift ? "Close invitation. Your Sidekick gift is saved."
-                 : "Close invitation. Lifetime access is saved."
     }
 }
 

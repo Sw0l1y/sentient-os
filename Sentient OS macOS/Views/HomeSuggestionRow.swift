@@ -71,7 +71,9 @@ struct HomeSuggestionRow: View {
             }
             if let onDismiss { Button("Dismiss", action: onDismiss) }
         }
-        .background(isHovered ? Color.primary.opacity(0.04) : Color.clear)
+        // In a rectangle: a bare style fills the container shape, which rounds the fill's corners
+        // inside a row that sits flush in its group. The group's own clip rounds its outer corners.
+        .background(isHovered ? Color.primary.opacity(0.04) : Color.clear, in: Rectangle())
         .onHover { hovered = $0 }
         .animation(Motion.gated(Motion.standard, reduceMotion: reducedMotion), value: phase)
         .accessibilityElement(children: .contain)
@@ -185,11 +187,11 @@ struct HomeSuggestionRow: View {
             .accessibilityHidden(!isHovered)
     }
 
+    /// The same plain ✕ as the notice row's (NoticeBar), so Home has one Dismiss control.
     @ViewBuilder private var dismissControl: some View {
         if let onDismiss {
             Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.tertiary)
+                Image(systemName: "xmark")
                     .frame(minWidth: 22, minHeight: 22)
                     .contentShape(Rectangle())
             }

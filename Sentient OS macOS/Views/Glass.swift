@@ -4,8 +4,9 @@
 //
 //  The only file that names a macOS 26 API (SPEC-00 3.2). The window's sidebar, toolbar, sheets,
 //  popovers and menus get Liquid Glass from the system; custom glass is only for floating controls
-//  over content (the Home Ask field, the New Response pill, the graph zoom group, PermissionGuide),
-//  through `floatingGlass(in:interactive:)`. Every helper here has a macOS 15 fallback.
+//  over content (the Home Ask field with its question card and reply chip, the New Response pill,
+//  the graph zoom group, PermissionGuide), through `floatingGlass(in:interactive:)`. Every helper
+//  here has a macOS 15 fallback.
 //
 
 import SwiftUI
@@ -17,7 +18,8 @@ import AppKit
 // and floating controls use `glassButtonStyle(prominent:)` below.
 
 extension View {
-    /// Liquid Glass on a floating control (Ask field, New Response pill, graph zoom group, PermissionGuide).
+    /// Liquid Glass on a floating control (Ask field and the card or chip above it, New Response
+    /// pill, graph zoom group, PermissionGuide).
     /// macOS 26: glassEffect(.regular[.interactive()], in: shape).
     /// macOS 15: .background(.regularMaterial, in: shape) + shape.stroke(Color(nsColor: .separatorColor), lineWidth: 1).
     func floatingGlass<S: Shape>(in shape: S, interactive: Bool = false) -> some View {

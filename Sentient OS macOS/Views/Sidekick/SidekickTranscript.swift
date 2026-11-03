@@ -125,7 +125,7 @@ struct SidekickTranscript: View {
                                     .font(.caption).foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity).padding(.vertical, Space.s)
                             }
-                            SidekickMessageRow(record: row.record, showsWork: row.showsWork,
+                            SidekickMessageRow(record: row.record, showsWork: row.showsWork, timeBreak: row.timeBreak,
                                 bubbleWidth: columnWidth * 0.75,
                                 generation: generation, conversation: conversation, coordinator: coordinator,
                                 presentation: presentation, active: active)
@@ -421,6 +421,8 @@ struct SidekickTranscript: View {
 private struct SidekickMessageRow: View {
     let record: SidekickConversationStore.Record
     let showsWork: Bool
+    /// The time separator drawn right above this message, if any.
+    let timeBreak: Date?
     let bubbleWidth: CGFloat
     let generation: UUID?
     let conversation: SidekickConversation
@@ -531,9 +533,11 @@ private struct SidekickMessageRow: View {
     @ViewBuilder private var hoverMeta: some View {
         if hovered || copied || hoverOverride == event.id {
             HStack(spacing: Space.s) {
-                Text(SidekickTranscriptLayout.hoverDate(event.createdAt))
-                    .font(.caption)
-                    .help(event.createdAt.formatted(date: .complete, time: .shortened))
+                if let time = SidekickTranscriptLayout.hoverTime(event.createdAt, below: timeBreak) {
+                    Text(time)
+                        .font(.caption)
+                        .help(event.createdAt.formatted(date: .complete, time: .shortened))
+                }
                 Button(action: copy) {
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 }

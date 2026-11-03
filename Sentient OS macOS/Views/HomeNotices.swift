@@ -49,7 +49,11 @@ struct HomeNotices: View {
 
     var body: some View {
         if visible {
-            Group {
+            // An empty slot takes no height, so Today meets the toolbar: a padded empty slot is a
+            // strip of page under the toolbar that cuts Today's top edge off flat. The last rung's
+            // notices decide for themselves whether to draw, and the invite stays mounted while it
+            // waits, so only the layout can tell whether the slot holds anything.
+            NoticeSlotLayout(top: Space.m, bottom: Space.s) {
                 if signedOut {
                     NoticeBar(tile: .noticeSignedOut, title: "ChatGPT Is Signed Out",
                               message: "Sign in to ChatGPT to keep Sentient working for you.",
@@ -91,8 +95,6 @@ struct HomeNotices: View {
             // The page margin sits inside the reading column, as in Today and the conversation, so the
             // notice shares their edges at every width.
             .padding(.horizontal, Space.xl)
-            .padding(.top, Space.m)
-            .padding(.bottom, Space.s)
             .centeredColumn()
             // Today's text must not show through the gutters around the docked row.
             .background(Color(nsColor: .textBackgroundColor))
@@ -110,5 +112,27 @@ struct HomeNotices: View {
         if connector != nil { return 5 }
         if computerNotice == .ready { return 6 }
         return showsInvite ? 8 : 7
+    }
+}
+
+/// Stacks the slot's content (two notices while one replaces the other) and insets it by `top`
+/// and `bottom` while it has any height; while it is empty it takes no height at all.
+private struct NoticeSlotLayout: Layout {
+    let top: CGFloat
+    let bottom: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil)) }
+        let height = sizes.reduce(0) { $0 + $1.height }
+        return CGSize(width: sizes.map(\.width).max() ?? 0, height: height > 0 ? top + height + bottom : 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let row = ProposedViewSize(width: bounds.width, height: nil)
+        var y = bounds.minY + top
+        for subview in subviews {
+            subview.place(at: CGPoint(x: bounds.minX, y: y), proposal: row)
+            y += subview.sizeThatFits(row).height
+        }
     }
 }

@@ -2,10 +2,13 @@
 //  ProactivePane.swift
 //  Sentient OS macOS
 //
-//  Settings › Sidekick, laid out like System Settings › Control Center: four sections.
+//  Settings › Sidekick, laid out like System Settings › Control Center: four sections. Like a
+//  System Settings pane it publishes no window subtitle: the controls below already show the
+//  shortcut and the notch setting.
 //  Notch: the shared Sidekick / Double Tap shortcut (ShortcutSetting) and notch clicks.
-//  Sidekick: its standing instructions, which live in SidekickMemory.md. The editor saves on every
-//  keystroke; a failed save stays visible and editable, and nothing reloads over it.
+//  Custom Instructions (its row's name; the section has no header): Sidekick's standing
+//  instructions, which live in SidekickMemory.md. The editor saves on every keystroke; a failed
+//  save stays visible and editable, and nothing reloads over it.
 //  Speed & Intelligence (its row's name; the section has no header): the model/effort every
 //  computer-use run rides (ComputerUseSpeed), as a segmented control. A custom AI model carries
 //  ONE reasoning level set in AI Model (provider quirks make per-run tuning unsafe there), so only
@@ -20,14 +23,12 @@ struct ProactivePane: View {
     @AppStorage(CustomInstructions.proactiveKey) private var proactiveInstructions = ""
     @AppStorage(CustomInstructions.sidekickKey) private var sidekickContext = ""
     @AppStorage(NotchPreferences.clickEnabledKey) private var notchClickEnabled = true
-    @AppStorage(ShortcutPreferences.storageKey) private var keyRaw = "rightCommand"
     @AppStorage(ComputerUseSpeed.key) private var speedRaw = ComputerUseSpeed.faster.rawValue
     @AppStorage(ModelBackend.key) private var backendRaw = ModelBackend.chatgpt.rawValue
     @State private var memoryText = ""
     @State private var memoryError: String?
     @State private var hasUnsavedMemoryEdit = false
 
-    private var key: ShortcutKey { ShortcutKey(rawValue: keyRaw) ?? .rightCommand }
     private var sliderLive: Bool { (ModelBackend(rawValue: backendRaw) ?? .chatgpt) != .custom }
     private var current: ComputerUseSpeed { ComputerUseSpeed(rawValue: speedRaw) ?? .faster }
     private var speed: Binding<ComputerUseSpeed> {
@@ -36,18 +37,14 @@ struct ProactivePane: View {
     private var memoryBinding: Binding<String> {
         Binding(get: { memoryText }, set: saveMemory)
     }
-    private var subtitle: String {
-        notchClickEnabled ? "\(key.label) · Notch click on" : key.label
-    }
 
     var body: some View {
         PaneForm {
             notchSection
-            sidekickSection
+            customInstructionsSection
             speedSection
             morningSection
         }
-        .pageSubtitle(subtitle, page: .settings, pane: .proactive)
         .onAppear(perform: refreshMemory)
         .onChange(of: notchClickEnabled) { _, _ in
             NotificationCenter.default.post(name: .notchInteractionChanged, object: nil)
@@ -75,9 +72,11 @@ struct ProactivePane: View {
         }
     }
 
-    // MARK: - Sidekick
+    // MARK: - Custom Instructions
 
-    private var sidekickSection: some View {
+    /// No section header: the pane is titled Sidekick and the section's first row names the
+    /// instructions, so a header could only repeat one of them.
+    private var customInstructionsSection: some View {
         Section {
             LabeledContent {
                 EmptyView()
@@ -98,8 +97,6 @@ struct ProactivePane: View {
                 }
                 .accessibilityLabel("Sidekick memory error: " + memoryError)
             }
-        } header: {
-            Text("Sidekick")
         } footer: {
             Text("Sidekick learns your preferences as you work. Edit its instructions anytime.")
         }

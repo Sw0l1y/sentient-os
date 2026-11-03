@@ -100,5 +100,7 @@ An evidence-backed ChatGPT Free/Go limit can add `SidekickUpgradeActions` to the
 panel. Home's composer uses the same component. Its explanation and compact button row are included in
 `SidekickRecoveryLayout` measurement, leaving the guidance field fixed while overflowing content
 scrolls. Upgrade opens pricing only on click; Change AI opens provider settings. Try again and Stop
-remain available. This recovery stays pending while hidden, preserving the guidance during an
+remain available. In the notch, a final error without an offer retries when its guidance field is
+sent empty, through the same `SidekickRecovery.retry` as Try again, so the field's "or try again" is
+always a real path. This recovery stays pending while hidden, preserving the guidance during an
 external visit; generic failure timing and clarification behavior keep their existing rules.

@@ -2,17 +2,17 @@
 //  KnowledgeNotesList.swift
 //  Sentient OS macOS
 //
-//  The Knowledge page's notes list, shaped like the Notes folder list: a source list with the
-//  pinned "Overview" (the vault README), disclosure folders and note rows; while searching, a
-//  flat list of matching notes with their folders. A bottom strip, like Mail's mailbox footer,
-//  shows where the notes live (synced to the encrypted cloud MCP copy, or on this Mac only) and
-//  how many there are. Selecting a row goes through KnowledgeView's `requestOpen`, so unsaved
-//  edits still prompt before the switch.
+//  The Knowledge page's notes list, shaped like the note list in Notes and Mail: an inset list on
+//  the content background (only the app sidebar is a source list) with the pinned "Overview" (the
+//  vault README), disclosure folders and note rows; while searching, a flat list of matching notes
+//  with their folders. A bottom strip shows where the notes live (synced to the encrypted cloud
+//  MCP copy, or on this Mac only); the note count is the window subtitle. Selecting a row goes
+//  through KnowledgeView's `requestOpen`, so unsaved edits still prompt before the switch.
 //
 //  Scoped (NAV-SPEC 4: a sidebar domain row, `MainNavigation.knowledgeScope`): the list shows only
-//  that folder's subtree (its notes and subfolders, without Overview), search searches within it,
-//  and the strip counts its notes. The scope helpers at the bottom (`KnowledgeVault.folder(at:)`,
-//  `notes(in:)`, `landingNote(in:)`) are shared with KnowledgeView.
+//  that folder's subtree (its notes and subfolders, without Overview) and search searches within
+//  it. The scope helpers at the bottom (`KnowledgeVault.folder(at:)`, `notes(in:)`,
+//  `landingNote(in:)`) are shared with KnowledgeView.
 //
 
 import SwiftUI
@@ -58,7 +58,7 @@ struct KnowledgeNotesList: View {
                         .tag(readme)
                         .contextMenu { noteMenu(readme) }
                 }
-                ForEach(scope?.children ?? vault?.nodes ?? [], id: \.url) { node in
+                ForEach(topLevel, id: \.url) { node in
                     KnowledgeTreeRow(node: node, expanded: $expanded,
                                      onCreate: onCreate, onTrash: onTrash, onReveal: onReveal)
                 }
@@ -79,7 +79,12 @@ struct KnowledgeNotesList: View {
                 }
             }
         }
-        .listStyle(.sidebar)
+        .listStyle(.inset)
+        // The reader's background: list and note are one surface split by the divider, as in Notes.
+        // The inset list's own background is the window backdrop, the sidebar's grey, which ran
+        // the list and the app sidebar together into one wide panel.
+        .scrollContentBackground(.hidden)
+        .background(Color(nsColor: .textBackgroundColor))
         .overlay {
             if !search.isEmpty && results.isEmpty {
                 ContentUnavailableView.search(text: search)
@@ -92,23 +97,30 @@ struct KnowledgeNotesList: View {
             Button("New Note…") { onCreate(false, scope?.url) }
             Button("New Folder…") { onCreate(true, scope?.url) }
         }
+        // The strip sits beside the app sidebar's footer along the window's bottom edge and is built
+        // like it: no bar or hairline, a caption row as tall as that footer's body-size Settings
+        // button, and the same 10 pt above and below, so the two captions share one line. The
+        // list's background keeps rows that scroll beneath it from showing through.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                Divider()
-                HStack(spacing: Space.s) {
-                    syncLabel
-                    Spacer(minLength: 0)
-                    Text(countText).monospacedDigit()
-                }
+            syncLabel
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .padding(.horizontal, Space.m)
-                .padding(.vertical, Space.s)
-            }
-            .background(.bar)
+                .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
+                .padding(.leading, outlined ? 25 : 16)
+                .padding(.trailing, Space.m)
+                .padding(.vertical, 10)
+                .background(Color(nsColor: .textBackgroundColor))
         }
     }
+
+    /// The rows at the top of the tree: the scoped folder's children, or the vault's.
+    private var topLevel: [VaultNode] { scope?.children ?? vault?.nodes ?? [] }
+
+    /// True when the list is an outline. A folder among the top rows gives every row a disclosure
+    /// column, which moves the row titles 9 pt further in; the strip's leading inset follows, so
+    /// its text starts under the titles (38 pt in a flat list, past its 22 pt icon and spacing).
+    private var outlined: Bool { search.isEmpty && topLevel.contains(where: \.isFolder) }
 
     /// Where the notes live: on this Mac only (mirror off), or the live cloud-MCP sync state.
     /// AES-256-GCM seals the vault on this Mac before upload; the relay stores ciphertext and
@@ -149,11 +161,6 @@ struct KnowledgeNotesList: View {
         let base = root.standardizedFileURL.pathComponents
         let rel = parent.count > base.count ? parent[base.count...].joined(separator: "/") : ""
         return rel.isEmpty ? "Knowledge Base" : rel
-    }
-
-    private var countText: String {
-        let n = vault?.noteCount(in: scope?.url) ?? 0
-        return "\(n) note\(n == 1 ? "" : "s")"
     }
 
     @ViewBuilder private func noteMenu(_ url: URL) -> some View {

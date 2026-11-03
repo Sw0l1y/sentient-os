@@ -31,7 +31,9 @@ struct SidekickComposer: View {
     }
 
     /// Top to bottom: the RecoveryCard or the ReplyChip, the floating Ask field, then the error
-    /// line. HomeView's floating bar supplies no background; the field carries its own glass.
+    /// line. HomeView's floating bar supplies no background; the card, the chip and the field each
+    /// carry their own glass, because anything in the bar that is not on glass makes the system draw
+    /// the bar's scroll edge hard (HomeAskBar). The error line is the one exception, while it shows.
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             if answering, let content = recovery.content {
@@ -195,8 +197,9 @@ private struct AskFieldShape: ViewModifier {
     }
 }
 
-/// Siri's clarification card on macOS 26, built like an inset grouped section: what Sidekick
-/// needs, suggested answers, and the consequence. The typed answer goes in the Ask field below.
+/// Siri's clarification card on macOS 26, built like an inset grouped section on glass: what
+/// Sidekick needs, suggested answers, and the consequence. The typed answer goes in the Ask field
+/// below.
 private struct RecoveryCard: View {
     let content: SidekickRecoveryContent
     let recovery: SidekickRecovery
@@ -247,9 +250,7 @@ private struct RecoveryCard: View {
         }
         .padding(Space.l)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: Radius.group, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Radius.group, style: .continuous)
-            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+        .floatingGlass(in: RoundedRectangle(cornerRadius: Radius.group, style: .continuous))
     }
 
     @ViewBuilder private var header: some View {
@@ -284,9 +285,7 @@ private struct ReplyChip: View {
         }
         .buttonStyle(.borderless).controlSize(.small)
         .padding(.horizontal, Space.m).padding(.vertical, Space.s)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: Radius.bubble, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Radius.bubble, style: .continuous)
-            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+        .floatingGlass(in: RoundedRectangle(cornerRadius: Radius.bubble, style: .continuous))
         .fixedSize(horizontal: false, vertical: true)
     }
 }

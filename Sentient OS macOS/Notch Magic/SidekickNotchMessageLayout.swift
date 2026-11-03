@@ -9,8 +9,10 @@ import AppKit
     static let sectionSpacing: CGFloat = 10
     static let footerHeight: CGFloat = 30
     static let replyHeight: CGFloat = 40
-    static let topPad: CGFloat = 4
-    static let bottomPad: CGFloat = 10
+    // The label row starts 8 pt below the camera band, as in the recovery panel. With the shell's
+    // own 4 pt, the bottom margin equals the 10 pt the shell leaves at each side.
+    static let topPad: CGFloat = 8
+    static let bottomPad: CGFloat = 6
     static let textVerticalPad: CGFloat = 3
 
     let size: CGSize

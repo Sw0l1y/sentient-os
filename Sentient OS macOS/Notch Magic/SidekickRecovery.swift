@@ -166,6 +166,14 @@ final class SidekickRecovery {
         consume(.answered(SidekickAnswer(text: value, selectedAnswer: choice)))
     }
 
+    /// Retries a final error with the typed guidance, or with a plain request when there is none,
+    /// so an empty guidance field and the Try again button continue the task the same way.
+    func retry(id: UUID) {
+        guard let content, content.id == id, content.question == nil else { return }
+        let guidance = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        answer(id: id, text: guidance.isEmpty ? "Try this task again." : guidance)
+    }
+
     func cancel(id: UUID? = nil, cause: Cancellation = .user) {
         if content == nil, id == nil { interruptedDraft = nil }
         guard let content, id == nil || content.id == id else { return }
