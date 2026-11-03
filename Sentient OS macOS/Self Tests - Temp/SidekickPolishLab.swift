@@ -215,8 +215,10 @@ import WebKit
         }
         func home() -> AnyView { AnyView(HomeView(deck: .jesai).environment(app).preferredColorScheme(.dark)) }
         let host = NSHostingView(rootView: home())
+        // A full-size content view, like the app's Window scene: Home lays out under its toolbar,
+        // so the toolbar's controls sit inside the content frame the overlap check measures.
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 820),
-            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "Sidekick discovery fixture · synthetic content"
         window.appearance = NSAppearance(named: .darkAqua)
         window.isReleasedWhenClosed = false; window.contentView = host
@@ -264,8 +266,13 @@ import WebKit
             values.map { ["identifier": $0.identifier, "label": $0.label, "role": $0.role,
                          "frame": [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height]] }
         }
+        // Double Tap, Search, Analysis and Suggestions are Home's window toolbar items. They live in
+        // the title bar beside the hosting view, not inside it, so controls are looked up across
+        // the whole window. Looking only in `host` found none of them, and "no Suggestions button"
+        // could not fail.
+        func windowElements() -> [Element] { elements(window.contentView?.superview ?? host, maximumDepth: 80) }
         func find(_ identifier: String, in values: [Element]? = nil) -> Element? {
-            let candidates = (values ?? elements(host)).filter { $0.identifier == identifier && $0.frame.width > 0 && $0.frame.height > 0 }
+            let candidates = (values ?? windowElements()).filter { $0.identifier == identifier && $0.frame.width > 0 && $0.frame.height > 0 }
             // SwiftUI forwards identifiers to wrapper/label nodes. Use the native control's
             // actual frame for click geometry, rather than whichever descendant walks first.
             return candidates.first { $0.role == NSAccessibility.Role.button.rawValue }
@@ -313,7 +320,7 @@ import WebKit
         window.center(); try await reveal("initial_home")
         try await settle(800)
         _ = await activateOwnAccessibility()
-        let wide = elements(host)
+        let wide = windowElements()
         diagnostics["wide_header"] = describe(wide.filter { $0.identifier.hasPrefix("navigation.") || $0.identifier.hasPrefix("sidekick.notch") })
         // RETIRED (ADDENDUM 12.9.1): wide_double_tap_before_analysis. Deleted subject: the shared
         // header row; navigation.doubleTap is a Home toolbar button and navigation.analysis a
@@ -344,12 +351,15 @@ import WebKit
         await presentation.load(.latest, conversation: run.conversation)
         window.setContentSize(NSSize(width: 840, height: 820))
         try await settle(700)
-        let compact = elements(host)
+        _ = await activateOwnAccessibility()
+        let compact = windowElements()
         // Retired from this list (ADDENDUM 12.9.1-2): navigation.settings (the Settings toolbar
         // button was deleted), the Knowledge header button (deleted; Knowledge is a sidebar row),
         // and sidekick.clearChat (its standalone toolbar button was deleted; the id is on the
         // More menu's "Clear Chat…" item, which exists only while that menu is open).
-        let identifiers = ["sidekick.proactive", "sidekick.search", "navigation.doubleTap", "navigation.analysis"]
+        // navigation.analysis is the sidebar's Analysis row (AppSidebar), which this Home-only
+        // window does not host; Home's own Analysis control is its toolbar button, analysis.toolbar.
+        let identifiers = ["sidekick.proactive", "sidekick.search", "navigation.doubleTap", "analysis.toolbar"]
         let controls = identifiers.compactMap { find($0, in: compact) }
         diagnostics["compact_controls"] = describe(controls)
         diagnostics["compact_header_candidates"] = describe(compact.filter { identifiers.contains($0.identifier) })
@@ -882,7 +892,14 @@ import WebKit
             guard let button = elements(host).first(where: { $0.label == title && $0.role == NSAccessibility.Role.button.rawValue }) else { throw Failure.accessibility }
             let viewport = window.convertToScreen(host.convert(host.bounds, to: nil))
             checks["bottom_action_fully_visible_\(index)"] = viewport.contains(button.frame) && button.frame.minY >= viewport.minY + 4
-            checks["bottom_action_remains_readable_\(index)"] = button.frame.height >= 29 && button.frame.width >= 65
+            // The primary is the native large prominent button every Setup Assistant footer uses
+            // (SPEC-00 control sizes), so "readable" means the canvas scale is the only thing that
+            // shrinks it: compare it with the same control laid out unscaled. The old fixed
+            // 65 x 29 floor measured the retired 44 pt capsule, which the native button never meets.
+            let native = NSHostingView(rootView: Button(index == 0 ? "Next" : "Continue") {}
+                .buttonStyle(.borderedProminent).controlSize(.large)).fittingSize
+            checks["bottom_action_remains_readable_\(index)"] = button.frame.height >= native.height * scale - 1
+                && button.frame.width >= native.width * scale - 1
             captures.append(try await capture(host, name: index == 0 ? "small-01-next-13inch" : "small-02-continue-11inch", directory: directory))
             try postClick(window: window, screenPoint: CGPoint(x: button.frame.midX, y: button.frame.midY))
             try await settle(200)

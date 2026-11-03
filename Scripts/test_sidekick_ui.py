@@ -26,7 +26,9 @@ EXPECTED_IMAGES = {
     "12-notch-question", "13-notch-message", "13b-notch-empty-retry",
     "14-response-hover", "15-prompt-hover", "16-inline-activity", "01d-card-dismiss-hover",
     "17-settings-opening", "18-settings-open", "19-settings-closing", "20-home-after-settings",
-    "21-settings-reduced-motion", "22-scroll-pull-40", "23-scroll-pull-90", "24-scroll-reversed-55", "25-scroll-settled",
+    # 22-25 (the scroll-pull shots) are retired with Home's pull-to-conversation gesture;
+    # see the RETIRED note in SidekickUILab's overview block.
+    "21-settings-reduced-motion",
     "26-knowledge-opening", "27-knowledge-open", "28-knowledge-closing", "29-home-after-knowledge", "30-knowledge-reduced-motion", "31-knowledge-vault-missing", "32-knowledge-vault-restored",
 }
 DRAFT = "Can you help me find a quiet hour tomorrow?"
@@ -113,7 +115,8 @@ def check_output(root: Path, receipt: dict) -> dict:
                 and settings_motion.get("written_frames", 0) >= 20
                 and settings_motion.get("postfirst_unavailable_frames", 0) == 0,
                 "Settings motion recording is missing or incomplete")
-    for name in ["scroll", "activity", "knowledge"]:
+    # The scroll recording retired with the pull gesture (SidekickUILab's RETIRED note).
+    for name in ["activity", "knowledge"]:
         recorded = app.read_json(root / f"ui-{name}-motion.json")
         movie = root / "ui-snapshots" / recorded["file"]
         app.require(movie.resolve().is_relative_to(root / "ui-snapshots")
