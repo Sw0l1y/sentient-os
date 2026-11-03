@@ -9,6 +9,7 @@
 //    · a "Today" time break
 //    · the assistant's first turn: the greeting, one line about the day, then its content — the
 //      analysis status group, the suggestion list, or the knowledge-base-only preview
+//    · Home's notice, when there is one (HomeNotices, built by HomeView), last in the turn
 //    · quick replies (the starters) at the end of the turn
 //  Today is presentation only: nothing here is written to the conversation history.
 //
@@ -31,11 +32,13 @@ struct HomeToday: View {
     let analysisBlock: AnyView?
     /// The knowledge-base-only preview group (built by HomeView).
     let kbOnlyBlock: AnyView?
+    /// HomeView's notice slot, undocked: it takes no height while it holds no notice.
+    let notices: AnyView
     let reduceMotion: Bool
     let onShowConversation: () -> Void
     let onStarter: (String) -> Void
 
-    /// The scroll view's visible height (between the notice row and the Ask bar). Today's column is
+    /// The scroll view's visible height (between the toolbar and the Ask bar). Today's column is
     /// at least this tall and bottom-aligned inside it, so the scroll view never has to align short
     /// content itself. When `defaultScrollAnchor`'s alignment role did it, the top scroll
     /// edge effect reached from the top inset all the way down to the content's top edge and drew
@@ -46,6 +49,9 @@ struct HomeToday: View {
     @State private var endPending = false
     /// A scroll gesture or its momentum is under way, so an offset change is the reader's.
     @State private var scrolling = false
+    /// Nothing is hidden under the Ask bar, so the notice slot above the starters is in view. Today
+    /// opens at its end; the reader scrolling up clears it.
+    @State private var atEnd = true
 
     private var showsRows: Bool { !needsPersonalSetup && !entries.isEmpty }
     private static let end = "today-end"
@@ -59,8 +65,8 @@ struct HomeToday: View {
             // Today opens at its end, and content that grows or shrinks keeps that end in view.
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.bottom, for: .sizeChanges)
-            // A new viewport size or inset (the window shrinking, a notice docking above) keeps the
-            // content's offset whatever the anchor says, which slides the starters under the Ask bar.
+            // A new viewport size or inset (the window shrinking) keeps the content's offset
+            // whatever the anchor says, which slides the starters under the Ask bar.
             // A page that was at its end is put back there, as the transcript does.
             .onScrollGeometryChange(for: SidekickTranscriptLayout.Viewport.self) { geo in
                 .init(top: geo.visibleRect.minY, height: geo.containerSize.height,
@@ -69,13 +75,15 @@ struct HomeToday: View {
                       width: geo.containerSize.width, contentHeight: geo.contentSize.height)
             } action: { old, viewport in
                 // The scroll view can undo a pin itself: a pass after a resize it puts back the
-                // offset it had, leaving the page short of its end by the size change (a notice
-                // docking, measured at 90 pt). A pending pin that leaves the end with no gesture
-                // under way is put back once; only once, so the two can never trade the offset.
+                // offset it had, leaving the page short of its end by the size change (measured at
+                // 90 pt when the notice docked above Today). A pending pin that leaves the end with
+                // no gesture under way is put back once; only once, so the two can never trade the
+                // offset.
                 let undone = endPending && !scrolling && old.atEnd && !viewport.atEnd
                 let keep = undone || SidekickTranscriptLayout.Viewport.keepsEnd(from: old, to: viewport, pinPending: endPending)
                 let pending = keep && !undone
                 if endPending != pending { endPending = pending }
+                if atEnd != viewport.atEnd { atEnd = viewport.atEnd }
                 if keep {
                     var instant = Transaction()
                     instant.disablesAnimations = true
@@ -90,27 +98,35 @@ struct HomeToday: View {
     }
 
     private var column: some View {
-        VStack(alignment: .leading, spacing: Space.l) {
-            if !kbOnly, let last = conversation.previewMessage {
-                earlierConversation(last)
-            }
-            Text("Today")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .accessibilityAddTraits(.isHeader)
-            // The assistant's turn stands unadorned on the column's edge, as in Messages: the
-            // user's bubbles already tell the speakers apart.
-            VStack(alignment: .leading, spacing: Space.xs) {
-                Text(greeting)
-                    .font(.title3.weight(.semibold))
+        // The notice slot sits outside the spaced stack: empty, it must add no gap of its own.
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: Space.l) {
+                if !kbOnly, let last = conversation.previewMessage {
+                    earlierConversation(last)
+                }
+                Text("Today")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
                     .accessibilityAddTraits(.isHeader)
-                bodyLine
+                // The assistant's turn stands unadorned on the column's edge, as in Messages: the
+                // user's bubbles already tell the speakers apart.
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text(greeting)
+                        .font(.title3.weight(.semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    bodyLine
+                }
+                if let analysisBlock { analysisBlock }
+                if showsRows { suggestionRows }
+                if let kbOnlyBlock { kbOnlyBlock }
             }
-            if let analysisBlock { analysisBlock }
-            if showsRows { suggestionRows }
-            if let kbOnlyBlock { kbOnlyBlock }
-            if !kbOnly { HomeSidekickSuggestions(onSelect: onStarter) }
+            notices
+                .environment(\.noticeSlotInView, atEnd)
+            if !kbOnly {
+                HomeSidekickSuggestions(onSelect: onStarter)
+                    .padding(.top, Space.l)
+            }
         }
         .padding(.horizontal, Space.xl)
         .padding(.vertical, Space.xl)

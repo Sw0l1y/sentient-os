@@ -19,7 +19,10 @@ sys.dont_write_bytecode = True
 import test_sidekick_app as app
 
 EXPECTED_IMAGES = {
-    "01-overview-1100", "01b-overview-840", "01b-overview-840-notice", "01b-chat-840-notice", "01c-overview-wide", "02-transition-0ms", "02-transition-150ms", "02-transition-300ms",
+    "01-overview-1100", "01b-overview-840", "01b-overview-840-notice", "01b-chat-840-notice",
+    # The notice swapping between Today's column and its docked place, both ways.
+    *(f"01e-notice-swap-{way}-{ms}ms" for way in ("back", "forward") for ms in (0, 75, 150, 300)),
+    "01c-overview-wide", "02-transition-0ms", "02-transition-150ms", "02-transition-300ms",
     "02-transition-600ms", "03-conversation-1100", "04-selected-reply", "04a-floating-selection-reply", "05-history-search",
     "06-long-markdown", "07-conversation-840", "08-reduced-motion",
     "09-system-light-appearance", "10-system-dark-appearance", "11-pending-question",

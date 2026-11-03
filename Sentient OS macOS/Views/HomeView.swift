@@ -4,14 +4,14 @@
 //
 //  HOME — the app's main surface, and the product itself: Proactive Intelligence. It is a
 //  conversation with Sentient, laid out the way Messages lays out a conversation (SPEC-D1 S1):
-//    · a notice row docked at the top (HomeNotices: one notice, most severe first)
 //    · the page itself, one reading column on the text background:
 //        Today (HomeToday) — the opening of the conversation: the greeting, the day's status
 //          and the suggestion list the morning run prepared (each one the AI already did the
 //          work for; clicking is the user's fire — Privacy Constitution: we offer, they fire),
-//          then quick replies;
+//          Home's notice (HomeNotices: one notice, most severe first), then quick replies;
 //        or the conversation (SidekickTranscript);
-//        or a Finish Setting Up example opened from the inspector (a drill-in with Back).
+//        or a Finish Setting Up example opened from the inspector (a drill-in with Back),
+//        those two with the notice docked above them;
 //    · the Ask field floating at the bottom (HomeAskBar), its caption line below the page
 //    · an inspector on the right: "Finish Setting Up" while personal setup is pending,
 //      otherwise the day's suggestions beside the conversation.
@@ -113,23 +113,35 @@ struct HomeView: View {
 
     // MARK: The page
 
-    /// The middle of the page (Today, the conversation, or an example), with the notice row
-    /// docked above it, the Ask field floating over its bottom edge and the caption line below it.
+    /// The middle of the page (Today, the conversation, or an example), with the Ask field floating
+    /// over its bottom edge and the caption line below it. Today carries the notice in its column
+    /// (HomeNotices says why); over the conversation and an example it docks above the page.
     ///
-    /// The notice row is stacked above the page, not a top safe-area inset of it: as an inset it
+    /// The docked notice is stacked above the page, not a top safe-area inset of it: as an inset it
     /// made the scroll view's top edge the bottom of the notice row, and the system's top scroll
     /// edge effect draws its dividing line along that edge (the row is opaque, so nothing ever
-    /// scrolled under it anyway). Without a notice the page meets the toolbar like every other page.
-    /// The caption is stacked below for the same kind of reason: in the bar, its plain text made the
-    /// system draw the bar's scroll edge hard (HomeAskBar).
+    /// scrolled under it anyway). Without a docked notice the page meets the toolbar like every
+    /// other page. The caption is stacked below for the same kind of reason: in the bar, its plain
+    /// text made the system draw the bar's scroll edge hard (HomeAskBar).
     private var homePage: some View {
         VStack(spacing: 0) {
-            notices
+            if selectedPersonalFeature != nil || inConversation {
+                // Today carries its own copy, so the docked one swaps in and out with the pages:
+                // no frame shows both. The ZStack takes the transition: on HomeNotices itself it
+                // would reach its inner `if visible`, and a caution arriving mid-conversation
+                // would wait out the swap's delay. Empty, the ZStack has no size.
+                ZStack { notices(docked: true) }
+                    .transition(pageSwap)
+            }
             Group {
                 if let feature = selectedPersonalFeature {
                     featurePreview(feature)
                 } else if inConversation {
                     transcript
+                        .overlay(alignment: .top) {
+                            // Only the cautions that matter mid-conversation dock over it.
+                            if hasCriticalCaution { dockedNoticeEdge }
+                        }
                         .transition(pageSwap)
                 } else {
                     today
@@ -147,6 +159,17 @@ struct HomeView: View {
         .pageSubtitle(subtitle, page: .home)
         .animation(standardMotion, value: presentation.surface)
         .animation(standardMotion, value: selectedPersonalFeature)
+    }
+
+    /// Under a docked notice the conversation's top edge is a line across the page rather than the
+    /// toolbar's soft edge, and messages scrolled up to it were cut through mid-line. They fade into
+    /// the page over the first 16 pt instead.
+    private var dockedNoticeEdge: some View {
+        let page = Color(nsColor: .textBackgroundColor)
+        return LinearGradient(colors: [page, page.opacity(0)], startPoint: .top, endPoint: .bottom)
+            .frame(height: Space.l)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     /// Switching what the page shows (Today, the conversation, an example) is a swap, not a
@@ -335,6 +358,7 @@ struct HomeView: View {
                   row: { suggestionRow($0, inInspector: false) },
                   analysisBlock: showsAnalysisBlock ? AnyView(analysisBlock) : nil,
                   kbOnlyBlock: kbOnly ? AnyView(kbOnlyBlock) : nil,
+                  notices: AnyView(notices(docked: false)),
                   reduceMotion: reducedMotion,
                   onShowConversation: showConversation,
                   onStarter: fillStarter)
@@ -789,7 +813,7 @@ struct HomeView: View {
             || !ConnectorCaution.items(from: connectorCautionData).isEmpty
     }
 
-    private var notices: some View {
+    private func notices(docked: Bool) -> some View {
         HomeNotices(visible: (!inConversation && !needsPersonalSetup) || hasCriticalCaution,
                     signedOut: needsCodexSignIn && !dismissedCodexSignInReminder,
                     liveIssue: liveIssue,
@@ -799,7 +823,8 @@ struct HomeView: View {
                     computerProgress: computerSetup.progress,
                     showsInvite: isPresented && deck == .real && !letterShown && !showAnalysis,
                     reduceMotion: reducedMotion,
-                    actions: noticeActions)
+                    actions: noticeActions,
+                    docked: docked)
     }
 
     private var noticeActions: HomeNoticeActions {

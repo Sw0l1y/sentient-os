@@ -158,8 +158,9 @@ import SwiftUI
         try await settle(650)
         captures.append(try await capture(host, name: "01b-overview-840", directory: directory))
         checks["ui_row_hover_moves_nothing_840"] = try await hoverMovesNoRow()
-        // Real caution presentation in the owned defaults suite: the header must make room
-        // for a multiline notice, including while the transcript is open at minimum size.
+        // Real caution presentation in the owned defaults suite, at minimum size: on Today the
+        // multiline notice is the last item of the turn and scrolls with the page; over the
+        // transcript it docks above the page, and the transcript fades in under it.
         let originalCautions = UserDefaults.standard.data(forKey: ConnectorCaution.key)
         defer {
             if let originalCautions { UserDefaults.standard.set(originalCautions, forKey: ConnectorCaution.key) }
@@ -170,9 +171,37 @@ import SwiftUI
         ]), forKey: ConnectorCaution.key)
         try await settle(650)
         captures.append(try await capture(host, name: "01b-overview-840-notice", directory: directory))
+        // The notice scrolls with Today as the last item of its turn, and Today opens at its end, so
+        // it is fully on screen between the toolbar and the Ask field even at this smallest size.
+        // At the top of the column it would sit above the view. The control holds the probe to a
+        // row of the same page that is scrolled out of view at this size: it must read off screen,
+        // and not merely be missing (nil), which would pass a negated check.
+        func onScreen(_ label: String) async -> Bool? {
+            _ = await SidekickPolishLab.activateOwnAccessibility()
+            let all = SidekickPolishLab.elements(host, maximumDepth: 80)
+            guard let item = all.filter({ $0.label == label }).max(by: { $0.frame.height < $1.frame.height })?.frame,
+                  let field = all.first(where: { $0.identifier == "sidekick.composer" })?.frame
+            else { return nil }
+            let below = window.convertToScreen(window.contentLayoutRect).maxY   // the toolbar's bottom edge
+            return item.minY > field.maxY && item.maxY <= below
+        }
+        checks["ui_notice_on_screen_today_840"] = await onScreen("A Source Was Skipped") == true
+        checks["ui_notice_probe_reads_offscreen_840"] = await onScreen("Earlier Conversation") == false
         presentation.surface = .conversation
         try await settle(650)
         captures.append(try await capture(host, name: "01b-chat-840-notice", directory: directory))
+        // Today carries its own copy of the notice and the conversation a docked one; the docked
+        // copy swaps with the pages, so no frame of either swap may show both (FIX3-NOTES, "Notice
+        // in Today"). Frames both ways with the caution still up, for review.
+        for (direction, surface) in [("back", SidekickPresentation.Surface.suggestions), ("forward", .conversation)] {
+            withAnimation(Motion.gated(Motion.standard, reduceMotion: false)) { presentation.surface = surface }
+            for (index, delay) in [0, 75, 75, 150].enumerated() {
+                try await settle(delay)
+                captures.append(try await capture(host, name: "01e-notice-swap-\(direction)-\([0, 75, 150, 300][index])ms",
+                                                  directory: directory))
+            }
+            try await settle(650)
+        }
         presentation.surface = .suggestions
         if let originalCautions { UserDefaults.standard.set(originalCautions, forKey: ConnectorCaution.key) }
         else { UserDefaults.standard.removeObject(forKey: ConnectorCaution.key) }

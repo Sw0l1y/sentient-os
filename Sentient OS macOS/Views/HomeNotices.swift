@@ -2,9 +2,14 @@
 //  HomeNotices.swift
 //  Sentient OS macOS
 //
-//  Home's one notice row, docked above the column like the account alert at the top of a System
-//  Settings pane (SPEC-D1 S4). At most one notice shows, most severe first: something broken now
-//  outranks last night's history, and good news never outranks a problem.
+//  Home's one notice row (SPEC-D1 S4). At most one notice shows, most severe first: something
+//  broken now outranks last night's history, and good news never outranks a problem.
+//
+//  On Today it is part of the page (`docked: false`): the last thing in the assistant's turn, above
+//  the quick replies, where Messages shows a thread's notices beside its latest message. Today opens
+//  at its end, so that is where it is seen, and it scrolls with the page: docked above Today, it
+//  made the scroll view's top edge a line through the page that cut the top row off flat. Over the
+//  conversation and an example it docks above the page, under the toolbar (`docked: true`).
 //
 //    1 ChatGPT signed out · 2 a live HealthCaution issue · 3 computer-use update (updating/failed)
 //    4 last night's caution · 5 a skipped connector · 6 computer use up to date
@@ -15,6 +20,12 @@
 //
 
 import SwiftUI
+
+extension EnvironmentValues {
+    /// False while the reader is away from Home's notice slot: on Today it sits near the end of a
+    /// page that may be scrolled up. A notice spent just by appearing (the invite) waits for it.
+    @Entry var noticeSlotInView = true
+}
 
 /// The closures behind each notice's buttons, built by HomeView from its existing private funcs.
 struct HomeNoticeActions {
@@ -44,61 +55,71 @@ struct HomeNotices: View {
     let showsInvite: Bool
     let reduceMotion: Bool
     let actions: HomeNoticeActions
+    /// Above the page, with the page margins and an opaque backing; false: inside Today's column.
+    var docked = true
 
     private let dismissLabel = "Dismiss notification"
 
     var body: some View {
         if visible {
-            // An empty slot takes no height, so Today meets the toolbar: a padded empty slot is a
-            // strip of page under the toolbar that cuts Today's top edge off flat. The last rung's
-            // notices decide for themselves whether to draw, and the invite stays mounted while it
-            // waits, so only the layout can tell whether the slot holds anything.
-            NoticeSlotLayout(top: Space.m, bottom: Space.s) {
-                if signedOut {
-                    NoticeBar(tile: .noticeSignedOut, title: "ChatGPT Is Signed Out",
-                              message: "Sign in to ChatGPT to keep Sentient working for you.",
-                              dismissLabel: dismissLabel, onDismiss: actions.dismissSignedOut) {
-                        Button("Sign In…", action: actions.signIn)
-                    }
-                } else if let issue = liveIssue {
-                    NoticeBar(tile: .noticeHealth, title: "Sentient Needs Attention", message: issue.message,
-                              dismissLabel: dismissLabel, onDismiss: { actions.dismissIssue(issue) }) {
-                        Button("Open Settings", action: actions.openHealth)
-                    }
-                } else if computerNotice == .updating || computerNotice == .failed {
-                    ComputerUseUpdateNotice(state: computerNotice, progress: computerProgress,
-                                            onRetry: actions.retryComputerUse,
-                                            onDismiss: actions.dismissComputerUse)
-                } else if let caution {
-                    NoticeBar(tile: .noticeOvernight, title: "Last Night’s Run", message: caution.message,
-                              dismissLabel: dismissLabel, onDismiss: actions.dismissCaution) {
-                        if let fix = actions.cautionAction {
-                            Button(fix.title, action: fix.run)
-                        }
-                    }
-                } else if let connector {
-                    NoticeBar(tile: .noticeConnector, title: "A Source Was Skipped", message: connector.message,
-                              dismissLabel: dismissLabel, onDismiss: { actions.dismissConnector(connector.slug) }) {
-                        Button("Open Settings", action: actions.openSources)
-                    }
-                } else if computerNotice == .ready {
-                    ComputerUseUpdateNotice(state: .ready, progress: nil, onDismiss: actions.dismissComputerUse)
-                } else {
-                    VStack(spacing: Space.s) {
-                        UpdateNoticeCapsule()
-                        // The offer waits behind every notice above. InviteBanner stays mounted
-                        // while it has nothing to show, so its eligibility task keeps running.
-                        if showsInvite { InviteBanner() }
-                    }
+            // An empty slot takes no height: a padded empty slot is a strip of page with nothing in
+            // it (under the toolbar, it cut Today's top edge off flat). The last rung's notices
+            // decide for themselves whether to draw, and the invite stays mounted while it waits,
+            // so only the layout can tell whether the slot holds anything.
+            if docked {
+                NoticeSlotLayout(top: Space.m, bottom: Space.s) { notice }
+                    // The page margin sits inside the reading column, as in Today and the
+                    // conversation, so the notice shares their edges at every width.
+                    .padding(.horizontal, Space.xl)
+                    .centeredColumn()
+                    // The page's text must not show through the gutters around the docked row.
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: rankKey)
+            } else {
+                // Today's column has the margins; the slot brings its own gap above.
+                NoticeSlotLayout(top: Space.l, bottom: 0) { notice }
+                    .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: rankKey)
+            }
+        }
+    }
+
+    @ViewBuilder private var notice: some View {
+        if signedOut {
+            NoticeBar(tile: .noticeSignedOut, title: "ChatGPT Is Signed Out",
+                      message: "Sign in to ChatGPT to keep Sentient working for you.",
+                      dismissLabel: dismissLabel, onDismiss: actions.dismissSignedOut) {
+                Button("Sign In…", action: actions.signIn)
+            }
+        } else if let issue = liveIssue {
+            NoticeBar(tile: .noticeHealth, title: "Sentient Needs Attention", message: issue.message,
+                      dismissLabel: dismissLabel, onDismiss: { actions.dismissIssue(issue) }) {
+                Button("Open Settings", action: actions.openHealth)
+            }
+        } else if computerNotice == .updating || computerNotice == .failed {
+            ComputerUseUpdateNotice(state: computerNotice, progress: computerProgress,
+                                    onRetry: actions.retryComputerUse,
+                                    onDismiss: actions.dismissComputerUse)
+        } else if let caution {
+            NoticeBar(tile: .noticeOvernight, title: "Last Night’s Run", message: caution.message,
+                      dismissLabel: dismissLabel, onDismiss: actions.dismissCaution) {
+                if let fix = actions.cautionAction {
+                    Button(fix.title, action: fix.run)
                 }
             }
-            // The page margin sits inside the reading column, as in Today and the conversation, so the
-            // notice shares their edges at every width.
-            .padding(.horizontal, Space.xl)
-            .centeredColumn()
-            // Today's text must not show through the gutters around the docked row.
-            .background(Color(nsColor: .textBackgroundColor))
-            .animation(Motion.gated(Motion.standard, reduceMotion: reduceMotion), value: rankKey)
+        } else if let connector {
+            NoticeBar(tile: .noticeConnector, title: "A Source Was Skipped", message: connector.message,
+                      dismissLabel: dismissLabel, onDismiss: { actions.dismissConnector(connector.slug) }) {
+                Button("Open Settings", action: actions.openSources)
+            }
+        } else if computerNotice == .ready {
+            ComputerUseUpdateNotice(state: .ready, progress: nil, onDismiss: actions.dismissComputerUse)
+        } else {
+            VStack(spacing: Space.s) {
+                UpdateNoticeCapsule()
+                // The offer waits behind every notice above. InviteBanner stays mounted
+                // while it has nothing to show, so its eligibility task keeps running.
+                if showsInvite { InviteBanner() }
+            }
         }
     }
 

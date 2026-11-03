@@ -1,7 +1,8 @@
 // InviteBanner.swift
 // The once-only invitation offer, shown as the invite notice row in Home's one notice slot
-// (InviteBannerView draws the NoticeBar). Waits for an active, idle home, verifies the code,
-// then retires after 20 seconds or dismissal.
+// (InviteBannerView draws the NoticeBar). Waits for an active, idle home with the slot in the
+// reader's view (`noticeSlotInView`: on Today the slot is near the end of a page that may be
+// scrolled up), verifies the code, then retires after 20 seconds or dismissal.
 // Doc: Views/Documentation - Views - Home, Processing & Shared UI.md
 
 import SwiftUI
@@ -10,6 +11,7 @@ import AppKit
 struct InviteBanner: View {
     @Environment(AppState.self) private var appState
     @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.noticeSlotInView) private var inView
     @State private var program = InviteProgram.shared
     @State private var code: String?
     @State private var nextAttempt = Date.distantPast
@@ -28,7 +30,14 @@ struct InviteBanner: View {
         }
         .frame(maxWidth: .infinity)
         .animation(Motion.gated(Motion.standard, reduceMotion: reducedMotion), value: code)
-        .task(id: canPresent) { await presentWhenReady() }
+        .task(id: [canPresent, inView]) { await presentWhenReady() }
+        // Its own task, so the presentation task restarting (the reader scrolling away) cannot
+        // strand an offer that is up.
+        .task(id: code) {
+            guard code != nil else { return }
+            do { try await Task.sleep(for: .seconds(20)) } catch { return }
+            code = nil
+        }
         .onDisappear { code = nil }
     }
 
@@ -48,6 +57,9 @@ struct InviteBanner: View {
 
     private func presentWhenReady() async {
         guard canPresent else { code = nil; return }
+        // Presenting spends the offer for good, so a new one waits until its slot is in view; one
+        // presented below the fold would be spent unseen. An offer already up stays.
+        guard inView else { return }
         while !Task.isCancelled && !program.bannerShown {
             do { try await Task.sleep(for: .seconds(3)) } catch { return }
             guard homeIsVisible, UpdateNotice.pending == nil, program.eligible,
@@ -60,8 +72,6 @@ struct InviteBanner: View {
                   snapshot.canShare, let verifiedCode = snapshot.code else { continue }
             code = verifiedCode
             program.markBannerShown()
-            do { try await Task.sleep(for: .seconds(20)) } catch { return }
-            code = nil
         }
     }
 }
