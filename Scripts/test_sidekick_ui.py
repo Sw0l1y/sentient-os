@@ -21,7 +21,7 @@ import test_sidekick_app as app
 EXPECTED_IMAGES = {
     "01-overview-1100", "01b-overview-840", "01b-overview-840-notice", "01b-chat-840-notice", "01c-overview-wide", "02-transition-0ms", "02-transition-150ms", "02-transition-300ms",
     "02-transition-600ms", "03-conversation-1100", "04-selected-reply", "04a-floating-selection-reply", "05-history-search",
-    "06-long-markdown", "07-conversation-840", "08-reduced-motion-transparency",
+    "06-long-markdown", "07-conversation-840", "08-reduced-motion",
     "09-system-light-appearance", "10-system-dark-appearance", "11-pending-question",
     "12-notch-question", "13-notch-message", "13b-notch-empty-retry",
     "14-response-hover", "15-prompt-hover", "16-inline-activity", "01d-card-dismiss-hover",
@@ -56,7 +56,8 @@ def check_output(root: Path, receipt: dict) -> dict:
         terminal = [event for event in events if event["taskID"] == task and event["kind"] == "taskFinished"]
         app.require(len(terminal) == 1 and terminal[0].get("outcome") == "success",
                     "Fixture task lacks its single deterministic ending")
-    question = next((event for event in events if event["id"] == "ui.question"), None)
+    # The lab writes the production id ("question:<uuid>") so Home leaves the card's own row out.
+    question = next((event for event in events if event["id"].startswith("question:")), None)
     answer = next((event for event in events if event["id"] == "ui.question.answer"), None)
     app.require(question is not None and question.get("choices") == ["Protect the afternoon", "Keep it open"]
                 and answer is not None and answer.get("text") == "Keep it open"
@@ -84,7 +85,7 @@ def check_output(root: Path, receipt: dict) -> dict:
         app.require(image.get("capture_method") == "desktop_independent_own_window"
                     and image.get("window_id", 0) > 0 and image.get("owning_process_id", 0) > 0,
                     "Snapshot did not use the isolated own-window capture filter")
-        app.require(image.get("nonblack_fraction", 0) > .035 and image.get("sampled_colors", 0) > 32,
+        app.require(image.get("nonblack_fraction", 0) > .035 and image.get("sampled_colors", 0) > 12,
                     "Snapshot lacks meaningful rendered pixels; native text checks alone are insufficient")
         if image["name"] in {"03-conversation-1100", "06-long-markdown", "13-notch-message"}:
             app.require(image.get("native_text_fragments", 0) > 0, "Snapshot contains no native message text views")

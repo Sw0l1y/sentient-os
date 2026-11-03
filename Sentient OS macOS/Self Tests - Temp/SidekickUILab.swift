@@ -104,7 +104,7 @@ import SwiftUI
         // Exercise the same deep link a notch pop-out sends before Home first mounts.
         // Its history read must win over initial transcript loading regardless of task order.
         conversation.show(messageID: answers[2])
-        let host = NSHostingView(rootView: home(app, reduced: false, opaque: false))
+        let host = NSHostingView(rootView: home(app, reduced: false))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 820),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = "Sidekick UI fixture · synthetic content"
@@ -154,10 +154,10 @@ import SwiftUI
         window.center()
         try await settle(650)
         captures.append(try await capture(host, name: "01c-overview-wide", directory: directory))
-        host.rootView = home(app, reduced: false, opaque: false, hoveredCard: Briefing.jesaiDemo[0].id)
+        host.rootView = home(app, reduced: false, hoveredCard: Briefing.jesaiDemo[0].id)
         try await settle(350)
         captures.append(try await capture(host, name: "01d-card-dismiss-hover", directory: directory))
-        host.rootView = home(app, reduced: false, opaque: false)
+        host.rootView = home(app, reduced: false)
         window.setContentSize(NSSize(width: 1100, height: 820))
         window.center()
         try await settle(500)
@@ -171,7 +171,7 @@ import SwiftUI
         // overviewProbes(_:) and scroll(_:by:phase:momentum:) below are kept for that type's API.
 
         conversation.draft = draft
-        withAnimation(SidekickStyle.motion(false)) { presentation.surface = .conversation }
+        withAnimation(Motion.gated(Motion.standard, reduceMotion: false)) { presentation.surface = .conversation }
         await presentation.load(.latest, conversation: conversation)
         for (index, delay) in [0, 150, 150, 300].enumerated() {
             try await settle(delay)
@@ -181,13 +181,13 @@ import SwiftUI
         checks["ui_latest_page_is_bounded"] = presentation.rows.count <= 100 && presentation.hasEarlier
         checks["ui_actual_native_message_text"] = nativeTexts(host).contains { $0.contains("quiet 90-minute") }
         captures.append(try await capture(host, name: "03-conversation-1100", directory: directory))
-        host.rootView = home(app, reduced: false, opaque: false, hoveredMessage: calendarID)
+        host.rootView = home(app, reduced: false, hoveredMessage: calendarID)
         try await settle(350)
         captures.append(try await capture(host, name: "14-response-hover", directory: directory))
-        host.rootView = home(app, reduced: false, opaque: false, hoveredMessage: "ui.request.47")
+        host.rootView = home(app, reduced: false, hoveredMessage: "ui.request.47")
         try await settle(350)
         captures.append(try await capture(host, name: "15-prompt-hover", directory: directory))
-        host.rootView = home(app, reduced: false, opaque: false)
+        host.rootView = home(app, reduced: false)
         let calendarTask = try store.record(id: calendarID)!.event.taskID
         presentation.expandedWorkTasks.insert(calendarTask)
         presentation.navigationTarget = calendarID; presentation.scrollRequest &+= 1
@@ -249,9 +249,9 @@ import SwiftUI
             url: directory.appendingPathComponent("home-motion.mp4"), duration: 4.2) { @MainActor in
             do {
                 try await Task.sleep(for: .milliseconds(400))
-                withAnimation(SidekickStyle.motion(false)) { presentation.surface = .suggestions }
+                withAnimation(Motion.gated(Motion.standard, reduceMotion: false)) { presentation.surface = .suggestions }
                 try await Task.sleep(for: .milliseconds(1600))
-                withAnimation(SidekickStyle.motion(false)) { presentation.surface = .conversation }
+                withAnimation(Motion.gated(Motion.standard, reduceMotion: false)) { presentation.surface = .conversation }
             } catch { return }
         }
         } catch {
@@ -268,9 +268,9 @@ import SwiftUI
 
         // Reverse a live transition, then finish in the transcript. The draft belongs to the
         // app, not to either mounted composer or the animated suggestions layer.
-        withAnimation(SidekickStyle.motion(false)) { presentation.surface = .suggestions }
+        withAnimation(Motion.gated(Motion.standard, reduceMotion: false)) { presentation.surface = .suggestions }
         try await settle(150)
-        withAnimation(SidekickStyle.motion(false)) { presentation.surface = .conversation }
+        withAnimation(Motion.gated(Motion.standard, reduceMotion: false)) { presentation.surface = .conversation }
         try await settle(600)
         checks["ui_draft_survives_interrupted_animation"] = conversation.draft == draft
 
@@ -319,19 +319,21 @@ import SwiftUI
         captures.append(try await capture(host, name: "07-conversation-840", directory: directory))
         checks["ui_small_window_has_composer"] = host.bounds.width >= 840 && conversation.draft == draft
         window.setContentSize(NSSize(width: 1100, height: 820))
-        host.rootView = home(app, reduced: true, opaque: true)
+        host.rootView = home(app, reduced: true)
         try await settle(600)
         presentation.surface = .conversation
         await presentation.load(.around(researchID), conversation: conversation)
         try await settle(300)
-        captures.append(try await capture(host, name: "08-reduced-motion-transparency", directory: directory))
+        // Reduce Motion only. The app reads no Reduce Transparency override, and the AppKit title
+        // bar and the system glass follow the real macOS setting, which the lab must not change.
+        captures.append(try await capture(host, name: "08-reduced-motion", directory: directory))
+        host.rootView = home(app, reduced: false)
         window.appearance = NSAppearance(named: .aqua)
         try await settle(300)
         captures.append(try await capture(host, name: "09-system-light-appearance", directory: directory))
         window.appearance = NSAppearance(named: .darkAqua)
         try await settle(300)
         captures.append(try await capture(host, name: "10-system-dark-appearance", directory: directory))
-        host.rootView = home(app, reduced: false, opaque: false)
 
         // An actual recovery presentation, backed by real fixture question/answer events.
         let questionTask = UUID(); fixtureIDs.append(questionTask)
@@ -408,6 +410,10 @@ import SwiftUI
             else { UserDefaults.standard.removeObject(forKey: BriefingDeck.key) }
         }
         window.setContentSize(NSSize(width: 1100, height: 820))
+        // The app's Window scene lays its content out under the toolbar, as a full-size content
+        // view, and the root page's toolbar items and scroll pockets sit as they do in the app only
+        // in such a window. Inserted after sizing, so the frame stays the one earlier runs captured.
+        window.styleMask.insert(.fullSizeContentView)
         window.identifier = NSUserInterfaceItemIdentifier(SentientOSApp.homeWindowID)
         host.rootView = rootPage(app, reduced: false)
         window.center(); window.makeKeyAndOrderFront(nil)
@@ -449,7 +455,8 @@ import SwiftUI
             .write(to: root.appendingPathComponent("ui-settings-motion.json"), options: .atomic)
 
         host.rootView = rootPage(app, reduced: true)
-        window.setContentSize(NSSize(width: 1040, height: 800))
+        // The whole window now, toolbar included: the 1040 × 800 content of earlier runs plus its 52 pt toolbar.
+        window.setContentSize(NSSize(width: 1040, height: 852))
         navigation.show(.settings)
         try await settle(400)
         captures.append(try await capture(host, name: "21-settings-reduced-motion", directory: directory))
@@ -549,7 +556,8 @@ import SwiftUI
         checks["ui_memory_unchanged"] = try SidekickInstructionStore.read().text == baselineMemory
         checks["ui_every_snapshot_nonempty"] = captures.allSatisfy {
             ($0["bytes"] as? Int ?? 0) > 10_000 && ($0["nonblack_fraction"] as? Double ?? 0) > 0.035
-                && ($0["sampled_colors"] as? Int ?? 0) > 32
+                // A blank capture samples a handful of colours; the monochrome panes (NAV-SPEC 5) about 20.
+                && ($0["sampled_colors"] as? Int ?? 0) > 12
 
         }
         let manifest: [String: Any] = ["schema": 1, "snapshots": captures, "generation": generation.uuidString,
@@ -700,19 +708,17 @@ import SwiftUI
         throw Failure.invalidFixture
     }
 
-    private static func home(_ app: AppState, reduced: Bool, opaque: Bool, hoveredMessage: String? = nil,
+    private static func home(_ app: AppState, reduced: Bool, hoveredMessage: String? = nil,
                              hoveredCard: String? = nil) -> AnyView {
         AnyView(HomeView(deck: .jesai).environment(app)
             .environment(\.sidekickReduceMotionOverride, reduced)
             .environment(\.sidekickHoveredMessageID, hoveredMessage)
-            .environment(\.sidekickHoveredCardID, hoveredCard)
-            .environment(\.sidekickReduceTransparencyOverride, opaque))
+            .environment(\.sidekickHoveredCardID, hoveredCard))
     }
     private static func rootPage(_ app: AppState, reduced: Bool) -> AnyView {
         AnyView(RootView().environment(app)
             .environment(\.accessibilityEnabled, true)
             .environment(\.sidekickReduceMotionOverride, reduced)
-            .environment(\.sidekickReduceTransparencyOverride, false)
             .preferredColorScheme(.dark))
     }
     private static func notch(phase: NotchPhase, metrics: NotchMetrics, recovery: SidekickRecovery?,

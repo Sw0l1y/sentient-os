@@ -79,6 +79,8 @@ import WebKit
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         defer { window.close(); run.preventsTaskExecutionForUIFixture = true }
         try await settle(750)
+        // SwiftUI builds its accessibility tree only once an assistive client reads it.
+        _ = await activateOwnAccessibility()
         let ready = elements(host)
         checks["ready_has_send"] = ready.contains { $0.identifier == "sidekick.send" }
         checks["home_ready_before_initial_analysis"] = app.hasCompletedOnboarding && !app.processing.initialComplete
@@ -157,7 +159,9 @@ import WebKit
         // Deleted subject: the Settings trust footer with "Open source on GitHub" (WP7 removed it;
         // the Sidekick pane has no footer link).
         let menu = settings.first(where: {
-            ($0.identifier == "settings.menu.Sidekick shortcut" || $0.label == "Sidekick shortcut") && $0.frame.width >= 100
+            // The popup trails the Form row at its intrinsic width (about 88 pt); both padding
+            // clicks below are what prove the whole control opens the menu.
+            ($0.identifier == "settings.menu.Sidekick shortcut" || $0.label == "Sidekick shortcut") && $0.frame.width >= 60
         })
         checks["shortcut_has_full_width_hit_target"] = menu != nil
         guard let menu else { throw Failure.accessibility }
@@ -308,6 +312,7 @@ import WebKit
         }
         window.center(); try await reveal("initial_home")
         try await settle(800)
+        _ = await activateOwnAccessibility()
         let wide = elements(host)
         diagnostics["wide_header"] = describe(wide.filter { $0.identifier.hasPrefix("navigation.") || $0.identifier.hasPrefix("sidekick.notch") })
         // RETIRED (ADDENDUM 12.9.1): wide_double_tap_before_analysis. Deleted subject: the shared
@@ -872,6 +877,7 @@ import WebKit
                 if window.isKeyWindow && NSApp.isActive { break }
             }
             try await settle(400)
+            _ = await activateOwnAccessibility()
             let title = index == 0 ? "Next: iMessage demo" : "Continue"
             guard let button = elements(host).first(where: { $0.label == title && $0.role == NSAccessibility.Role.button.rawValue }) else { throw Failure.accessibility }
             let viewport = window.convertToScreen(host.convert(host.bounds, to: nil))
@@ -999,6 +1005,7 @@ import WebKit
         NSApp.activate(ignoringOtherApps: true)
         defer { window.close() }
         try await settle(3000)
+        _ = await activateOwnAccessibility()
         let before = elements(host)
         var checks = ["late_letter_copy_visible": before.contains { $0.label.contains(InviteLateUse.message) },
                       "late_gift_does_not_offer_lifetime": !before.contains { $0.label.localizedCaseInsensitiveContains("lifetime") || $0.label.localizedCaseInsensitiveContains("forever") }]
