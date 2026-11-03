@@ -129,9 +129,35 @@ import SwiftUI
         try await settle(600)
         captures.append(try await capture(host, name: "01-overview-1100", directory: directory))
         checks["ui_demo_cards_available"] = !presentation.cards.entries.isEmpty
+        // Hovering a Today row may show its ✕ but must move no row. A row that changed size under
+        // the pointer handed the hover to its neighbour and back on every update, which froze the
+        // window (FIX3-NOTES, "Hover loop"). The override drives the same isHovered as the pointer.
+        func hoverMovesNoRow() async throws -> Bool {
+            func rowFrames() async -> [String: CGRect] {
+                _ = await SidekickPolishLab.activateOwnAccessibility()
+                return Dictionary(SidekickPolishLab.elements(host, maximumDepth: 80)
+                    .filter { $0.identifier.hasPrefix("proactive.row.") }
+                    .map { ($0.identifier, $0.frame) }, uniquingKeysWith: { first, _ in first })
+            }
+            let resting = await rowFrames()
+            var still = resting.count >= 3
+            for key in resting.keys.sorted() {
+                host.rootView = home(app, reduced: false, hoveredCard: String(key.dropFirst("proactive.row.".count)))
+                try await settle(300)
+                let hovered = await rowFrames()
+                still = still && hovered.count == resting.count && resting.allSatisfy { id, frame in
+                    hovered[id].map { abs($0.minY - frame.minY) < 0.5 && abs($0.height - frame.height) < 0.5 } ?? false
+                }
+            }
+            host.rootView = home(app, reduced: false)
+            try await settle(300)
+            return still
+        }
+        checks["ui_row_hover_moves_nothing_1100"] = try await hoverMovesNoRow()
         window.setContentSize(NSSize(width: 840, height: 680))
         try await settle(650)
         captures.append(try await capture(host, name: "01b-overview-840", directory: directory))
+        checks["ui_row_hover_moves_nothing_840"] = try await hoverMovesNoRow()
         // Real caution presentation in the owned defaults suite: the header must make room
         // for a multiline notice, including while the transcript is open at minimum size.
         let originalCautions = UserDefaults.standard.data(forKey: ConnectorCaution.key)

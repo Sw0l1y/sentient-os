@@ -146,7 +146,7 @@ struct HomeSuggestionRow: View {
             || !action.reviewNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// The phase's one trailing button, then the hover ✕ under it.
+    /// The phase's one trailing button, then the hover ✕ under it (always laid out; see hoverDismiss).
     private var trailing: some View {
         VStack(alignment: .trailing, spacing: Space.s) {
             switch phase {
@@ -169,12 +169,20 @@ struct HomeSuggestionRow: View {
             case .sealed, .done:
                 EmptyView()
             }
-            dismissButton
+            hoverDismiss
         }
     }
 
-    @ViewBuilder private var dismissButton: some View {
-        if isHovered { dismissControl }
+    /// The ✕ stays laid out and only shows on hover, so hovering moves nothing. Inserted on hover,
+    /// it reflowed the row: a row that changed size under the pointer handed the hover to its
+    /// neighbour and back on every update, freezing the window. Disabled while unseen, so keyboard
+    /// navigation cannot land on it either; Dismiss stays in the context menu and VoiceOver actions.
+    private var hoverDismiss: some View {
+        dismissControl
+            .opacity(isHovered ? 1 : 0)
+            .allowsHitTesting(isHovered)
+            .disabled(!isHovered)
+            .accessibilityHidden(!isHovered)
     }
 
     @ViewBuilder private var dismissControl: some View {
@@ -298,15 +306,10 @@ struct HomeSuggestionRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: Space.s)
-            // The hover ✕ stays laid out beside Open and only shows on hover, so hovering moves
-            // nothing: under Open (as standard rows stack it) it would lift Open off the row's centre.
-            // Disabled while unseen, so keyboard navigation cannot land on it either.
+            // The hover ✕ sits beside Open here: under Open (as standard rows stack it) it would
+            // lift Open off the row's centre.
             HStack(spacing: Space.s) {
-                dismissControl
-                    .opacity(isHovered ? 1 : 0)
-                    .allowsHitTesting(isHovered)
-                    .disabled(!isHovered)
-                    .accessibilityHidden(!isHovered)
+                hoverDismiss
                 Button("Open", action: onOpenEnvelope)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
