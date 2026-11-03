@@ -25,6 +25,8 @@ struct ShortcutSetting: View {
     }
 
     var body: some View {
+        // No frame of its own: LabeledContent trails the popup, so its chevrons line up with the
+        // toggle below, as every other popup in a grouped Form does.
         LabeledContent("Shortcut Key") {
             SettingsMenu(title: "Sidekick shortcut", value: key.label, selection: selection) {
                 Text("Right ⌘").tag(ShortcutKey.rightCommand.rawValue)
@@ -35,7 +37,6 @@ struct ShortcutSetting: View {
                 Divider()
                 Text("Other…").tag("other")
             }
-            .frame(width: 150)
         }
         // The one row-level sheet in Settings (area rule 1's exception): it is modal, so the row
         // cannot scroll away while it is up.

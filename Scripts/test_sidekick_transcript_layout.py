@@ -224,6 +224,51 @@ typealias Event = SidekickConversationEvent
         let utcNow = date(2026, 10, 18, 1, 0, calendar: utc), utcPrevious = date(2026, 10, 17, 23, 0, calendar: utc)
         check(Layout.timeBreakLabel(utcPrevious, now: utcNow, calendar: utc) == "Yesterday", "UTC calendar boundary ignored")
         check(normalized(Layout.timeBreakLabel(utcPrevious, now: utcNow, calendar: calendar)) == "4:00 PM", "same instant incorrectly used process timezone instead of supplied calendar")
+
+        // The viewport's end: resting on the Ask bar, the end marker leaves fromBottom at -insetBottom.
+        // A resize or a new inset from there re-pins; a scroll or new content never moves the reader.
+        typealias Viewport = Layout.Viewport
+        let pinned = Viewport(top: 900, height: 760, insetTop: 52, insetBottom: 90, fromBottom: -90)
+        let shorter = Viewport(top: 900, height: 740, insetTop: 52, insetBottom: 90, fromBottom: -70)
+        check(pinned.atEnd && !Viewport().atEnd, "the end is the marker on the Ask bar's edge, never an unmeasured viewport")
+        check(!shorter.atEnd, "20 pt short of the end is not the end, though within the 70 pt latest distance")
+        check(Viewport.keepsEnd(from: pinned, to: shorter), "a window 20 pt shorter left the reader off the end")
+        check(Viewport.keepsEnd(from: pinned, to: Viewport(top: 900, height: 760, insetTop: 52, insetBottom: 140, fromBottom: -90)),
+              "a taller Ask bar left the reader off the end")
+        check(Viewport.keepsEnd(from: pinned, to: Viewport(top: 900, height: 760, insetTop: 104, insetBottom: 90, fromBottom: -90)),
+              "a toolbar band's inset is not kept at the end")
+        let scrolled = Viewport(top: 700, height: 760, insetTop: 52, insetBottom: 90, fromBottom: 110)
+        check(!Viewport.keepsEnd(from: pinned, to: scrolled), "a scroll away from the end was undone")
+        check(!Viewport.keepsEnd(from: pinned, to: Viewport(top: 900, height: 760, insetTop: 52, insetBottom: 90, fromBottom: 200)),
+              "new content alone moved the reader")
+        check(!Viewport.keepsEnd(from: scrolled, to: Viewport(top: 700, height: 740, insetTop: 52, insetBottom: 90, fromBottom: 130)),
+              "a resize moved a reader who was above the end")
+        // A narrower column re-wraps: the content grows in the same change that narrows it.
+        let wide = Viewport(top: 900, height: 760, insetTop: 52, insetBottom: 90, fromBottom: -90, width: 860, contentHeight: 1750)
+        let narrow = Viewport(top: 900, height: 760, insetTop: 52, insetBottom: 90, fromBottom: -10, width: 700, contentHeight: 1830)
+        check(Viewport.keepsEnd(from: wide, to: narrow), "a narrower window's re-wrap left the reader off the end")
+        // A pin asked for at one change has not landed when the next arrives (a live resize).
+        check(Viewport.keepsEnd(from: shorter, to: Viewport(top: 900, height: 720, insetTop: 52, insetBottom: 90, fromBottom: -50), pinPending: true),
+              "a second resize before the first pin landed lost the end")
+        check(!Viewport.keepsEnd(from: shorter, to: Viewport(top: 700, height: 740, insetTop: 52, insetBottom: 90, fromBottom: 130), pinPending: true),
+              "a pending pin undid a scroll")
+        // Coming back to Home: a follower goes to the end; a paused reader only when it was at the end
+        // and nothing new came (no new item, no taller content at the same width), else it keeps its row.
+        let left = Viewport(top: 900, height: 760, insetTop: 52, insetBottom: 90, fromBottom: -90, width: 860, contentHeight: 1750)
+        func saved(following: Bool, atEnd: Bool) -> Layout.SavedPlace {
+            .init(atBottom: following, atEnd: atEnd, lastItemID: "last", viewport: left, rowID: "row", rowTop: 12,
+                  generation: nil, scrollRequest: 1)
+        }
+        let shorterNow = Viewport(top: 900, height: 740, insetTop: 52, insetBottom: 90, fromBottom: -70, width: 860, contentHeight: 1750)
+        let grown = Viewport(top: 900, height: 760, insetTop: 52, insetBottom: 90, fromBottom: 30, width: 860, contentHeight: 1870)
+        let rewrapped = Viewport(top: 900, height: 760, insetTop: 52, insetBottom: 90, fromBottom: -10, width: 700, contentHeight: 1830)
+        check(saved(following: true, atEnd: false).returnsToEnd(lastItemID: "newer", now: grown), "a follower did not return to the latest message")
+        check(saved(following: false, atEnd: true).returnsToEnd(lastItemID: "last", now: shorterNow), "a paused reader at the end did not stay at the end")
+        check(saved(following: false, atEnd: true).returnsToEnd(lastItemID: "last", now: rewrapped), "a re-wrap while away read as new content")
+        check(!saved(following: false, atEnd: true).returnsToEnd(lastItemID: "newer", now: left), "a paused reader was moved to a reply that came while away")
+        check(!saved(following: false, atEnd: true).returnsToEnd(lastItemID: "last", now: grown),
+              "a paused reader was moved to work that grew under its last item while away")
+        check(!saved(following: false, atEnd: false).returnsToEnd(lastItemID: "last", now: left), "a paused reader above the end lost its row")
         print("\(checks - failures.count)/\(checks) Sidekick transcript-layout checks passed")
         if !failures.isEmpty { exit(1) }
     }

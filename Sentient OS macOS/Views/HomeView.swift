@@ -12,7 +12,7 @@
 //          then quick replies;
 //        or the conversation (SidekickTranscript);
 //        or a Finish Setting Up example opened from the inspector (a drill-in with Back).
-//    · the Ask field floating at the bottom (HomeAskBar)
+//    · the Ask field floating at the bottom (HomeAskBar), its caption line below the page
 //    · an inspector on the right: "Finish Setting Up" while personal setup is pending,
 //      otherwise the day's suggestions beside the conversation.
 //  `SidekickPresentation.surface` is the only switch between Today and the conversation, so the
@@ -114,12 +114,14 @@ struct HomeView: View {
     // MARK: The page
 
     /// The middle of the page (Today, the conversation, or an example), with the notice row
-    /// docked above it and the Ask field floating below it.
+    /// docked above it, the Ask field floating over its bottom edge and the caption line below it.
     ///
     /// The notice row is stacked above the page, not a top safe-area inset of it: as an inset it
     /// made the scroll view's top edge the bottom of the notice row, and the system's top scroll
     /// edge effect draws its dividing line along that edge (the row is opaque, so nothing ever
     /// scrolled under it anyway). Without a notice the page meets the toolbar like every other page.
+    /// The caption is stacked below for the same kind of reason: in the bar, its plain text made the
+    /// system draw the bar's scroll edge hard (HomeAskBar).
     private var homePage: some View {
         VStack(spacing: 0) {
             notices
@@ -138,6 +140,8 @@ struct HomeView: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { previewAreaHeight = $0 }
             .floatingBar(edge: .bottom) { askBar }
             .softScrollEdge(.bottom)
+            HomeAskCaption(coordinator: appState.commandCoordinator, kbOnly: kbOnly, inConversation: inConversation)
+                .centeredColumn()
         }
         .background(Color(nsColor: .textBackgroundColor))
         .pageSubtitle(subtitle, page: .home)
@@ -611,10 +615,10 @@ struct HomeView: View {
 
     /// HomeAskBar pads its field by the page margin inside whatever width it is given, so handing
     /// it the reading column puts the field on the same edges as Today, the conversation and the
-    /// notice row at every window width.
+    /// notice row at every window width. Its caption (HomeAskCaption) is stacked below the page.
     private var askBar: some View {
         HomeAskBar(coordinator: appState.commandCoordinator, presentation: presentation,
-                   isPresented: isPresented, kbOnly: kbOnly, inConversation: inConversation,
+                   isPresented: isPresented, kbOnly: kbOnly,
                    focusRequest: composerFocusRequest, onAccepted: showConversation)
             .centeredColumn()
     }

@@ -519,6 +519,19 @@ final class SidekickMarkdownTextView: NSTextView, NSTextViewDelegate {
         }
         return lines
     }
+    /// Every visible line's used rect (the extent of its text, not the container's), in view coordinates.
+    func visibleLineRects() -> [NSRect] {
+        guard let layout = layoutManager, let container = textContainer else { return [] }
+        layout.ensureLayout(for: container)
+        let origin = textContainerOrigin, visible = visibleRect
+        let glyphs = layout.glyphRange(forBoundingRect: visible.offsetBy(dx: -origin.x, dy: -origin.y), in: container)
+        var lines: [NSRect] = []
+        layout.enumerateLineFragments(forGlyphRange: glyphs) { _, used, _, _, _ in
+            let line = used.offsetBy(dx: origin.x, dy: origin.y).intersection(visible)
+            if !line.isEmpty { lines.append(line) }
+        }
+        return lines
+    }
     func reportSelection(_ selected: Bool) {
         guard selected != reportedSelection else { return }
         reportedSelection = selected
@@ -535,24 +548,66 @@ final class SidekickMarkdownTextView: NSTextView, NSTextViewDelegate {
 }
 
 /// Pure placement is shared by the real popup and tests, including negative monitor origins.
-/// Screen coordinates. The chip goes under the selection's last visible line (`end`), so it never
-/// covers what comes before the selection (a work status line, the previous message); it goes
-/// above the first line (`anchor`) only when `owner`, the visible area, has no room below, or
-/// when no last line is given. Either way it stays inside `owner` and `screen`.
+/// Screen coordinates. The chip sits beside the selection's last visible line (`end`), where it
+/// covers no text: in the trailing margin past `column`, `gap` away or as near as `owner` (the
+/// visible area) allows. Without that room it takes the trailing edge of the text's own room
+/// (`text`: the text view, a code block's box, a bubble's fill), clear of `lines` (the text view's
+/// visible lines) and past the last line's text, within `gap` of `text` above and below (the room
+/// every block, table cell and bubble keeps around its text). A text view that stops short of the
+/// column's edge (a table cell) keeps it inside. Only without either does the chip go under the last
+/// line, or above the first (`anchor`) when there is no room below or no last line is given; a
+/// 32 pt chip cannot fit the gap between two paragraphs. It always stays inside `owner` and `screen`.
+/// The popup asks `clearFrame` first at `compactSize` too, so a narrow column shows the icon alone
+/// beside the text before the labelled chip covers any.
 nonisolated enum SidekickSelectionReplyPlacement {
-    static func frame(anchor: NSRect, end: NSRect? = nil, owner: NSRect, screen: NSRect,
+    /// The chip's distance from the column and from the text beside it.
+    static let gap: CGFloat = 8
+    /// The chip without its label: the reply arrow alone, in a 32 pt circle.
+    static let compactSize = NSSize(width: 32, height: 32)
+
+    static func frame(anchor: NSRect, end: NSRect? = nil, column: NSRect? = nil, text: NSRect? = nil,
+                      lines: [NSRect] = [], owner: NSRect, screen: NSRect,
                       size: NSSize = NSSize(width: 96, height: 32)) -> NSRect? {
+        guard let bounds = bounds(anchor: anchor, owner: owner, screen: screen, size: size) else { return nil }
+        if let clear = clearFrame(anchor: anchor, end: end, column: column, text: text, lines: lines,
+                                  owner: owner, screen: screen, size: size) {
+            return clear
+        }
+        if let end, !end.isEmpty, end.minY - 7 - size.height >= bounds.minY {
+            return clamped(x: end.midX - size.width / 2, y: end.minY - 7 - size.height, in: bounds, size: size)
+        }
+        return clamped(x: anchor.midX - size.width / 2, y: anchor.maxY + 7, in: bounds, size: size)
+    }
+
+    /// `frame`'s first two choices alone, the margin and beside the last line's text: a spot that
+    /// covers no text, or nil.
+    static func clearFrame(anchor: NSRect, end: NSRect?, column: NSRect?, text: NSRect?, lines: [NSRect],
+                           owner: NSRect, screen: NSRect, size: NSSize = NSSize(width: 96, height: 32)) -> NSRect? {
+        guard let bounds = bounds(anchor: anchor, owner: owner, screen: screen, size: size),
+              let end, !end.isEmpty, let column else { return nil }
+        let y = end.midY - size.height / 2
+        // Nothing of the column lies beside the margin, at any height.
+        let margin = min(column.maxX + gap, bounds.maxX - size.width)
+        if margin >= column.maxX { return clamped(x: margin, y: y, in: bounds, size: size) }
+        guard let text, let line = lines.first(where: { $0.minY <= end.midY && end.midY <= $0.maxY }) else { return nil }
+        let edge = text.maxX >= column.maxX - 1 ? bounds.maxX : min(text.maxX, bounds.maxX)
+        let beside = NSRect(x: edge - size.width, y: y, width: size.width, height: size.height)
+        guard beside.minX >= max(line.maxX + gap, bounds.minX), beside.minY >= bounds.minY, beside.maxY <= bounds.maxY,
+              beside.minY >= text.minY - gap, beside.maxY <= text.maxY + gap,
+              !lines.contains(where: { $0.intersects(beside) }) else { return nil }
+        return beside
+    }
+
+    /// The area the chip may use, or nil when the anchor is off it or the chip cannot fit.
+    private static func bounds(anchor: NSRect, owner: NSRect, screen: NSRect, size: NSSize) -> NSRect? {
         let bounds = owner.intersection(screen).insetBy(dx: 6, dy: 6)
         guard !anchor.isEmpty, anchor.intersects(owner.intersection(screen)),
               bounds.width >= size.width, bounds.height >= size.height else { return nil }
-        func clamped(midX: CGFloat, y: CGFloat) -> NSRect {
-            NSRect(x: max(bounds.minX, min(midX - size.width / 2, bounds.maxX - size.width)),
-                   y: max(bounds.minY, min(y, bounds.maxY - size.height)), width: size.width, height: size.height)
-        }
-        if let end, !end.isEmpty, end.minY - 7 - size.height >= bounds.minY {
-            return clamped(midX: end.midX, y: end.minY - 7 - size.height)
-        }
-        return clamped(midX: anchor.midX, y: anchor.maxY + 7)
+        return bounds
+    }
+    private static func clamped(x: CGFloat, y: CGFloat, in bounds: NSRect, size: NSSize) -> NSRect {
+        NSRect(x: max(bounds.minX, min(x, bounds.maxX - size.width)),
+               y: max(bounds.minY, min(y, bounds.maxY - size.height)), width: size.width, height: size.height)
     }
 }
 
@@ -563,6 +618,7 @@ nonisolated enum SidekickSelectionReplyPlacement {
     private weak var selectedView: SidekickMarkdownTextView?
     private weak var owner: NSWindow?
     private var panel: SelectionPanel?
+    private var host: ReplyHostingView?
     private var localMonitor: Any?
     private var outsideMonitor: Any?
     private var observations: [NSObjectProtocol] = []
@@ -579,14 +635,30 @@ nonisolated enum SidekickSelectionReplyPlacement {
         guard selectedView === view, let owner, view.window === owner, owner.isVisible,
               !view.isHiddenOrHasHiddenAncestor, view.onReply != nil,
               view.fragment.sourceQuote(for: view.selectedRange(), in: view.source) != nil,
-              let lines = view.selectedLineRects() else { dismiss(); return }
-        let anchor = owner.convertToScreen(view.convert(lines.first, to: nil))
-        let end = owner.convertToScreen(view.convert(lines.last, to: nil))
+              let selected = view.selectedLineRects() else { dismiss(); return }
+        func onScreen(_ rect: NSRect) -> NSRect { owner.convertToScreen(view.convert(rect, to: nil)) }
+        let anchor = onScreen(selected.first)
+        let end = onScreen(selected.last)
+        let lines = view.visibleLineRects().map(onScreen)
+        let room = Self.textRoom(of: view, in: owner)
         let screen = NSScreen.screens.first { $0.frame.contains(NSPoint(x: anchor.midX, y: anchor.midY)) } ?? owner.screen
         // A scroll area too short for the chip (a compact notch message) falls back to the window.
         let area = Self.visibleArea(of: view, in: owner).map { $0.intersection(owner.frame) } ?? owner.frame
-        guard let screen, let frame = SidekickSelectionReplyPlacement.frame(anchor: anchor, end: end, owner: area, screen: screen.visibleFrame)
-                ?? SidekickSelectionReplyPlacement.frame(anchor: anchor, end: end, owner: owner.frame, screen: screen.visibleFrame)
+        guard let visible = screen?.visibleFrame else { dismiss(); return }
+        func clear(_ size: NSSize) -> NSRect? {
+            SidekickSelectionReplyPlacement.clearFrame(anchor: anchor, end: end, column: room.column, text: room.text,
+                                                       lines: lines, owner: area, screen: visible, size: size)
+        }
+        func place(in bounds: NSRect) -> NSRect? {
+            SidekickSelectionReplyPlacement.frame(anchor: anchor, end: end, column: room.column, text: room.text,
+                                                  lines: lines, owner: bounds, screen: visible)
+        }
+        // The labelled chip where it covers no text, else the arrow alone where that covers none (a
+        // narrow column); only when neither fits does the labelled chip go under or over a line.
+        let compact: Bool, frame: NSRect
+        if let clear = clear(NSSize(width: 96, height: 32)) { compact = false; frame = clear }
+        else if let clear = clear(SidekickSelectionReplyPlacement.compactSize) { compact = true; frame = clear }
+        else if let fallback = place(in: area) ?? place(in: owner.frame) { compact = false; frame = fallback }
         else { dismiss(); return }
         let panel: SelectionPanel
         if let existing = self.panel { panel = existing }
@@ -609,6 +681,7 @@ nonisolated enum SidekickSelectionReplyPlacement {
             let host = ReplyHostingView(rootView: ReplyCapsule { [weak self] in
                 self?.selectedView?.replyToSelection()
             })
+            self.host = host
             host.translatesAutoresizingMaskIntoConstraints = false
             effect.addSubview(host)
             NSLayoutConstraint.activate([
@@ -624,6 +697,7 @@ nonisolated enum SidekickSelectionReplyPlacement {
         // (whose text view is bridged to darkAqua from its SwiftUI colour scheme).
         panel.appearance = view.effectiveAppearance
         panel.level = owner.level
+        host?.rootView = ReplyCapsule(compact: compact) { [weak self] in self?.selectedView?.replyToSelection() }
         panel.setFrame(frame, display: true)
         if panel.parent !== owner { panel.parent?.removeChildWindow(panel); owner.addChildWindow(panel, ordered: .above) }
         panel.orderFront(nil) // Deliberately never makeKey / activate / change firstResponder.
@@ -651,6 +725,25 @@ nonisolated enum SidekickSelectionReplyPlacement {
         visible.size.height -= insets.top + insets.bottom
         guard visible.width > 0, visible.height > 0 else { return nil }
         return owner.convertToScreen(clip.convert(visible, to: nil))
+    }
+    /// The selected text's own room and the column it lines up in, in screen coordinates. Nothing
+    /// else lies beside a code block's text inside its box, or a bubble's inside its fill; a table
+    /// cell's neighbours do, so its column is the table's own scroller and its room the cell.
+    private static func textRoom(of view: SidekickMarkdownTextView, in owner: NSWindow) -> (text: NSRect, column: NSRect) {
+        var scrollers: [NSScrollView] = []
+        var ancestor = view.superview
+        while let current = ancestor {
+            if let scroll = current as? NSScrollView { scrollers.append(scroll) }
+            ancestor = current.superview
+        }
+        // The outermost scroller is the conversation's; the nearest one inside it is a code block's or a table's.
+        let box = scrollers.count >= 2 ? scrollers.first : nil
+        let boxFrame = box.map { $0.convert($0.bounds, to: nil) }
+        var text = view.convert(view.visibleRect, to: nil)
+        // `12` is the bubble's Space.m padding; this file compiles standalone and cannot name Views/Design.
+        if view.chromeIsBubble == true { text = text.insetBy(dx: -12, dy: 0) }
+        if view.style?.code == true, let boxFrame { text = text.union(boxFrame) }
+        return (owner.convertToScreen(text), owner.convertToScreen(boxFrame ?? text))
     }
     private func dismiss() {
         selectedView?.cancelSelectionReplyDelay()
@@ -725,16 +818,22 @@ nonisolated enum SidekickSelectionReplyPlacement {
     private final class ReplyHostingView: NSHostingView<ReplyCapsule> {
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     }
+    /// Reply with its label, or (`compact`) the arrow alone in a 32 pt circle.
     private struct ReplyCapsule: View {
+        var compact = false
         let reply: () -> Void
         var body: some View {
             Button(action: reply) {
-                Label("Reply", systemImage: "arrowshape.turn.up.left")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 96, height: 32).contentShape(Capsule())
+                Group {
+                    if compact { Image(systemName: "arrowshape.turn.up.left") }
+                    else { Label("Reply", systemImage: "arrowshape.turn.up.left") }
+                }
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: compact ? 32 : 96, height: 32).contentShape(Capsule())
             }
             .buttonStyle(.plain)
+            .help("Reply to selected text")
             .accessibilityLabel("Reply to selected text")
             .accessibilityIdentifier("sidekick.selection.reply")
         }

@@ -72,7 +72,9 @@ struct NoticeBar<Actions: View>: View {
                 .accessibilityLabel(dismissLabel)
             }
         }
-        .padding(12)
+        // 16 pt sides, like the Today card rows, so the glyph and text sit on their columns.
+        .padding(.vertical, Space.m)
+        .padding(.horizontal, Space.l)
         .background(.background.secondary, in: shape)
         .overlay(shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: pixelLength))
         .accessibilityElement(children: .contain)

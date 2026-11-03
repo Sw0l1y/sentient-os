@@ -159,6 +159,16 @@ import Foundation
         check(natural.width > 600 && natural.height < wide.height, "horizontal code layout reports natural width")
         let empty = SidekickSelectableMarkdown.measuredSize(textView, proposedWidth: 0, style: normal, wrapping: true)!
         check(empty.width == 1 && empty.height.isFinite, "zero proposal stays finite")
+        let wrappedSize = SidekickSelectableMarkdown.measuredSize(textView, proposedWidth: 180, style: normal, wrapping: true)!
+        textView.setFrameSize(wrappedSize)
+        let wrappedLines = textView.visibleLineRects()
+        check(wrappedLines.count > 3 && wrappedLines.allSatisfy { $0.width > 0 && $0.maxX <= 180.5 } && wrappedLines.contains { $0.width < 170 }
+              && zip(wrappedLines, wrappedLines.dropFirst()).allSatisfy { $0.maxY <= $1.minY + 0.5 },
+              "native layout reports each visible line's own extent, in order")
+        textView.setSelectedRange(NSRange(location: 40, length: 30))
+        let wrappedEnd = textView.selectedLineRects()!.last
+        check(wrappedLines.contains { $0.minY <= wrappedEnd.midY && wrappedEnd.midY <= $0.maxY && $0.maxX >= wrappedEnd.maxX - 0.5 },
+              "the selection's last line is one of the visible lines")
 
         textView.fragment = paragraph; textView.source = formatted
         textView.textStorage?.setAttributedString(styled)
@@ -197,6 +207,67 @@ import Foundation
         let nearBottom = NSRect(x: 300, y: 118, width: 60, height: 20)
         let flipped = SidekickSelectionReplyPlacement.frame(anchor: nearBottom, end: nearBottom, owner: owner, screen: screen)!
         check(flipped.minY > nearBottom.maxY && owner.contains(flipped), "no room below moves the reply above, inside the visible area")
+        // Told the column and the text view's lines, the chip covers no text. Lines are 29 pt apart
+        // across a paragraph break (the UI lab's 04a), too close for a 32 pt chip between them.
+        let gap = SidekickSelectionReplyPlacement.gap
+        let window = NSRect(x: 0, y: 100, width: 1100, height: 680)
+        let prose = NSRect(x: 234, y: 500, width: 632, height: 20)
+        let proseLine = NSRect(x: 234, y: 501, width: 590, height: 18)
+        let proseEnd = NSRect(x: 296, y: 501, width: 150, height: 18)
+        let lineAbove = NSRect(x: 234, y: 530, width: 620, height: 18), lineBelow = NSRect(x: 234, y: 472, width: 260, height: 18)
+        let margin = SidekickSelectionReplyPlacement.frame(anchor: proseEnd, end: proseEnd, column: prose, text: prose,
+            lines: [proseLine], owner: window, screen: screen)!
+        check(margin.minX >= prose.maxX + gap && margin.midY == proseEnd.midY && window.insetBy(dx: 6, dy: 6).contains(margin),
+              "floating reply sits in the trailing margin beside the selection's last line")
+        check(![lineAbove, proseLine, lineBelow].contains { $0.intersects(margin) }, "floating reply in the margin covers no line")
+        let window840 = NSRect(x: 0, y: 100, width: 840, height: 680), narrowColumn = NSRect(x: 104, y: 500, width: 632, height: 20)
+        let near = SidekickSelectionReplyPlacement.frame(anchor: proseEnd, end: NSRect(x: 166, y: 501, width: 150, height: 18),
+            column: narrowColumn, text: narrowColumn, lines: [NSRect(x: 104, y: 501, width: 630, height: 18)], owner: window840, screen: screen)!
+        check(near.minX >= narrowColumn.maxX && near.maxX <= window840.maxX - 6, "a margin narrower than the gap still holds the reply clear of the column")
+        // A column with no margin to spare: after the last line's own text, when it stops short.
+        let tight = NSRect(x: 0, y: 100, width: 660, height: 680), tightColumn = NSRect(x: 14, y: 500, width: 632, height: 20)
+        let shortLine = NSRect(x: 14, y: 501, width: 380, height: 18), shortEnd = NSRect(x: 60, y: 501, width: 120, height: 18)
+        let after = SidekickSelectionReplyPlacement.frame(anchor: shortEnd, end: shortEnd, column: tightColumn, text: tightColumn,
+            lines: [shortLine], owner: tight, screen: screen)!
+        check(after.minX >= shortLine.maxX + gap && after.maxX <= tight.maxX - 6 && after.midY == shortEnd.midY
+              && after.minY >= tightColumn.minY - gap && after.maxY <= tightColumn.maxY + gap,
+              "without a margin the reply sits after the last line's own text, within its paragraph")
+        check(!after.intersects(NSRect(x: 14, y: 472, width: 632, height: 18)), "after the last line the reply clears the next paragraph")
+        let fullAbove = NSRect(x: 14, y: 519, width: 630, height: 18)
+        let crowded = SidekickSelectionReplyPlacement.frame(anchor: shortEnd, end: shortEnd, column: tightColumn,
+            text: NSRect(x: 14, y: 500, width: 632, height: 38), lines: [fullAbove, shortLine], owner: tight, screen: screen)!
+        check(!crowded.intersects(fullAbove) && crowded.maxY < shortEnd.minY && crowded.midX == shortEnd.midX,
+              "a longer line above keeps the reply out of its text, falling back under the selection")
+        let fullEnd = NSRect(x: 60, y: 501, width: 120, height: 18)
+        let full = SidekickSelectionReplyPlacement.frame(anchor: fullEnd, end: fullEnd, column: tightColumn, text: tightColumn,
+            lines: [NSRect(x: 14, y: 501, width: 630, height: 18)], owner: tight, screen: screen)!
+        check(full.maxY < fullEnd.minY && full.midX == fullEnd.midX, "a full last line without a margin falls back under the selection")
+        // A table cell's neighbours lie beside it: the chip stays inside the cell, or past the table.
+        let tableBox = NSRect(x: 14, y: 400, width: 632, height: 200), cell = NSRect(x: 26, y: 500, width: 300, height: 20)
+        let cellLine = NSRect(x: 26, y: 501, width: 60, height: 18), cellEnd = NSRect(x: 26, y: 501, width: 40, height: 18)
+        let inCell = SidekickSelectionReplyPlacement.frame(anchor: cellEnd, end: cellEnd, column: tableBox, text: cell,
+            lines: [cellLine], owner: tight, screen: screen)!
+        check(inCell.maxX <= cell.maxX && inCell.minX >= cellLine.maxX + gap, "a table cell keeps the reply inside it")
+        let wideTable = NSRect(x: 234, y: 400, width: 632, height: 200), wideCell = NSRect(x: 246, y: 500, width: 110, height: 20)
+        let pastTable = SidekickSelectionReplyPlacement.frame(anchor: cellEnd, end: NSRect(x: 246, y: 501, width: 40, height: 18),
+            column: wideTable, text: wideCell, lines: [NSRect(x: 246, y: 501, width: 100, height: 18)], owner: window, screen: screen)!
+        check(pastTable.minX >= wideTable.maxX + gap, "with room, a table cell's reply goes past the table")
+        // A margin narrower than the labelled chip but wider than its 32 pt circle: the popup's first
+        // ask (the labelled chip, clear of text) finds nothing, and the arrow alone fits the margin.
+        let window720 = NSRect(x: 0, y: 100, width: 720, height: 680), column720 = NSRect(x: 44, y: 500, width: 632, height: 20)
+        let fullLine720 = NSRect(x: 44, y: 501, width: 630, height: 18), end720 = NSRect(x: 90, y: 501, width: 120, height: 18)
+        let compactSize = SidekickSelectionReplyPlacement.compactSize
+        check(SidekickSelectionReplyPlacement.clearFrame(anchor: end720, end: end720, column: column720, text: column720,
+              lines: [fullLine720], owner: window720, screen: screen) == nil,
+              "the labelled reply claimed a clear spot beside a full line in a narrow margin")
+        let arrow = SidekickSelectionReplyPlacement.clearFrame(anchor: end720, end: end720, column: column720, text: column720,
+            lines: [fullLine720], owner: window720, screen: screen, size: compactSize)
+        check(arrow.map { $0.size == compactSize && $0.minX >= column720.maxX && $0.maxX <= window720.maxX - 6
+                          && $0.midY == end720.midY && !$0.intersects(fullLine720) } == true,
+              "a narrow margin did not take the reply arrow alone, beside the selection's last line")
+        check(SidekickSelectionReplyPlacement.clearFrame(anchor: fullEnd, end: fullEnd, column: tightColumn, text: tightColumn,
+              lines: [NSRect(x: 14, y: 501, width: 630, height: 18)], owner: tight, screen: screen, size: compactSize) == nil,
+              "the reply arrow claimed a margin narrower than itself")
         check(SidekickSelectionReplyPlacement.frame(anchor: .zero, owner: owner, screen: screen) == nil,
               "empty anchor cannot open a popup")
         check(SidekickSelectionReplyPlacement.frame(anchor: NSRect(x: 2000, y: 2000, width: 20, height: 20), owner: owner, screen: screen) == nil,

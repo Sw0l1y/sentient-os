@@ -40,6 +40,8 @@ struct KnowledgeView: View {
     @AppStorage("knowledge.notesListWidth") private var listWidth: Double = 260
     /// The width at the start of a resize drag.
     @State private var listDragStart: Double?
+    /// The list-and-reader split's width, beside the Note Info inspector when it is open.
+    @State private var splitWidth: CGFloat = 0
     /// The scope the list and reader were last set up for (see `applyScope()`). Changes of
     /// `MainNavigation.knowledgeScope` are compared with it, so returning to the same folder keeps
     /// the note you were reading, and a different folder (or All Knowledge) opens its landing note.
@@ -169,7 +171,7 @@ struct KnowledgeView: View {
                     .gesture(
                         DragGesture(minimumDistance: 1)
                             .onChanged { drag in
-                                let start = listDragStart ?? listWidth
+                                let start = listDragStart ?? Double(shownListWidth)
                                 listDragStart = start
                                 listWidth = min(380, max(220, start + Double(drag.translation.width)))
                             }
@@ -177,6 +179,13 @@ struct KnowledgeView: View {
                     )
             }
             .accessibilityHidden(true)
+    }
+
+    /// The notes list's width on screen: the dragged width, narrowed toward the list's 220 pt
+    /// minimum while the reader would otherwise get less than 360 pt beside it (the 1 is the divider).
+    private var shownListWidth: CGFloat {
+        guard splitWidth > 0 else { return CGFloat(listWidth) }
+        return min(CGFloat(listWidth), max(220, splitWidth - 1 - 360))
     }
 
     /// Reader mode: the notes list beside the document, with the Note Info inspector.
@@ -194,15 +203,19 @@ struct KnowledgeView: View {
                                        onCreate: { folder, parent in promptCreate(folder: folder, in: parent) },
                                        onTrash: deleteItem,
                                        onReveal: { NSWorkspace.shared.activateFileViewerSelecting([$0]) })
-                        .frame(width: CGFloat(listWidth))
+                        .frame(width: shownListWidth)
                     listDivider
                 }
                 .transition(.move(edge: .leading))
             }
+            // No minimum width of its own: with the Note Info inspector attached, this split's
+            // minimum becomes part of the window's, and SPEC-D3 K1's 360 pt reader floor did not fit
+            // beside the sidebar of a 1040 pt window. The list gives way first instead (shownListWidth).
             readerPane
-                .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: .textBackgroundColor))
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { splitWidth = $0 }
         .clipped()
         .inspector(isPresented: Binding(get: { isPresented && showInfo && mode == .reader && selection != nil },
                                         set: { showInfo = $0 })) {

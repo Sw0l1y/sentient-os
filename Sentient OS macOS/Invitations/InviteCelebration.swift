@@ -28,6 +28,7 @@ struct InviteCelebration: View {
             ZStack(alignment: .bottomTrailing) {
                 IconTile(.inviteCelebration, size: 72)
                     .symbolEffect(.bounce, value: bounceTick)
+                // The sheet's one success mark: the claimed pass below carries none of its own.
                 if claimed || upgrade {
                     Image(systemName: "checkmark.seal.fill")
                         .font(.title2)
@@ -143,15 +144,14 @@ struct InviteCelebration: View {
         return upgrade ? "You’ve Been Upgraded" : "Sentient OS, Yours for Life"
     }
 
+    /// Once claimed, the pass states the gift and the caption that it is saved, so this line
+    /// says neither: only who it is from, or thanks.
     private var message: String {
         if lateGift {
-            return claimed ? "A couple of weeks of unlimited Sidekick, on us."
+            return claimed ? "With thanks from Jesai & Aditya."
                            : InviteLateUse.message + "\n— Jesai & Aditya"
         }
-        if claimed {
-            return upgrade ? "Your upgrade is already saved. Thanks for being here early."
-                           : "Thanks for being here early."
-        }
+        if claimed { return "Thanks for being here early." }
         return upgrade ? "Your lifetime access is already unlocked." : "Lifetime access, reserved for you."
     }
 

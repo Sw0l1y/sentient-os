@@ -17,7 +17,6 @@ struct SidekickRecoveryLayout {
     static let sectionSpacing: CGFloat = 10
     static let answerSpacing: CGFloat = 8
     static let answerPadding: CGFloat = 8
-    static let scrollHPad: CGFloat = 2
     static let scrollVPad: CGFloat = 4
     static let errorVPad: CGFloat = 4
     static let fieldSpacing: CGFloat = 8
@@ -32,7 +31,9 @@ struct SidekickRecoveryLayout {
 
     init(content: SidekickRecoveryContent, metrics: NotchMetrics) {
         let maximum = metrics.size(for: .recovery)
-        let textWidth = maximum.width - 2 * (metrics.hPad + Self.scrollHPad)
+        // One column edge for the question, the tiles and the field, as in the message panel. The
+        // scroll content needs no side room: tile hover and press change only fill and brightness.
+        let textWidth = maximum.width - 2 * metrics.hPad
         let buttonWidth = (textWidth - Self.answerSpacing) / 2
         answerWidth = buttonWidth
         let questionHeight = content.question.map { Self.height($0.question, font: Self.questionFont, width: textWidth) } ?? 0
@@ -139,7 +140,6 @@ struct SidekickRecoveryView: View {
                     }
                 }
                 .padding(.vertical, SidekickRecoveryLayout.scrollVPad)
-                .padding(.horizontal, SidekickRecoveryLayout.scrollHPad)
             }
             .scrollIndicators(.hidden)
             .frame(height: layout.scrollHeight)

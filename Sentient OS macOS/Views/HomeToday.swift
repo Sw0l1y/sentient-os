@@ -139,7 +139,10 @@ struct HomeToday: View {
                     .accessibilityLabel("Expand conversation history")
                     .accessibilityIdentifier("sidekick.expandHistory")
             }
-            .padding(Space.m)
+            // A suggestion row's insets, so the text and button sit on the edges the rows and the
+            // Analysis block share.
+            .padding(.vertical, Space.m)
+            .padding(.horizontal, Space.l)
         }
     }
 

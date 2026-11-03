@@ -95,6 +95,11 @@ struct SidekickTranscript: View {
         let pending = pendingQuestionID
         let display = SidekickTranscriptLayout.rows(presentation.rows.filter { $0.event.id != pending })
         let leaders = Self.runLeaders(display)
+        let runID = coordinator.run.runID
+        // A running task's work trails the rows until its own row shows it.
+        let liveWork = !presentation.hasLater && coordinator.run.isRunning
+            && !display.contains(where: { $0.showsWork && $0.record.event.taskID == runID })
+        let lastItemID = liveWork ? "sidekick-live-work-\(runID)" : display.last?.id
         return ScrollViewReader { proxy in
             ScrollView {
                 // History is already paged (normally 40, at most 100 records). Stable
@@ -138,16 +143,19 @@ struct SidekickTranscript: View {
                             guard let last = presentation.rows.last else { return }
                             Task { await presentation.load(.later(last.sequence), conversation: conversation) }
                         }
-                    } else if coordinator.run.isRunning && !display.contains(where: { $0.showsWork && $0.record.event.taskID == coordinator.run.runID }) {
-                        SidekickWorkDisclosure(conversation: conversation, taskID: coordinator.run.runID,
-                            state: presentation.taskStates[coordinator.run.runID], presentation: presentation,
+                    } else if liveWork {
+                        SidekickWorkDisclosure(conversation: conversation, taskID: runID,
+                            state: presentation.taskStates[runID], presentation: presentation,
                             running: true, waiting: coordinator.run.recovery.isPending, active: active,
                             liveStatus: coordinator.run.statusLine)
                             .padding(.top, Space.m)
                     }
-                    Color.clear.frame(height: 1).id("sidekick-bottom")
+                    // The end marker is the column's bottom margin, so scrolling to it shows the last
+                    // row's hover gutter above the Ask bar. (A 1 pt marker over a bottom padding left
+                    // that margin under the bar, and the gutter's time and Copy on the bar's edge.)
+                    Color.clear.frame(height: Space.m).id("sidekick-bottom")
                 }
-                .padding(.horizontal, Space.xl).padding(.top, Space.l).padding(.bottom, Space.m)
+                .padding(.horizontal, Space.xl).padding(.top, Space.l)
                 .frame(maxWidth: PageMetrics.readingColumn)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width - 2 * Space.xl } action: { columnWidth = max(200, $0) }
                 .frame(maxWidth: .infinity)
@@ -164,14 +172,24 @@ struct SidekickTranscript: View {
             .onScrollGeometryChange(for: SidekickTranscriptPlace.Viewport.self) { geo in
                 .init(top: geo.visibleRect.minY, height: geo.containerSize.height,
                       insetTop: geo.contentInsets.top, insetBottom: geo.contentInsets.bottom,
-                      fromBottom: geo.contentSize.height - geo.visibleRect.maxY)
-            } action: { [place] _, viewport in place.viewport = viewport }
+                      fromBottom: geo.contentSize.height - geo.visibleRect.maxY,
+                      width: geo.containerSize.width, contentHeight: geo.contentSize.height)
+            } action: { [place] old, viewport in
+                place.viewport = viewport
+                // A resize or a new inset keeps the content's offset. The reader at the end stays
+                // there through it, while Home is hidden too, unless a gesture is under way. Any
+                // change also settles a pin asked for at the previous one (it has landed, or the
+                // reader moved).
+                let keep = SidekickTranscriptPlace.Viewport.keepsEnd(from: old, to: viewport, pinPending: place.endPending)
+                place.endPending = false
+                if keep && !presentation.isScrolling { place.pinEnd(proxy) }
+            }
             // Home stays mounted behind other pages. Leaving notes the reader's place; coming
             // back puts the transcript exactly there if anything moved it while it was hidden.
             .onChange(of: active) { _, isActive in
-                if isActive { restorePlace(proxy) }
+                if isActive { restorePlace(proxy, lastItemID: lastItemID) }
                 else {
-                    place.remember(order: display.map(\.id), generation: generation,
+                    place.remember(order: display.map(\.id), lastItemID: lastItemID, generation: generation,
                                    scrollRequest: presentation.scrollRequest,
                                    following: presentation.canFollowLatest)
                 }
@@ -220,14 +238,15 @@ struct SidekickTranscript: View {
 
     /// Puts the transcript back where the reader left it when Home comes back. A destination
     /// chosen while Home was away (search, View in Chat, a notch reply) wins, and the reader's
-    /// own scrolling ends the restore at once.
-    private func restorePlace(_ proxy: ScrollViewProxy) {
+    /// own scrolling ends the restore at once. `lastItemID` is the column's last item now.
+    private func restorePlace(_ proxy: ScrollViewProxy, lastItemID: String?) {
         guard let saved = place.takeSaved(), saved.generation == presentation.generation,
               conversation.navigationRequest == nil, !presentation.searchShown,
               presentation.scrollRequest == saved.scrollRequest || presentation.scrollIsAutomatic else { return }
         let token = place.restoreToken
         let intent = presentation.readingIntentRevision
-        place.apply(saved, proxy: proxy, force: saved.atBottom)
+        let toEnd = saved.returnsToEnd(lastItemID: lastItemID, now: place.viewport)
+        place.apply(saved, toEnd: toEnd, proxy: proxy)
         // Hidden rows can be re-measured as the page returns (width, safe areas, the Ask bar),
         // so check again once that layout has landed.
         Task { [place, presentation] in
@@ -236,7 +255,7 @@ struct SidekickTranscript: View {
                 guard place.restoreToken == token, !presentation.isScrolling,
                       presentation.readingIntentRevision == intent,
                       presentation.scrollRequest == saved.scrollRequest || presentation.scrollIsAutomatic else { return }
-                place.apply(saved, proxy: proxy, force: false)
+                place.apply(saved, toEnd: toEnd, proxy: proxy)
             }
         }
     }
@@ -325,32 +344,25 @@ struct SidekickTranscript: View {
 /// frames in content coordinates and the scroll viewport. `remember` notes the place when Home
 /// is left; `apply` puts it back (the latest message, or the same row at the same height).
 @MainActor final class SidekickTranscriptPlace {
-    struct Viewport: Equatable {
-        var top: CGFloat = 0           // visible rect's top, in content coordinates
-        var height: CGFloat = 0        // the scroll view's height, insets included
-        var insetTop: CGFloat = 0
-        var insetBottom: CGFloat = 0
-        var fromBottom: CGFloat = 0    // content below the visible rect (negative inside the bottom inset)
-    }
-    struct Saved {
-        let atBottom: Bool
-        let rowID: String?
-        let rowTop: CGFloat            // that row's top edge relative to the visible rect's top
-        let generation: UUID?
-        let scrollRequest: Int
-    }
+    typealias Viewport = SidekickTranscriptLayout.Viewport
+    typealias Saved = SidekickTranscriptLayout.SavedPlace
     /// The transcript's own "at the latest message" distance (see `onScrollGeometryChange`).
     static let latestDistance: CGFloat = 70
     var rows: [String: CGRect] = [:]
     var viewport = Viewport()
+    /// A pin to the end asked for (pinEnd) and not yet followed by another viewport change. Until
+    /// one comes, the reader counts as at the end, whichever of the page's updates runs first.
+    var endPending = false
     private(set) var saved: Saved?
     /// Bumped whenever the place is noted again, which ends any restore still checking.
     private(set) var restoreToken = 0
 
     /// `following`: the reader follows the latest message (SidekickPresentation.canFollowLatest).
     /// Only then does "at the bottom" mean "the latest message"; a paused reader (text selected,
-    /// paged history) keeps the same row instead, even if a reply arrives while Home is away.
-    func remember(order: [String], generation: UUID?, scrollRequest: Int, following: Bool) {
+    /// paged history) keeps the same row instead, even if a reply arrives while Home is away, unless
+    /// it was at the end and nothing new came (SavedPlace.returnsToEnd). `lastItemID`: the column's
+    /// last item, a row or a live run's work.
+    func remember(order: [String], lastItemID: String?, generation: UUID?, scrollRequest: Int, following: Bool) {
         restoreToken &+= 1
         lastAnchor = nil
         let ids = Set(order)
@@ -358,7 +370,8 @@ struct SidekickTranscript: View {
         guard viewport.height > 0 else { saved = nil; return }
         let visibleTop = viewport.top + viewport.insetTop
         let rowID = order.first { (rows[$0]?.maxY ?? -.infinity) > visibleTop }
-        saved = Saved(atBottom: following && viewport.fromBottom < Self.latestDistance, rowID: rowID,
+        saved = Saved(atBottom: following && viewport.fromBottom < Self.latestDistance,
+                      atEnd: viewport.atEnd || endPending, lastItemID: lastItemID, viewport: viewport, rowID: rowID,
                       rowTop: rowID.flatMap { rows[$0] }.map { $0.minY - viewport.top } ?? 0,
                       generation: generation, scrollRequest: scrollRequest)
     }
@@ -368,16 +381,18 @@ struct SidekickTranscript: View {
         return saved
     }
 
-    /// Scrolls back to `saved` without animation. `force` scrolls even when the place looks
-    /// unchanged (the measurements of a hidden page can lag its first visible layout).
-    func apply(_ saved: Saved, proxy: ScrollViewProxy, force: Bool) {
-        var instant = Transaction()
-        instant.disablesAnimations = true
-        if saved.atBottom {
-            guard force || viewport.fromBottom >= Self.latestDistance else { return }
-            withTransaction(instant) { proxy.scrollTo("sidekick-bottom", anchor: .bottom) }
+    /// Scrolls back to `saved` without animation: to the end (`toEnd`, from Saved.returnsToEnd),
+    /// or the same row at the same height.
+    func apply(_ saved: Saved, toEnd: Bool, proxy: ScrollViewProxy) {
+        if toEnd {
+            // On every pass, even when the place looks right: a hidden page's measurements can lag
+            // its first visible layout, and "near the end" (latestDistance) is not the end. Scrolling
+            // to the end where it already is moves nothing.
+            pinEnd(proxy)
             return
         }
+        var instant = Transaction()
+        instant.disablesAnimations = true
         guard let id = saved.rowID, let frame = rows[id], viewport.height > 0 else { return }
         let current = frame.minY - viewport.top
         guard abs(current - saved.rowTop) > 0.75 else { return }
@@ -393,6 +408,14 @@ struct SidekickTranscript: View {
         withTransaction(instant) { proxy.scrollTo(id, anchor: UnitPoint(x: 0, y: y)) }
     }
     private var lastAnchor: (id: String, y: CGFloat)?
+
+    /// Puts the end marker on the Ask bar's edge at once, the last row's hover gutter above it.
+    func pinEnd(_ proxy: ScrollViewProxy) {
+        endPending = true
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { proxy.scrollTo("sidekick-bottom", anchor: .bottom) }
+    }
 }
 
 private struct SidekickMessageRow: View {
@@ -584,8 +607,10 @@ private struct SidekickSearchResults: View {
                 .accessibilityIdentifier("sidekick.searchResults")
             }
         }
-        .frame(maxWidth: PageMetrics.readingColumn)
-        .frame(maxWidth: .infinity)
+        // The page margin inside the reading column, as in the conversation and the Ask bar, so the
+        // results share their edges (and the rows' text the Ask field's) at every window width.
+        .padding(.horizontal, Space.xl)
+        .centeredColumn()
     }
 
     private func row(_ record: SidekickConversationStore.Record) -> some View {

@@ -174,7 +174,11 @@ struct HomeSuggestionRow: View {
     }
 
     @ViewBuilder private var dismissButton: some View {
-        if let onDismiss, isHovered {
+        if isHovered { dismissControl }
+    }
+
+    @ViewBuilder private var dismissControl: some View {
+        if let onDismiss {
             Button(action: onDismiss) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.tertiary)
@@ -276,11 +280,15 @@ struct HomeSuggestionRow: View {
 
     private var sealedRow: some View {
         HStack(alignment: .center, spacing: Space.m) {
-            Circle().fill(.tint)
-                .frame(width: 8, height: 8)
-                .frame(width: 12, alignment: .leading)       // the unread gutter
-                .accessibilityLabel("Unread")
             IconTile(.giftLetter, size: Self.tileSize)
+                // The unread dot sits centred in the row's leading padding, as Mail draws it, so the
+                // tile and title stay on the icon and text columns every other row uses.
+                .overlay(alignment: .leading) {
+                    Circle().fill(.tint)
+                        .frame(width: 8, height: 8)
+                        .offset(x: -(Space.l + 8) / 2)
+                        .accessibilityLabel("Unread")
+                }
             VStack(alignment: .leading, spacing: 2) {
                 Text("A Gift from Your Sentient")
                     .font(.headline)
@@ -290,12 +298,19 @@ struct HomeSuggestionRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: Space.s)
-            VStack(alignment: .trailing, spacing: Space.s) {
+            // The hover ✕ stays laid out beside Open and only shows on hover, so hovering moves
+            // nothing: under Open (as standard rows stack it) it would lift Open off the row's centre.
+            // Disabled while unseen, so keyboard navigation cannot land on it either.
+            HStack(spacing: Space.s) {
+                dismissControl
+                    .opacity(isHovered ? 1 : 0)
+                    .allowsHitTesting(isHovered)
+                    .disabled(!isHovered)
+                    .accessibilityHidden(!isHovered)
                 Button("Open", action: onOpenEnvelope)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .accessibilityIdentifier("proactive.offer.\(briefing.id)")
-                dismissButton
             }
         }
     }

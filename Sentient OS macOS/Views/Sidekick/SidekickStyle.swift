@@ -4,20 +4,8 @@ import AppKit
 extension EnvironmentValues {
     // Optional overrides are used by the isolated rendering lab; production follows macOS.
     @Entry var sidekickReduceMotionOverride: Bool? = nil
-    @Entry var sidekickReduceTransparencyOverride: Bool? = nil
     @Entry var sidekickHoveredMessageID: String? = nil
     @Entry var sidekickHoveredCardID: String? = nil
-}
-
-/// Retired tokens (SPEC-00 4.3). After the final cleanup (4.1) only `motion(_:)` remains, because
-/// SidekickUILab still calls it; every other retired Sidekick token, surface and style had no users
-/// and was deleted.
-enum SidekickStyle {
-    /// `Motion.standard` through `Motion.gated`: nil (no animation) when `reduced` or in Low Power Mode.
-    @available(*, deprecated, message: "Use Motion.gated(Motion.standard, reduceMotion:)")
-    static func motion(_ reduced: Bool) -> Animation? {
-        Motion.gated(Motion.standard, reduceMotion: reduced)
-    }
 }
 
 /// Tracks the real native window, so hidden/occluded Home never consumes unread messages.

@@ -64,6 +64,55 @@ nonisolated enum SidekickTranscriptLayout {
         return (start > words.startIndex ? "…" : "") + body + (end < words.endIndex ? "…" : "")
     }
 
+    /// The transcript's scroll viewport, as SidekickTranscript measures it. Scroll geometry's visible
+    /// rect includes the inset areas (the toolbar above, the Ask bar below), so at the end of the
+    /// content `fromBottom` is `-insetBottom`.
+    struct Viewport: Equatable {
+        var top: CGFloat = 0           // visible rect's top, in content coordinates
+        var height: CGFloat = 0        // the scroll view's height, insets included
+        var insetTop: CGFloat = 0
+        var insetBottom: CGFloat = 0
+        var fromBottom: CGFloat = 0    // content below the visible rect (negative inside the bottom inset)
+        var width: CGFloat = 0         // the scroll view's width
+        var contentHeight: CGFloat = 0
+
+        /// Nothing hides under the Ask bar: the bottom marker, which carries the last row's
+        /// clearance, rests on the bar's edge (or the content is shorter than the viewport).
+        var atEnd: Bool { height > 0 && fromBottom + insetBottom <= 1 }
+
+        /// A new size or inset (the window, the Ask bar, a toolbar band, a narrower column that
+        /// re-wraps) can leave the content's offset where it was and slide the latest message under
+        /// the bar, so a reader who was at the end is put back there. `pinPending`: the previous
+        /// change already asked for that and it has not landed, so the reader still counts as at
+        /// the end. A scroll or new content alone keeps the frame, and is not this check's business.
+        static func keepsEnd(from old: Viewport, to new: Viewport, pinPending: Bool = false) -> Bool {
+            (old.atEnd || pinPending) && (old.width != new.width || old.height != new.height
+                || old.insetTop != new.insetTop || old.insetBottom != new.insetBottom)
+        }
+    }
+
+    /// Where the reader was when Home was left (SidekickTranscriptPlace.remember).
+    struct SavedPlace {
+        let atBottom: Bool             // following the latest message, near the end
+        let atEnd: Bool                // at the end (Viewport.atEnd), or a pin there not yet landed
+        let lastItemID: String?        // the column's last item then: a row, or a live run's work
+        let viewport: Viewport         // the viewport then
+        let rowID: String?
+        let rowTop: CGFloat            // that row's top edge relative to the visible rect's top
+        let generation: UUID?
+        let scrollRequest: Int
+
+        /// Back at the end on return: a follower always (a reply that came while Home was away is the
+        /// new latest message), a paused reader when it was at the end and nothing new came: the
+        /// same last item, and the content no taller unless the width changed (a re-wrap). So a
+        /// window resized meanwhile cannot leave the latest message under the Ask bar. Otherwise a
+        /// paused reader keeps the same row at the same height.
+        func returnsToEnd(lastItemID current: String?, now: Viewport) -> Bool {
+            atBottom || (atEnd && current == lastItemID
+                && (now.contentHeight <= viewport.contentHeight + 0.5 || now.width != viewport.width))
+        }
+    }
+
     /// A hidden success/footer event still has a valid history-search destination.
     static func destination(_ id: String, records: [Record]) -> String {
         guard let ending = records.first(where: { $0.event.id == id }), ending.event.kind == .taskFinished else { return id }

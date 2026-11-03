@@ -2,13 +2,14 @@
 //  ProactivePane.swift
 //  Sentient OS macOS
 //
-//  Settings › Sidekick, laid out like System Settings › Control Center: four named sections.
+//  Settings › Sidekick, laid out like System Settings › Control Center: four sections.
 //  Notch: the shared Sidekick / Double Tap shortcut (ShortcutSetting) and notch clicks.
 //  Sidekick: its standing instructions, which live in SidekickMemory.md. The editor saves on every
 //  keystroke; a failed save stays visible and editable, and nothing reloads over it.
-//  Speed & Intelligence: the model/effort every computer-use run rides (ComputerUseSpeed), as a
-//  segmented control. A custom AI model carries ONE reasoning level set in AI Model (provider
-//  quirks make per-run tuning unsafe there), so only .custom locks it.
+//  Speed & Intelligence (its row's name; the section has no header): the model/effort every
+//  computer-use run rides (ComputerUseSpeed), as a segmented control. A custom AI model carries
+//  ONE reasoning level set in AI Model (provider quirks make per-run tuning unsafe there), so only
+//  .custom locks it.
 //  Morning Suggestions: standing instructions for the proactive suggestion writer.
 //
 
@@ -106,6 +107,8 @@ struct ProactivePane: View {
 
     // MARK: - Speed & Intelligence
 
+    /// No section header: its one row already says "Speed & Intelligence", the name the control
+    /// speaks too, so a header above it would only repeat it.
     private var speedSection: some View {
         Section {
             Picker(selection: speed) {
@@ -126,8 +129,6 @@ struct ProactivePane: View {
             .disabled(!sliderLive)
             .accessibilityLabel("Speed and intelligence")
             .accessibilityValue("\(current.label), \(current.modelLine)")
-        } header: {
-            Text("Speed & Intelligence")
         } footer: {
             Text("Choose how much thought goes into computer tasks. "
                  + (sliderLive

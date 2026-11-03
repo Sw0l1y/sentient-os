@@ -14,9 +14,12 @@ enum InvitePaper {
     static let ink = Color.primary
 }
 
-/// A flat pass: brand mark and header title, a hairline, the value line, then a footer.
+/// A flat pass: the app icon as its issuer logo (as a Wallet pass shows one) and the header title,
+/// a hairline, the value line, then a footer.
 /// It sets no width or height of its own, and uses only text styles, so a caller can size it
 /// (`.frame(height: 28).scaledToFit()` for onboarding's badge). `compact` drops the footer.
+/// A claimed full pass carries no success glyph: it shows only in InviteCelebration, whose gift
+/// tile's seal says it once. The compact badge stands alone, so it keeps its seal.
 struct InviteTicketFace: View {
     var claimed = false
     var lateGift = false
@@ -25,10 +28,16 @@ struct InviteTicketFace: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack(spacing: Space.s) {
-                BrandMarkView(size: 16)
+                // 20 pt keeps the compact face inside onboarding's 28 pt badge slot at 0.35 scale.
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 20, height: 20)
+                    .accessibilityHidden(true)
                 Text(headerTitle).font(.headline)
                 Spacer(minLength: Space.s)
-                InviteStamp(claimed: claimed)
+                if !claimed || compact {
+                    InviteStamp(claimed: claimed)
+                }
             }
             if !compact {
                 InvitePerforation()
@@ -41,11 +50,13 @@ struct InviteTicketFace: View {
                     Text(footerText)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Spacer(minLength: Space.s)
-                    Image(systemName: claimed ? "checkmark" : "arrow.up.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
+                    if !claimed {
+                        Spacer(minLength: Space.s)
+                        Image(systemName: "arrow.up.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
                 }
             }
         }
@@ -59,18 +70,20 @@ struct InviteTicketFace: View {
         return lateGift ? "Sidekick Gift" : "Lifetime Pass"
     }
 
+    // A claimed pass holds facts, not confirmations: what it unlocks, then its term or who gave
+    // it. InviteCelebration's title, message and caption around it say none of these.
     private var valueLine: String {
         guard claimed else { return "Have a gift code?" }
-        return lateGift ? "Enjoy Sidekick." : "Yours. For life."
+        return lateGift ? "Unlimited Sidekick" : "Sentient OS"
     }
 
     private var footerText: String {
         guard claimed else { return "Enter your code" }
-        return lateGift ? "Your Sidekick gift is saved" : "Sentient OS · Lifetime access"
+        return lateGift ? "A couple of weeks, on us" : "From Jesai & Aditya"
     }
 }
 
-/// The pass's status glyph: a pink gift until claimed, then a green seal.
+/// The pass's status glyph: a pink gift until claimed, then a green seal (on the compact badge only).
 struct InviteStamp: View {
     var claimed = false
 
